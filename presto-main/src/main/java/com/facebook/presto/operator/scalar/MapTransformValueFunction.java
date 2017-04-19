@@ -18,6 +18,7 @@ import com.facebook.presto.metadata.FunctionKind;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.SqlScalarFunction;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
@@ -46,6 +47,7 @@ public final class MapTransformValueFunction
             Type.class,
             Type.class,
             Type.class,
+            ConnectorSession.class,
             Block.class,
             MethodHandle.class);
 
@@ -92,7 +94,7 @@ public final class MapTransformValueFunction
                 isDeterministic());
     }
 
-    public static Block transform(Type keyType, Type valueType, Type transformedValueType, Block block, MethodHandle function)
+    public static Block transform(Type keyType, Type valueType, Type transformedValueType, ConnectorSession session, Block block, MethodHandle function)
     {
         int positionCount = block.getPositionCount();
         BlockBuilder resultBuilder = new InterleavedBlockBuilder(ImmutableList.of(keyType, transformedValueType), new BlockBuilderStatus(), positionCount);
@@ -101,7 +103,7 @@ public final class MapTransformValueFunction
             Object value = readNativeValue(valueType, block, position + 1);
             Object transformedValue;
             try {
-                transformedValue = function.invoke(key, value);
+                transformedValue = function.invoke(session, key, value);
             }
             catch (Throwable throwable) {
                 throw Throwables.propagate(throwable);
