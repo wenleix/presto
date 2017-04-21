@@ -73,7 +73,7 @@ public class CursorProcessorCompiler
     @Override
     public void generateMethods(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, RowExpression filter, List<RowExpression> projections)
     {
-        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition, callSiteBinder);
+        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition);
         generateProcessMethod(classDefinition, projections.size());
         generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, filter);
 

@@ -94,7 +94,7 @@ public class RowToRowCast
         List<Type> toTypes = toType.getTypeParameters();
         List<Type> fromTypes = fromType.getTypeParameters();
 
-        CallSiteBinder binder = new CallSiteBinder();
+        CallSiteBinder callSiteBinder = new CallSiteBinder();
 
         // Embed the MD5 hash code of input and output types into the generated class name instead of the raw type names,
         // which could prevent the class name from hitting the length limitation and invalid characters.
@@ -123,12 +123,12 @@ public class RowToRowCast
 
         body.append(wasNull.set(constantBoolean(false)));
 
-        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition, binder);
+        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition);
 
         // create the interleave block builder
         body.newObject(InterleavedBlockBuilder.class)
                 .dup()
-                .append(constantType(binder, toType).invoke("getTypeParameters", List.class))
+                .append(constantType(callSiteBinder, toType).invoke("getTypeParameters", List.class))
                 .append(newInstance(BlockBuilderStatus.class))
                 .append(constantInt(toTypes.size()))
                 .invokeConstructor(InterleavedBlockBuilder.class, List.class, BlockBuilderStatus.class, int.class)
@@ -146,13 +146,13 @@ public class RowToRowCast
                 body.append(blockBuilder.invoke("appendNull", BlockBuilder.class).pop());
                 continue;
             }
-            BytecodeExpression fromElement = constantType(binder, currentFromType).getValue(value, constantInt(i));
-            BytecodeExpression toElement = invokeFunction(scope, cachedInstanceBinder, signature.getName(), function, fromElement);
+            BytecodeExpression fromElement = constantType(callSiteBinder, currentFromType).getValue(value, constantInt(i));
+            BytecodeExpression toElement = invokeFunction(scope, callSiteBinder, cachedInstanceBinder, signature.getName(), function, fromElement);
             IfStatement ifElementNull = new IfStatement("if the element in the row type is null...");
 
             ifElementNull.condition(value.invoke("isNull", boolean.class, constantInt(i)))
                     .ifTrue(blockBuilder.invoke("appendNull", BlockBuilder.class).pop())
-                    .ifFalse(constantType(binder, toTypes.get(i)).writeValue(blockBuilder, toElement));
+                    .ifFalse(constantType(callSiteBinder, toTypes.get(i)).writeValue(blockBuilder, toElement));
 
             body.append(ifElementNull);
         }
@@ -171,6 +171,6 @@ public class RowToRowCast
         cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
         constructorBody.ret();
 
-        return defineClass(definition, Object.class, binder.getBindings(), RowToRowCast.class.getClassLoader());
+        return defineClass(definition, Object.class, callSiteBinder.getBindings(), RowToRowCast.class.getClassLoader());
     }
 }

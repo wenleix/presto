@@ -31,35 +31,28 @@ import static java.util.Objects.requireNonNull;
 public final class CachedInstanceBinder
 {
     private final ClassDefinition classDefinition;
-    private final CallSiteBinder callSiteBinder;
-    private final Map<FieldDefinition, MethodHandle> initializers = new HashMap<>();
+    private final Map<FieldDefinition, Binding> initializers = new HashMap<>();
     private int nextId;
 
-    public CachedInstanceBinder(ClassDefinition classDefinition, CallSiteBinder callSiteBinder)
+    public CachedInstanceBinder(ClassDefinition classDefinition)
     {
         this.classDefinition = requireNonNull(classDefinition, "classDefinition is null");
-        this.callSiteBinder = requireNonNull(callSiteBinder, "callSiteBinder is null");
     }
 
-    public CallSiteBinder getCallSiteBinder()
-    {
-        return callSiteBinder;
-    }
-
-    public FieldDefinition getCachedInstance(MethodHandle methodHandle)
+    public FieldDefinition getCachedInstance(CallSiteBinder callSiteBinder, MethodHandle methodHandle)
     {
         FieldDefinition field = classDefinition.declareField(a(PRIVATE, FINAL), "__cachedInstance" + nextId, methodHandle.type().returnType());
-        initializers.put(field, methodHandle);
+        Binding binding = callSiteBinder.bind(methodHandle);
+        initializers.put(field, binding);
         nextId++;
         return field;
     }
 
     public void generateInitializations(Variable thisVariable, BytecodeBlock block)
     {
-        for (Map.Entry<FieldDefinition, MethodHandle> entry : initializers.entrySet()) {
-            Binding binding = callSiteBinder.bind(entry.getValue());
+        for (Map.Entry<FieldDefinition, Binding> entry : initializers.entrySet()) {
             block.append(thisVariable)
-                    .append(invoke(binding, "instanceFieldConstructor"))
+                    .append(invoke(entry.getValue(), "instanceFieldConstructor"))
                     .putField(entry.getKey());
         }
     }

@@ -82,7 +82,7 @@ public class ArrayToArrayCast
 
     private static Class<?> generateArrayCast(TypeManager typeManager, Signature elementCastSignature, ScalarFunctionImplementation elementCast)
     {
-        CallSiteBinder binder = new CallSiteBinder();
+        CallSiteBinder callSiteBinder = new CallSiteBinder();
 
         ClassDefinition definition = new ClassDefinition(
                 a(PUBLIC, FINAL),
@@ -108,8 +108,8 @@ public class ArrayToArrayCast
         // cast map elements
         Type fromElementType = typeManager.getType(elementCastSignature.getArgumentTypes().get(0));
         Type toElementType = typeManager.getType(elementCastSignature.getReturnType());
-        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition, binder);
-        ArrayMapBytecodeExpression newArray = ArrayGeneratorUtils.map(scope, cachedInstanceBinder, fromElementType, toElementType, value, elementCastSignature.getName(), elementCast);
+        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition);
+        ArrayMapBytecodeExpression newArray = ArrayGeneratorUtils.map(scope, callSiteBinder, cachedInstanceBinder, fromElementType, toElementType, value, elementCastSignature.getName(), elementCast);
 
         // return the block
         body.append(newArray.ret());
@@ -123,6 +123,6 @@ public class ArrayToArrayCast
         cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
         constructorBody.ret();
 
-        return defineClass(definition, Object.class, binder.getBindings(), ArrayToArrayCast.class.getClassLoader());
+        return defineClass(definition, Object.class, callSiteBinder.getBindings(), ArrayToArrayCast.class.getClassLoader());
     }
 }

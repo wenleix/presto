@@ -29,15 +29,23 @@ public final class ArrayGeneratorUtils
     {
     }
 
-    public static ArrayMapBytecodeExpression map(Scope scope, CachedInstanceBinder cachedInstanceBinder, Type fromElementType, Type toElementType, Variable array, String elementFunctionName, ScalarFunctionImplementation elementFunction)
+    public static ArrayMapBytecodeExpression map(
+            Scope scope,
+            CallSiteBinder callSiteBinder,
+            CachedInstanceBinder cachedInstanceBinder,
+            Type fromElementType,
+            Type toElementType,
+            Variable array,
+            String elementFunctionName,
+            ScalarFunctionImplementation elementFunction)
     {
         return map(
                 scope,
-                cachedInstanceBinder.getCallSiteBinder(),
+                callSiteBinder,
                 fromElementType,
                 toElementType,
                 array,
-                element -> invokeFunction(scope, cachedInstanceBinder, elementFunctionName, elementFunction, element));
+                element -> invokeFunction(scope, callSiteBinder, cachedInstanceBinder, elementFunctionName, elementFunction, element));
     }
 
     public static ArrayMapBytecodeExpression map(
