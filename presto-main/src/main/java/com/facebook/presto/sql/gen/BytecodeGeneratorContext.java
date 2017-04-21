@@ -32,7 +32,7 @@ public class BytecodeGeneratorContext
     private final BytecodeExpressionVisitor bytecodeGenerator;
     private final Scope scope;
     private final CallSiteBinder callSiteBinder;
-    private final CachedInstanceBinder cachedInstanceBinder;
+    private final InstanceFieldRegister instanceFieldRegister;
     private final FunctionRegistry registry;
     private final Variable wasNull;
 
@@ -40,11 +40,11 @@ public class BytecodeGeneratorContext
             BytecodeExpressionVisitor bytecodeGenerator,
             Scope scope,
             CallSiteBinder callSiteBinder,
-            CachedInstanceBinder cachedInstanceBinder,
+            InstanceFieldRegister instanceFieldRegister,
             FunctionRegistry registry)
     {
         requireNonNull(bytecodeGenerator, "bytecodeGenerator is null");
-        requireNonNull(cachedInstanceBinder, "cachedInstanceBinder is null");
+        requireNonNull(instanceFieldRegister, "instanceFieldRegister is null");
         requireNonNull(scope, "scope is null");
         requireNonNull(callSiteBinder, "callSiteBinder is null");
         requireNonNull(registry, "registry is null");
@@ -52,7 +52,7 @@ public class BytecodeGeneratorContext
         this.bytecodeGenerator = bytecodeGenerator;
         this.scope = scope;
         this.callSiteBinder = callSiteBinder;
-        this.cachedInstanceBinder = cachedInstanceBinder;
+        this.instanceFieldRegister = instanceFieldRegister;
         this.registry = registry;
         this.wasNull = scope.getVariable("wasNull");
     }
@@ -85,7 +85,7 @@ public class BytecodeGeneratorContext
         Binding binding = callSiteBinder.bind(function.getMethodHandle());
         Optional<BytecodeNode> instance = Optional.empty();
         if (function.getInstanceFactory().isPresent()) {
-            FieldDefinition field = cachedInstanceBinder.getCachedInstance(callSiteBinder, function.getInstanceFactory().get());
+            FieldDefinition field = instanceFieldRegister.getCachedInstance(callSiteBinder, function.getInstanceFactory().get());
             instance = Optional.of(scope.getThis().getField(field));
         }
         return generateInvocation(scope, name, function, instance, arguments, binding);

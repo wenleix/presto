@@ -35,8 +35,8 @@ import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
-import com.facebook.presto.sql.gen.CachedInstanceBinder;
 import com.facebook.presto.sql.gen.CallSiteBinder;
+import com.facebook.presto.sql.gen.InstanceFieldRegister;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.hash.Hashing;
@@ -123,7 +123,7 @@ public class RowToRowCast
 
         body.append(wasNull.set(constantBoolean(false)));
 
-        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition);
+        InstanceFieldRegister instanceFieldRegister = new InstanceFieldRegister(definition);
 
         // create the interleave block builder
         body.newObject(InterleavedBlockBuilder.class)
@@ -147,7 +147,7 @@ public class RowToRowCast
                 continue;
             }
             BytecodeExpression fromElement = constantType(callSiteBinder, currentFromType).getValue(value, constantInt(i));
-            BytecodeExpression toElement = invokeFunction(scope, callSiteBinder, cachedInstanceBinder, signature.getName(), function, fromElement);
+            BytecodeExpression toElement = invokeFunction(scope, callSiteBinder, instanceFieldRegister, signature.getName(), function, fromElement);
             IfStatement ifElementNull = new IfStatement("if the element in the row type is null...");
 
             ifElementNull.condition(value.invoke("isNull", boolean.class, constantInt(i)))
@@ -168,7 +168,7 @@ public class RowToRowCast
         constructorBody.comment("super();")
                 .append(thisVariable)
                 .invokeConstructor(Object.class);
-        cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
+        instanceFieldRegister.generateInitializations(thisVariable, constructorBody);
         constructorBody.ret();
 
         return defineClass(definition, Object.class, callSiteBinder.getBindings(), RowToRowCast.class.getClassLoader());

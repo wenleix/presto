@@ -32,7 +32,7 @@ public final class ArrayGeneratorUtils
     public static ArrayMapBytecodeExpression map(
             Scope scope,
             CallSiteBinder callSiteBinder,
-            CachedInstanceBinder cachedInstanceBinder,
+            InstanceFieldRegister instanceFieldRegister,
             Type fromElementType,
             Type toElementType,
             Variable array,
@@ -45,7 +45,7 @@ public final class ArrayGeneratorUtils
                 fromElementType,
                 toElementType,
                 array,
-                element -> invokeFunction(scope, callSiteBinder, cachedInstanceBinder, elementFunctionName, elementFunction, element));
+                element -> invokeFunction(scope, callSiteBinder, instanceFieldRegister, elementFunctionName, elementFunction, element));
     }
 
     public static ArrayMapBytecodeExpression map(

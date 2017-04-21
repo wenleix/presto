@@ -30,8 +30,8 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.gen.ArrayGeneratorUtils;
 import com.facebook.presto.sql.gen.ArrayMapBytecodeExpression;
-import com.facebook.presto.sql.gen.CachedInstanceBinder;
 import com.facebook.presto.sql.gen.CallSiteBinder;
+import com.facebook.presto.sql.gen.InstanceFieldRegister;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
@@ -108,8 +108,8 @@ public class ArrayToArrayCast
         // cast map elements
         Type fromElementType = typeManager.getType(elementCastSignature.getArgumentTypes().get(0));
         Type toElementType = typeManager.getType(elementCastSignature.getReturnType());
-        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition);
-        ArrayMapBytecodeExpression newArray = ArrayGeneratorUtils.map(scope, callSiteBinder, cachedInstanceBinder, fromElementType, toElementType, value, elementCastSignature.getName(), elementCast);
+        InstanceFieldRegister instanceFieldRegister = new InstanceFieldRegister(definition);
+        ArrayMapBytecodeExpression newArray = ArrayGeneratorUtils.map(scope, callSiteBinder, instanceFieldRegister, fromElementType, toElementType, value, elementCastSignature.getName(), elementCast);
 
         // return the block
         body.append(newArray.ret());
@@ -120,7 +120,7 @@ public class ArrayToArrayCast
         constructorBody.comment("super();")
                 .append(thisVariable)
                 .invokeConstructor(Object.class);
-        cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
+        instanceFieldRegister.generateInitializations(thisVariable, constructorBody);
         constructorBody.ret();
 
         return defineClass(definition, Object.class, callSiteBinder.getBindings(), ArrayToArrayCast.class.getClassLoader());

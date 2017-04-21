@@ -36,18 +36,18 @@ public class InvokeFunctionBytecodeExpression
     public static BytecodeExpression invokeFunction(
             Scope scope,
             CallSiteBinder callSiteBinder,
-            CachedInstanceBinder cachedInstanceBinder,
+            InstanceFieldRegister instanceFieldRegister,
             String name,
             ScalarFunctionImplementation function,
             BytecodeExpression... parameters)
     {
-        return invokeFunction(scope, callSiteBinder, cachedInstanceBinder, name, function, ImmutableList.copyOf(parameters));
+        return invokeFunction(scope, callSiteBinder, instanceFieldRegister, name, function, ImmutableList.copyOf(parameters));
     }
 
     public static BytecodeExpression invokeFunction(
             Scope scope,
             CallSiteBinder callSiteBinder,
-            CachedInstanceBinder cachedInstanceBinder,
+            InstanceFieldRegister instanceFieldRegister,
             String name, ScalarFunctionImplementation function,
             List<BytecodeExpression> parameters)
     {
@@ -57,7 +57,7 @@ public class InvokeFunctionBytecodeExpression
         Binding binding = callSiteBinder.bind(function.getMethodHandle());
         Optional<BytecodeNode> instance = Optional.empty();
         if (function.getInstanceFactory().isPresent()) {
-            FieldDefinition field = cachedInstanceBinder.getCachedInstance(callSiteBinder, function.getInstanceFactory().get());
+            FieldDefinition field = instanceFieldRegister.getCachedInstance(callSiteBinder, function.getInstanceFactory().get());
             instance = Optional.of(scope.getThis().getField(field));
         }
         return new InvokeFunctionBytecodeExpression(scope, binding, name, function, instance, parameters);

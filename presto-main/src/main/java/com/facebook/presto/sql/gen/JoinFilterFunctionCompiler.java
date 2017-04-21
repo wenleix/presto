@@ -142,15 +142,15 @@ public class JoinFilterFunctionCompiler
 
     private void generateMethods(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, RowExpression filter, int leftBlocksSize)
     {
-        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition);
+        InstanceFieldRegister instanceFieldRegister = new InstanceFieldRegister(classDefinition);
 
         FieldDefinition sessionField = classDefinition.declareField(a(PRIVATE, FINAL), "session", ConnectorSession.class);
 
-        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, filter, leftBlocksSize, sessionField);
-        generateConstructor(classDefinition, sessionField, cachedInstanceBinder);
+        generateFilterMethod(classDefinition, callSiteBinder, instanceFieldRegister, filter, leftBlocksSize, sessionField);
+        generateConstructor(classDefinition, sessionField, instanceFieldRegister);
     }
 
-    private static void generateConstructor(ClassDefinition classDefinition, FieldDefinition sessionField, CachedInstanceBinder cachedInstanceBinder)
+    private static void generateConstructor(ClassDefinition classDefinition, FieldDefinition sessionField, InstanceFieldRegister instanceFieldRegister)
     {
         Parameter sessionParameter = arg("session", ConnectorSession.class);
         MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC), sessionParameter);
@@ -163,13 +163,13 @@ public class JoinFilterFunctionCompiler
                 .invokeConstructor(Object.class);
 
         body.append(thisVariable.setField(sessionField, sessionParameter));
-        cachedInstanceBinder.generateInitializations(thisVariable, body);
+        instanceFieldRegister.generateInitializations(thisVariable, body);
         body.ret();
     }
 
-    private void generateFilterMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, CachedInstanceBinder cachedInstanceBinder, RowExpression filter, int leftBlocksSize, FieldDefinition sessionField)
+    private void generateFilterMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, InstanceFieldRegister instanceFieldRegister, RowExpression filter, int leftBlocksSize, FieldDefinition sessionField)
     {
-        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, leftBlocksSize, filter);
+        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, instanceFieldRegister, leftBlocksSize, filter);
 
         // int leftPosition, Block[] leftBlocks, int rightPosition, Block[] rightBlocks
         Parameter leftPosition = arg("leftPosition", int.class);
@@ -197,7 +197,7 @@ public class JoinFilterFunctionCompiler
 
         BytecodeExpressionVisitor visitor = new BytecodeExpressionVisitor(
                 callSiteBinder,
-                cachedInstanceBinder,
+                instanceFieldRegister,
                 fieldReferenceCompiler(callSiteBinder, leftPosition, leftBlocks, rightPosition, rightBlocks, leftBlocksSize),
                 metadata.getFunctionRegistry(),
                 preGeneratedExpressions);
@@ -216,7 +216,7 @@ public class JoinFilterFunctionCompiler
     private PreGeneratedExpressions generateMethodsForLambdaAndTry(
             ClassDefinition containerClassDefinition,
             CallSiteBinder callSiteBinder,
-            CachedInstanceBinder cachedInstanceBinder,
+            InstanceFieldRegister instanceFieldRegister,
             int leftBlocksSize,
             RowExpression filter)
     {
@@ -238,7 +238,7 @@ public class JoinFilterFunctionCompiler
 
                 BytecodeExpressionVisitor innerExpressionVisitor = new BytecodeExpressionVisitor(
                         callSiteBinder,
-                        cachedInstanceBinder,
+                        instanceFieldRegister,
                         fieldReferenceCompiler(callSiteBinder, leftPosition, leftBlocks, rightPosition, rightBlocks, leftBlocksSize),
                         metadata.getFunctionRegistry(),
                         new PreGeneratedExpressions(tryMethodMap.build(), lambdaFieldMap.build()));
@@ -271,7 +271,7 @@ public class JoinFilterFunctionCompiler
                         containerClassDefinition,
                         preGeneratedExpressions,
                         callSiteBinder,
-                        cachedInstanceBinder,
+                        instanceFieldRegister,
                         metadata.getFunctionRegistry());
                 lambdaFieldMap.put(lambdaExpression, methodHandleField);
             }
