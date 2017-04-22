@@ -32,6 +32,7 @@ import com.google.common.collect.Lists;
 import com.google.common.primitives.Primitives;
 import io.airlift.slice.Slice;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
@@ -162,7 +163,12 @@ public final class BytecodeUtils
     {
         Optional<BytecodeNode> instance = Optional.empty();
         if (function.getInstanceFactory().isPresent()) {
-            FieldDefinition field = cachedInstanceBinder.getCachedInstance(callSiteBinder, function.getInstanceFactory().get());
+            MethodHandle methodHandle = function.getInstanceFactory().get();
+            Binding binding = callSiteBinder.bind(methodHandle);
+            FieldDefinition field = cachedInstanceBinder.registerField(
+                    methodHandle.type().returnType(),
+                    invoke(binding, "instanceFieldConstructor"),
+                    "__cachedInstance");
             instance = Optional.of(scope.getThis().getField(field));
         }
         return instance;

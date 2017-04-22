@@ -17,21 +17,20 @@ import com.facebook.presto.bytecode.BytecodeBlock;
 import com.facebook.presto.bytecode.ClassDefinition;
 import com.facebook.presto.bytecode.FieldDefinition;
 import com.facebook.presto.bytecode.Variable;
+import com.facebook.presto.bytecode.expression.BytecodeExpression;
 
-import java.lang.invoke.MethodHandle;
 import java.util.HashMap;
 import java.util.Map;
 
 import static com.facebook.presto.bytecode.Access.FINAL;
 import static com.facebook.presto.bytecode.Access.PRIVATE;
 import static com.facebook.presto.bytecode.Access.a;
-import static com.facebook.presto.sql.gen.BytecodeUtils.invoke;
 import static java.util.Objects.requireNonNull;
 
 public final class CachedInstanceBinder
 {
     private final ClassDefinition classDefinition;
-    private final Map<FieldDefinition, Binding> initializers = new HashMap<>();
+    private final Map<FieldDefinition, BytecodeExpression> initializations = new HashMap<>();
     private int nextId;
 
     public CachedInstanceBinder(ClassDefinition classDefinition)
@@ -39,21 +38,17 @@ public final class CachedInstanceBinder
         this.classDefinition = requireNonNull(classDefinition, "classDefinition is null");
     }
 
-    public FieldDefinition getCachedInstance(CallSiteBinder callSiteBinder, MethodHandle methodHandle)
+    public FieldDefinition registerField(Class<?> type, BytecodeExpression initialization, String fieldPrefix)
     {
-        FieldDefinition field = classDefinition.declareField(a(PRIVATE, FINAL), "__cachedInstance" + nextId, methodHandle.type().returnType());
-        Binding binding = callSiteBinder.bind(methodHandle);
-        initializers.put(field, binding);
+        FieldDefinition field = classDefinition.declareField(a(PRIVATE, FINAL), fieldPrefix + nextId, type);
+        initializations.put(field, initialization);
         nextId++;
         return field;
     }
 
     public void generateInitializations(Variable thisVariable, BytecodeBlock block)
     {
-        for (Map.Entry<FieldDefinition, Binding> entry : initializers.entrySet()) {
-            block.append(thisVariable)
-                    .append(invoke(entry.getValue(), "instanceFieldConstructor"))
-                    .putField(entry.getKey());
-        }
+        initializations.entrySet().stream()
+                .forEach(entry -> block.append(thisVariable.setField(entry.getKey(), entry.getValue())));
     }
 }
