@@ -83,6 +83,10 @@ public class MethodGenerationContext
 
     public int getVariableSlot(Variable variable)
     {
+        if (!scopes.isEmpty() && variable.getName().equals("this") && variable.getType() == scopes.peekLast().getScope().getThis().getType()) {
+            return 0;
+        }
+
         Integer slot = variableSlots.get(variable);
         checkArgument(slot != null, "Variable '%s' has not been assigned a slot", variable);
         return slot;

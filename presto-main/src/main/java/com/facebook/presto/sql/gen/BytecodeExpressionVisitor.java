@@ -15,7 +15,9 @@ package com.facebook.presto.sql.gen;
 
 import com.facebook.presto.bytecode.BytecodeBlock;
 import com.facebook.presto.bytecode.BytecodeNode;
+import com.facebook.presto.bytecode.FieldDefinition;
 import com.facebook.presto.bytecode.Scope;
+import com.facebook.presto.bytecode.expression.BytecodeExpression;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.sql.relational.CallExpression;
 import com.facebook.presto.sql.relational.ConstantExpression;
@@ -194,8 +196,11 @@ public class BytecodeExpressionVisitor
     {
         checkState(preGeneratedExpressions.getLambdaFieldMap().containsKey(lambda), "lambda expressions map does not contain this lambda definition");
 
-        return getStatic(preGeneratedExpressions.getLambdaFieldMap().get(lambda))
-                .invoke("bindTo", MethodHandle.class, scope.getThis().cast(Object.class));
+        BytecodeExpression bindedLambdaInitialization =
+                getStatic(preGeneratedExpressions.getLambdaFieldMap().get(lambda))
+                        .invoke("bindTo", MethodHandle.class, scope.getThis().cast(Object.class));
+        FieldDefinition field = instanceFieldRegister.registerField(MethodHandle.class, bindedLambdaInitialization, "bindedLambda");
+        return scope.getThis().getField(field);
     }
 
     @Override
