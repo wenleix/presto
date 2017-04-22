@@ -52,20 +52,20 @@ public class BytecodeExpressionVisitor
         implements RowExpressionVisitor<Scope, BytecodeNode>
 {
     private final CallSiteBinder callSiteBinder;
-    private final CachedInstanceBinder cachedInstanceBinder;
+    private final InstanceFieldRegister instanceFieldRegister;
     private final RowExpressionVisitor<Scope, BytecodeNode> fieldReferenceCompiler;
     private final FunctionRegistry registry;
     private final PreGeneratedExpressions preGeneratedExpressions;
 
     public BytecodeExpressionVisitor(
             CallSiteBinder callSiteBinder,
-            CachedInstanceBinder cachedInstanceBinder,
+            InstanceFieldRegister instanceFieldRegister,
             RowExpressionVisitor<Scope, BytecodeNode> fieldReferenceCompiler,
             FunctionRegistry registry,
             PreGeneratedExpressions preGeneratedExpressions)
     {
         this.callSiteBinder = callSiteBinder;
-        this.cachedInstanceBinder = cachedInstanceBinder;
+        this.instanceFieldRegister = instanceFieldRegister;
         this.fieldReferenceCompiler = fieldReferenceCompiler;
         this.registry = registry;
         this.preGeneratedExpressions = preGeneratedExpressions;
@@ -131,7 +131,7 @@ public class BytecodeExpressionVisitor
                 this,
                 scope,
                 callSiteBinder,
-                cachedInstanceBinder,
+                instanceFieldRegister,
                 registry);
 
         return generator.generateExpression(call.getSignature(), generatorContext, call.getType(), call.getArguments());

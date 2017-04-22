@@ -73,12 +73,12 @@ public class CursorProcessorCompiler
     @Override
     public void generateMethods(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, RowExpression filter, List<RowExpression> projections)
     {
-        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition);
+        InstanceFieldRegister instanceFieldRegister = new InstanceFieldRegister(classDefinition);
         generateProcessMethod(classDefinition, projections.size());
-        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, filter);
+        generateFilterMethod(classDefinition, callSiteBinder, instanceFieldRegister, filter);
 
         for (int i = 0; i < projections.size(); i++) {
-            generateProjectMethod(classDefinition, callSiteBinder, cachedInstanceBinder, "project_" + i, projections.get(i));
+            generateProjectMethod(classDefinition, callSiteBinder, instanceFieldRegister, "project_" + i, projections.get(i));
         }
 
         MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC));
@@ -87,7 +87,7 @@ public class CursorProcessorCompiler
         constructorBody.comment("super();")
                 .append(thisVariable)
                 .invokeConstructor(Object.class);
-        cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
+        instanceFieldRegister.generateInitializations(thisVariable, constructorBody);
         constructorBody.ret();
     }
 
@@ -185,7 +185,7 @@ public class CursorProcessorCompiler
     private PreGeneratedExpressions generateMethodsForLambdaAndTry(
             ClassDefinition containerClassDefinition,
             CallSiteBinder callSiteBinder,
-            CachedInstanceBinder cachedInstanceBinder,
+            InstanceFieldRegister instanceFieldRegister,
             RowExpression projection,
             String methodPrefix)
     {
@@ -210,7 +210,7 @@ public class CursorProcessorCompiler
 
                 BytecodeExpressionVisitor innerExpressionVisitor = new BytecodeExpressionVisitor(
                         callSiteBinder,
-                        cachedInstanceBinder,
+                        instanceFieldRegister,
                         fieldReferenceCompiler(cursor),
                         metadata.getFunctionRegistry(),
                         new PreGeneratedExpressions(tryMethodMap.build(), lambdaFieldMap.build()));
@@ -236,7 +236,7 @@ public class CursorProcessorCompiler
                         containerClassDefinition,
                         preGeneratedExpressions,
                         callSiteBinder,
-                        cachedInstanceBinder,
+                        instanceFieldRegister,
                         metadata.getFunctionRegistry());
                 lambdaFieldMap.put(lambdaExpression, methodHandleField);
             }
@@ -249,9 +249,9 @@ public class CursorProcessorCompiler
         return new PreGeneratedExpressions(tryMethodMap.build(), lambdaFieldMap.build());
     }
 
-    private void generateFilterMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, CachedInstanceBinder cachedInstanceBinder, RowExpression filter)
+    private void generateFilterMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, InstanceFieldRegister instanceFieldRegister, RowExpression filter)
     {
-        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, filter, "filter");
+        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, instanceFieldRegister, filter, "filter");
 
         Parameter session = arg("session", ConnectorSession.class);
         Parameter cursor = arg("cursor", RecordCursor.class);
@@ -264,7 +264,7 @@ public class CursorProcessorCompiler
 
         BytecodeExpressionVisitor visitor = new BytecodeExpressionVisitor(
                 callSiteBinder,
-                cachedInstanceBinder,
+                instanceFieldRegister,
                 fieldReferenceCompiler(cursor),
                 metadata.getFunctionRegistry(),
                 preGeneratedExpressions);
@@ -284,9 +284,9 @@ public class CursorProcessorCompiler
                 .retBoolean();
     }
 
-    private void generateProjectMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, CachedInstanceBinder cachedInstanceBinder, String methodName, RowExpression projection)
+    private void generateProjectMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, InstanceFieldRegister instanceFieldRegister, String methodName, RowExpression projection)
     {
-        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, projection, methodName);
+        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, instanceFieldRegister, projection, methodName);
 
         Parameter session = arg("session", ConnectorSession.class);
         Parameter cursor = arg("cursor", RecordCursor.class);
@@ -300,7 +300,7 @@ public class CursorProcessorCompiler
 
         BytecodeExpressionVisitor visitor = new BytecodeExpressionVisitor(
                 callSiteBinder,
-                cachedInstanceBinder,
+                instanceFieldRegister,
                 fieldReferenceCompiler(cursor),
                 metadata.getFunctionRegistry(),
                 preGeneratedExpressions);

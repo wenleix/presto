@@ -27,13 +27,13 @@ import static com.facebook.presto.bytecode.Access.PRIVATE;
 import static com.facebook.presto.bytecode.Access.a;
 import static java.util.Objects.requireNonNull;
 
-public final class CachedInstanceBinder
+public final class InstanceFieldRegister
 {
     private final ClassDefinition classDefinition;
     private final Map<FieldDefinition, BytecodeExpression> initializations = new HashMap<>();
     private int nextId;
 
-    public CachedInstanceBinder(ClassDefinition classDefinition)
+    public InstanceFieldRegister(ClassDefinition classDefinition)
     {
         this.classDefinition = requireNonNull(classDefinition, "classDefinition is null");
     }

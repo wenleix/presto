@@ -159,13 +159,13 @@ public final class BytecodeUtils
                 binding.getType().returnType());
     }
 
-    public static Optional<BytecodeNode> getCachedInstance(Scope scope, CallSiteBinder callSiteBinder, CachedInstanceBinder cachedInstanceBinder, ScalarFunctionImplementation function)
+    public static Optional<BytecodeNode> getCachedInstance(Scope scope, CallSiteBinder callSiteBinder, InstanceFieldRegister instanceFieldRegister, ScalarFunctionImplementation function)
     {
         Optional<BytecodeNode> instance = Optional.empty();
         if (function.getInstanceFactory().isPresent()) {
             MethodHandle methodHandle = function.getInstanceFactory().get();
             Binding binding = callSiteBinder.bind(methodHandle);
-            FieldDefinition field = cachedInstanceBinder.registerField(
+            FieldDefinition field = instanceFieldRegister.registerField(
                     methodHandle.type().returnType(),
                     invoke(binding, "instanceFieldConstructor"),
                     "__cachedInstance");

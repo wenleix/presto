@@ -70,7 +70,7 @@ public class LambdaBytecodeGenerator
             ClassDefinition classDefinition,
             PreGeneratedExpressions preGeneratedExpressions,
             CallSiteBinder callSiteBinder,
-            CachedInstanceBinder cachedInstanceBinder,
+            InstanceFieldRegister instanceFieldRegister,
             FunctionRegistry functionRegistry)
     {
         ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
@@ -87,7 +87,7 @@ public class LambdaBytecodeGenerator
 
         BytecodeExpressionVisitor innerExpressionVisitor = new BytecodeExpressionVisitor(
                 callSiteBinder,
-                cachedInstanceBinder,
+                instanceFieldRegister,
                 variableReferenceCompiler(parameterMapBuilder.build()),
                 functionRegistry,
                 preGeneratedExpressions);
