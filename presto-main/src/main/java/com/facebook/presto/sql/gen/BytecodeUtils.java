@@ -15,6 +15,7 @@ package com.facebook.presto.sql.gen;
 
 import com.facebook.presto.bytecode.BytecodeBlock;
 import com.facebook.presto.bytecode.BytecodeNode;
+import com.facebook.presto.bytecode.FieldDefinition;
 import com.facebook.presto.bytecode.Scope;
 import com.facebook.presto.bytecode.Variable;
 import com.facebook.presto.bytecode.control.IfStatement;
@@ -155,6 +156,16 @@ public final class BytecodeUtils
                 ImmutableList.of(binding.getBindingId()),
                 "constant_" + binding.getBindingId(),
                 binding.getType().returnType());
+    }
+
+    public static Optional<BytecodeNode> getCachedInstance(Scope scope, CallSiteBinder callSiteBinder, CachedInstanceBinder cachedInstanceBinder, ScalarFunctionImplementation function)
+    {
+        Optional<BytecodeNode> instance = Optional.empty();
+        if (function.getInstanceFactory().isPresent()) {
+            FieldDefinition field = cachedInstanceBinder.getCachedInstance(callSiteBinder, function.getInstanceFactory().get());
+            instance = Optional.of(scope.getThis().getField(field));
+        }
+        return instance;
     }
 
     public static BytecodeNode generateInvocation(Scope scope, String name, ScalarFunctionImplementation function, Optional<BytecodeNode> instance, List<BytecodeNode> arguments, Binding binding)

@@ -14,7 +14,6 @@
 package com.facebook.presto.sql.gen;
 
 import com.facebook.presto.bytecode.BytecodeNode;
-import com.facebook.presto.bytecode.FieldDefinition;
 import com.facebook.presto.bytecode.MethodGenerationContext;
 import com.facebook.presto.bytecode.Scope;
 import com.facebook.presto.bytecode.expression.BytecodeExpression;
@@ -27,6 +26,7 @@ import java.util.Optional;
 
 import static com.facebook.presto.bytecode.ParameterizedType.type;
 import static com.facebook.presto.sql.gen.BytecodeUtils.generateInvocation;
+import static com.facebook.presto.sql.gen.BytecodeUtils.getCachedInstance;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Objects.requireNonNull;
 
@@ -55,11 +55,7 @@ public class InvokeFunctionBytecodeExpression
         requireNonNull(function, "function is null");
 
         Binding binding = callSiteBinder.bind(function.getMethodHandle());
-        Optional<BytecodeNode> instance = Optional.empty();
-        if (function.getInstanceFactory().isPresent()) {
-            FieldDefinition field = cachedInstanceBinder.getCachedInstance(callSiteBinder, function.getInstanceFactory().get());
-            instance = Optional.of(scope.getThis().getField(field));
-        }
+        Optional<BytecodeNode> instance = getCachedInstance(scope, callSiteBinder, cachedInstanceBinder, function);
         return new InvokeFunctionBytecodeExpression(scope, binding, name, function, instance, parameters);
     }
 

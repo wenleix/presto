@@ -14,7 +14,6 @@
 package com.facebook.presto.sql.gen;
 
 import com.facebook.presto.bytecode.BytecodeNode;
-import com.facebook.presto.bytecode.FieldDefinition;
 import com.facebook.presto.bytecode.Scope;
 import com.facebook.presto.bytecode.Variable;
 import com.facebook.presto.metadata.FunctionRegistry;
@@ -25,6 +24,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.facebook.presto.sql.gen.BytecodeUtils.generateInvocation;
+import static com.facebook.presto.sql.gen.BytecodeUtils.getCachedInstance;
 import static java.util.Objects.requireNonNull;
 
 public class BytecodeGeneratorContext
@@ -83,11 +83,7 @@ public class BytecodeGeneratorContext
     public BytecodeNode generateCall(String name, ScalarFunctionImplementation function, List<BytecodeNode> arguments)
     {
         Binding binding = callSiteBinder.bind(function.getMethodHandle());
-        Optional<BytecodeNode> instance = Optional.empty();
-        if (function.getInstanceFactory().isPresent()) {
-            FieldDefinition field = cachedInstanceBinder.getCachedInstance(callSiteBinder, function.getInstanceFactory().get());
-            instance = Optional.of(scope.getThis().getField(field));
-        }
+        Optional<BytecodeNode> instance = getCachedInstance(scope, callSiteBinder, cachedInstanceBinder, function);
         return generateInvocation(scope, name, function, instance, arguments, binding);
     }
 
