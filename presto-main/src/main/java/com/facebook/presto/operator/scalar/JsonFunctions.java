@@ -111,6 +111,15 @@ public final class JsonFunctions
         }
     }
 
+    // for experiments only, it does nothing
+    @ScalarFunction
+    @LiteralParameters("x")
+    @SqlType(StandardTypes.JSON)
+    public static Slice unsafeJsonParse(@SqlType("varchar(x)") Slice slice)
+    {
+        return slice;
+    }
+
     @SqlNullable
     @ScalarFunction("json_array_length")
     @LiteralParameters("x")
