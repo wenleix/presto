@@ -120,7 +120,7 @@ public class BytecodeExpressionVisitor
                     generator = new RowConstructorCodeGenerator();
                     break;
                 case BIND:
-                    generator = new BindCodeGenerator();
+                    generator = new BindCodeGenerator(preGeneratedExpressions.getLambdaFieldMap());
                     break;
                 default:
                     generator = new FunctionCallCodeGenerator();

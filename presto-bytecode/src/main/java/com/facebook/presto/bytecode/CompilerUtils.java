@@ -43,7 +43,7 @@ public final class CompilerUtils
     private static final Logger log = Logger.get(CompilerUtils.class);
 
     private static final boolean ADD_FAKE_LINE_NUMBER = false;
-    private static final boolean DUMP_BYTE_CODE_TREE = false;
+    private static final boolean DUMP_BYTE_CODE_TREE = true;
     private static final boolean DUMP_BYTE_CODE_RAW = false;
     private static final boolean RUN_ASM_VERIFIER = false; // verifier doesn't work right now
     private static final AtomicReference<String> DUMP_CLASS_FILES_TO = new AtomicReference<>();

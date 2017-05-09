@@ -295,10 +295,12 @@ public final class FunctionAssertions
         results.add(directOperatorValue);
 
         // interpret
+        /*
         Operator interpretedFilterProject = interpretedFilterProject(Optional.empty(), projectionExpression, session);
         assertType(interpretedFilterProject.getTypes(), expectedType);
         Object interpretedValue = selectSingleValue(interpretedFilterProject);
         results.add(interpretedValue);
+        */
 
         // execute over normal operator
         SourceOperatorFactory scanProjectOperatorFactory = compileScanFilterProject(Optional.empty(), projectionRowExpression, compiler);
