@@ -122,6 +122,13 @@ public class TestLambdaExpression
     }
 
     @Test
+    public void testSimpleBind()
+            throws Exception
+    {
+        assertFunction("apply(90, \"$internal$bind\"(9, (x, y) -> x + y))", INTEGER, 99);
+    }
+
+    @Test
     public void testBind()
             throws Exception
     {

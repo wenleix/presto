@@ -117,8 +117,7 @@ public class BytecodeExpressionVisitor
                     generator = new RowConstructorCodeGenerator();
                     break;
                 case BIND:
-                    generator = new BindCodeGenerator();
-                    break;
+                    throw new RuntimeException();
                 default:
                     generator = new FunctionCallCodeGenerator();
             }
@@ -129,7 +128,8 @@ public class BytecodeExpressionVisitor
                 scope,
                 callSiteBinder,
                 cachedInstanceBinder,
-                registry);
+                registry,
+                preGeneratedExpressions);
 
         return generator.generateExpression(call.getSignature(), generatorContext, call.getType(), call.getArguments());
     }

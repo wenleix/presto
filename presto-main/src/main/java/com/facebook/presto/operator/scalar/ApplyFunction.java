@@ -18,13 +18,21 @@ import com.facebook.presto.metadata.FunctionKind;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.SqlScalarFunction;
+import com.facebook.presto.operator.function.UnaryLambdaFunction;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
+import javax.swing.text.html.Option;
 
 import java.lang.invoke.MethodHandle;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 
 import static com.facebook.presto.metadata.Signature.typeVariable;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
@@ -39,7 +47,7 @@ public final class ApplyFunction
 {
     public static final ApplyFunction APPLY_FUNCTION = new ApplyFunction();
 
-    private static final MethodHandle METHOD_HANDLE = methodHandle(ApplyFunction.class, "apply", ConnectorSession.class, Object.class, MethodHandle.class);
+    private static final MethodHandle METHOD_HANDLE = methodHandle(ApplyFunction.class, "apply", Object.class, ApplyLambdaFunction.class);
 
     private ApplyFunction()
     {
@@ -76,23 +84,31 @@ public final class ApplyFunction
     {
         Type argumentType = boundVariables.getTypeVariable("T");
         Type returnType = boundVariables.getTypeVariable("U");
+
         return new ScalarFunctionImplementation(
                 true,
                 ImmutableList.of(true, false),
+                ImmutableMap.of(Integer.valueOf(1), ApplyLambdaFunction.class),
+                Collections.nCopies(2, false),
                 METHOD_HANDLE.asType(
                         METHOD_HANDLE.type()
                                 .changeReturnType(wrap(returnType.getJavaType()))
-                                .changeParameterType(1, wrap(argumentType.getJavaType()))),
+                                .changeParameterType(0, wrap(argumentType.getJavaType()))),
+                Optional.empty(),
                 isDeterministic());
     }
 
-    public static Object apply(ConnectorSession session, Object input, MethodHandle function)
+    public static Object apply(Object input, ApplyLambdaFunction function)
     {
         try {
-            return function.invoke(session, input);
+            return function.apply(input);
         }
         catch (Throwable throwable) {
             throw Throwables.propagate(throwable);
         }
+    }
+
+    public interface ApplyLambdaFunction extends UnaryLambdaFunction {
+        Object apply(Object x);
     }
 }

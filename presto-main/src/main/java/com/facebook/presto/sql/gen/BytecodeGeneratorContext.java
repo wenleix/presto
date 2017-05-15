@@ -19,12 +19,16 @@ import com.facebook.presto.bytecode.Scope;
 import com.facebook.presto.bytecode.Variable;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.operator.scalar.ScalarFunctionImplementation;
+import com.facebook.presto.sql.relational.CallExpression;
 import com.facebook.presto.sql.relational.RowExpression;
 
 import java.util.List;
 import java.util.Optional;
 
+import static com.facebook.presto.spi.StandardErrorCode.COMPILER_ERROR;
 import static com.facebook.presto.sql.gen.BytecodeUtils.generateInvocation;
+import static com.facebook.presto.sql.relational.Signatures.BIND;
+import static com.facebook.presto.util.Failures.checkCondition;
 import static java.util.Objects.requireNonNull;
 
 public class BytecodeGeneratorContext
@@ -35,19 +39,22 @@ public class BytecodeGeneratorContext
     private final CachedInstanceBinder cachedInstanceBinder;
     private final FunctionRegistry registry;
     private final Variable wasNull;
+    private final PreGeneratedExpressions preGeneratedExpressions;
 
     public BytecodeGeneratorContext(
             BytecodeExpressionVisitor bytecodeGenerator,
             Scope scope,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
-            FunctionRegistry registry)
+            FunctionRegistry registry,
+            PreGeneratedExpressions preGeneratedExpressions)
     {
         requireNonNull(bytecodeGenerator, "bytecodeGenerator is null");
         requireNonNull(cachedInstanceBinder, "cachedInstanceBinder is null");
         requireNonNull(scope, "scope is null");
         requireNonNull(callSiteBinder, "callSiteBinder is null");
         requireNonNull(registry, "registry is null");
+        requireNonNull(preGeneratedExpressions, "preGeneratedExpressions is null");
 
         this.bytecodeGenerator = bytecodeGenerator;
         this.scope = scope;
@@ -55,6 +62,7 @@ public class BytecodeGeneratorContext
         this.cachedInstanceBinder = cachedInstanceBinder;
         this.registry = registry;
         this.wasNull = scope.getVariable("wasNull");
+        this.preGeneratedExpressions = preGeneratedExpressions;
     }
 
     public Scope getScope()
@@ -70,6 +78,14 @@ public class BytecodeGeneratorContext
     public BytecodeNode generate(RowExpression expression)
     {
         return expression.accept(bytecodeGenerator, scope);
+    }
+
+    // The underlying expression is a BIND expression
+    public BytecodeNode generateLambdaFunction(CallExpression call, Class targetClass)
+    {
+        checkCondition(call.getSignature().getName() == BIND, COMPILER_ERROR, "Lambda function call must be wrapped by binding call.");
+        BindCodeGenerator generator = new BindCodeGenerator(preGeneratedExpressions.getLambdaFieldMap(), targetClass);
+        return generator.generateExpression(call.getSignature(), this, call.getType(), call.getArguments());
     }
 
     public FunctionRegistry getRegistry()

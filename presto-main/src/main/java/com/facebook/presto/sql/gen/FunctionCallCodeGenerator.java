@@ -18,6 +18,7 @@ import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.operator.scalar.ScalarFunctionImplementation;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.relational.CallExpression;
 import com.facebook.presto.sql.relational.RowExpression;
 
 import java.util.ArrayList;
@@ -34,8 +35,14 @@ public class FunctionCallCodeGenerator
         ScalarFunctionImplementation function = registry.getScalarFunctionImplementation(signature);
 
         List<BytecodeNode> argumentsBytecode = new ArrayList<>();
-        for (RowExpression argument : arguments) {
-            argumentsBytecode.add(context.generate(argument));
+
+        for (int i = 0; i < arguments.size(); i++) {
+            RowExpression argument = arguments.get(i);
+            if (function.getLambdaFunctionArguments().containsKey(i)) {
+                argumentsBytecode.add(context.generateLambdaFunction((CallExpression) argument, function.getLambdaFunctionArguments().get(i)));
+            } else {
+                argumentsBytecode.add(context.generate(argument));
+            }
         }
 
         return context.generateCall(signature.getName(), function, argumentsBytecode);

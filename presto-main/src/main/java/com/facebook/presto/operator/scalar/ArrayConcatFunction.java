@@ -27,6 +27,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.gen.VarArgsToArrayAdapterGenerator;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Optional;
@@ -97,6 +98,7 @@ public final class ArrayConcatFunction
         return new ScalarFunctionImplementation(
                 false,
                 nCopies(arity, false),
+                ImmutableMap.of(),
                 nCopies(arity, false),
                 methodHandleAndConstructor.getMethodHandle(),
                 Optional.of(methodHandleAndConstructor.getConstructor()),

@@ -29,6 +29,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.gen.VarArgsToArrayAdapterGenerator.MethodHandleAndConstructor;
 import com.google.common.collect.ImmutableList;
+import jersey.repackaged.com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Optional;
@@ -101,6 +102,7 @@ public final class MapConcatFunction
         return new ScalarFunctionImplementation(
                 false,
                 nCopies(arity, false),
+                ImmutableMap.of(),
                 nCopies(arity, false),
                 methodHandleAndConstructor.getMethodHandle(),
                 Optional.of(methodHandleAndConstructor.getConstructor()),

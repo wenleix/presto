@@ -196,6 +196,11 @@ public class LambdaBytecodeGenerator
             this.instanceField = requireNonNull(instanceField, "instanceField is null");
         }
 
+        public FieldDefinition getStaticField()
+        {
+            return staticField;
+        }
+
         public FieldDefinition getInstanceField()
         {
             return instanceField;

@@ -24,6 +24,7 @@ import com.facebook.presto.operator.scalar.ScalarFunctionImplementation;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import jersey.repackaged.com.google.common.collect.ImmutableMap;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -115,6 +116,7 @@ public class TestVarArgsToArrayAdapterGenerator
             return new ScalarFunctionImplementation(
                     false,
                     nCopies(arity, false),
+                    ImmutableMap.of(),
                     nCopies(arity, false),
                     methodHandleAndConstructor.getMethodHandle(),
                     Optional.of(methodHandleAndConstructor.getConstructor()),

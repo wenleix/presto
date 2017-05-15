@@ -14,10 +14,12 @@
 package com.facebook.presto.operator.scalar;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -27,6 +29,7 @@ public final class ScalarFunctionImplementation
 {
     private final boolean nullable;
     private final List<Boolean> nullableArguments;
+    private final Map<Integer, Class> lambdaFunctionArguments;
     private final List<Boolean> nullFlags;
     private final MethodHandle methodHandle;
     private final Optional<MethodHandle> instanceFactory;
@@ -34,18 +37,19 @@ public final class ScalarFunctionImplementation
 
     public ScalarFunctionImplementation(boolean nullable, List<Boolean> nullableArguments, MethodHandle methodHandle, boolean deterministic)
     {
-        this(nullable, nullableArguments, Collections.nCopies(nullableArguments.size(), false), methodHandle, Optional.empty(), deterministic);
+        this(nullable, nullableArguments, ImmutableMap.of(), Collections.nCopies(nullableArguments.size(), false), methodHandle, Optional.empty(), deterministic);
     }
 
     public ScalarFunctionImplementation(boolean nullable, List<Boolean> nullableArguments, List<Boolean> nullFlags, MethodHandle methodHandle, boolean deterministic)
     {
-        this(nullable, nullableArguments, nullFlags, methodHandle, Optional.empty(), deterministic);
+        this(nullable, nullableArguments, ImmutableMap.of(), nullFlags, methodHandle, Optional.empty(), deterministic);
     }
 
-    public ScalarFunctionImplementation(boolean nullable, List<Boolean> nullableArguments, List<Boolean> nullFlags, MethodHandle methodHandle, Optional<MethodHandle> instanceFactory, boolean deterministic)
+    public ScalarFunctionImplementation(boolean nullable, List<Boolean> nullableArguments, Map<Integer, Class> lambdaFunctionArguments, List<Boolean> nullFlags, MethodHandle methodHandle, Optional<MethodHandle> instanceFactory, boolean deterministic)
     {
         this.nullable = nullable;
         this.nullableArguments = ImmutableList.copyOf(requireNonNull(nullableArguments, "nullableArguments is null"));
+        this.lambdaFunctionArguments = ImmutableMap.copyOf(requireNonNull(lambdaFunctionArguments, "lambdaFunctionArguments is null"));
         this.nullFlags = ImmutableList.copyOf(requireNonNull(nullFlags, "nullFlags is null"));
         this.methodHandle = requireNonNull(methodHandle, "methodHandle is null");
         this.instanceFactory = requireNonNull(instanceFactory, "instanceFactory is null");
@@ -72,6 +76,10 @@ public final class ScalarFunctionImplementation
     public List<Boolean> getNullableArguments()
     {
         return nullableArguments;
+    }
+
+    public Map<Integer, Class> getLambdaFunctionArguments() {
+        return lambdaFunctionArguments;
     }
 
     public List<Boolean> getNullFlags()

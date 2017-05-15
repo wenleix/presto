@@ -30,6 +30,7 @@ import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.facebook.presto.type.MapType;
 import com.google.common.collect.ImmutableList;
+import jersey.repackaged.com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Optional;
@@ -90,7 +91,7 @@ public final class MapConstructor
         MethodHandle keyHashCode = functionRegistry.getScalarFunctionImplementation(functionRegistry.resolveOperator(OperatorType.HASH_CODE, ImmutableList.of(keyType))).getMethodHandle();
         MethodHandle keyEqual = functionRegistry.getScalarFunctionImplementation(functionRegistry.resolveOperator(OperatorType.EQUAL, ImmutableList.of(keyType, keyType))).getMethodHandle();
         MethodHandle instanceFactory = constructorMethodHandle(State.class, MapType.class).bindTo(mapType);
-        return new ScalarFunctionImplementation(false, ImmutableList.of(false, false), ImmutableList.of(false, false), METHOD_HANDLE.bindTo(mapType).bindTo(keyEqual).bindTo(keyHashCode), Optional.of(instanceFactory), isDeterministic());
+        return new ScalarFunctionImplementation(false, ImmutableList.of(false, false), ImmutableMap.of(), ImmutableList.of(false, false), METHOD_HANDLE.bindTo(mapType).bindTo(keyEqual).bindTo(keyHashCode), Optional.of(instanceFactory), isDeterministic());
     }
 
     @UsedByGeneratedCode

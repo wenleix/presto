@@ -37,6 +37,7 @@ import com.facebook.presto.sql.gen.CallSiteBinder;
 import com.facebook.presto.type.ArrayType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Primitives;
+import jersey.repackaged.com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 import java.util.List;
@@ -108,6 +109,7 @@ public final class ArrayTransformFunction
         return new ScalarFunctionImplementation(
                 false,
                 ImmutableList.of(false, false),
+                ImmutableMap.of(),
                 ImmutableList.of(false, false),
                 methodHandle(generatedClass, "transform", PageBuilder.class, ConnectorSession.class, Block.class, MethodHandle.class),
                 Optional.of(methodHandle(generatedClass, "createPageBuilder")),
