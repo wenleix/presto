@@ -155,9 +155,13 @@ public final class Signatures
         return new Signature(TRY, SCALAR, returnType.getTypeSignature());
     }
 
-    public static Signature bindSignature(Type returnType, Type valueType, Type functionType)
+    public static Signature bindSignature(Type returnType, List<Type> argumentTypes)
     {
-        return new Signature(BIND, SCALAR, returnType.getTypeSignature(), valueType.getTypeSignature(), functionType.getTypeSignature());
+        List<TypeSignature> argumentTypeSignatures = argumentTypes.stream()
+                .map(Type::getTypeSignature)
+                .collect(toImmutableList());
+
+        return new Signature(BIND, SCALAR, returnType.getTypeSignature(), argumentTypeSignatures);
     }
 
     // **************** functions that require varargs and/or complex types (e.g., lists) ****************

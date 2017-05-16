@@ -18,7 +18,10 @@ import com.google.common.collect.Iterables;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+
+import static com.google.common.collect.ImmutableList.toImmutableList;
 
 public final class ExpressionTreeRewriter<C>
 {
@@ -598,11 +601,13 @@ public final class ExpressionTreeRewriter<C>
                 }
             }
 
-            Expression value = rewrite(node.getValue(), context.get());
+            List<Expression> values = node.getValues().stream()
+                    .map(value -> rewrite(value, context.get()))
+                    .collect(toImmutableList());
             Expression function = rewrite(node.getFunction(), context.get());
 
-            if ((value != node.getValue()) || (function != node.getFunction())) {
-                return new BindExpression(value, function);
+            if ((!Objects.equals(values, node.getValues())) || (function != node.getFunction())) {
+                return new BindExpression(values, function);
             }
 
             return node;

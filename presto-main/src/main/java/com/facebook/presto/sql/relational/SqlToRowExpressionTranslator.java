@@ -77,6 +77,7 @@ import com.google.common.collect.Lists;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -353,14 +354,19 @@ public final class SqlToRowExpressionTranslator
         @Override
         protected RowExpression visitBindExpression(BindExpression node, Void context)
         {
-            RowExpression value = process(node.getValue(), context);
-            RowExpression function = process(node.getFunction(), context);
+            List<RowExpression> arguments = Stream.concat(
+                    node.getValues().stream()
+                            .map(value -> process(value, context)),
+                    Stream.of(process(node.getFunction(), context)))
+                    .collect(toImmutableList());
+            List<Type> argumentTypes = arguments.stream()
+                    .map(RowExpression::getType)
+                    .collect(toImmutableList());
 
             return call(
-                    bindSignature(getType(node), value.getType(), function.getType()),
+                    bindSignature(getType(node), argumentTypes),
                     getType(node),
-                    value,
-                    function);
+                    arguments);
         }
 
         @Override
