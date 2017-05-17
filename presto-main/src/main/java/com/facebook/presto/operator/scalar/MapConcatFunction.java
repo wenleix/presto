@@ -29,6 +29,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.gen.VarArgsToArrayAdapterGenerator.MethodHandleAndConstructor;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Optional;
@@ -102,6 +103,7 @@ public final class MapConcatFunction
                 false,
                 nCopies(arity, false),
                 nCopies(arity, false),
+                ImmutableMap.of(),
                 methodHandleAndConstructor.getMethodHandle(),
                 Optional.of(methodHandleAndConstructor.getConstructor()),
                 isDeterministic());

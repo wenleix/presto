@@ -94,6 +94,7 @@ public class ScalarImplementation
     private final boolean nullable;
     private final List<Boolean> nullableArguments;
     private final List<Boolean> nullFlags;
+    private final Map<Integer, Class> lambdaInterface;
     private final MethodHandle methodHandle;
     private final List<ImplementationDependency> dependencies;
     private final Optional<MethodHandle> constructor;
@@ -106,6 +107,7 @@ public class ScalarImplementation
             boolean nullable,
             List<Boolean> nullableArguments,
             List<Boolean> nullFlags,
+            Map<Integer, Class> lambdaInterface,
             MethodHandle methodHandle,
             List<ImplementationDependency> dependencies,
             Optional<MethodHandle> constructor,
@@ -117,6 +119,7 @@ public class ScalarImplementation
         this.nullable = nullable;
         this.nullableArguments = ImmutableList.copyOf(requireNonNull(nullableArguments, "nullableArguments is null"));
         this.nullFlags = ImmutableList.copyOf(requireNonNull(nullFlags, "nullFlags is null"));
+        this.lambdaInterface = ImmutableMap.copyOf(requireNonNull(lambdaInterface, "lambdaInterface is null"));
         this.methodHandle = requireNonNull(methodHandle, "methodHandle is null");
         this.dependencies = ImmutableList.copyOf(requireNonNull(dependencies, "dependencies is null"));
         this.constructor = requireNonNull(constructor, "constructor is null");
@@ -215,6 +218,11 @@ public class ScalarImplementation
     public List<Boolean> getNullFlags()
     {
         return nullFlags;
+    }
+
+    public Map<Integer, Class> getLambdaInterface()
+    {
+        return lambdaInterface;
     }
 
     public MethodHandle getMethodHandle()
@@ -346,6 +354,7 @@ public class ScalarImplementation
         private final boolean nullable;
         private final List<Boolean> nullableArguments = new ArrayList<>();
         private final List<Boolean> nullFlags = new ArrayList<>();
+        private final Map<Integer, Class> lambdaInterface = new HashMap<>();
         private final TypeSignature returnType;
         private final List<TypeSignature> argumentTypes = new ArrayList<>();
         private final List<Class<?>> argumentNativeContainerTypes = new ArrayList<>();
@@ -410,7 +419,7 @@ public class ScalarImplementation
 
         private void parseArguments(Method method)
         {
-            for (int i = 0; i < method.getParameterCount(); i++) {
+            for (int i = 0, argumentIndex = 0; i < method.getParameterCount(); i++) {
                 Annotation[] annotations = method.getParameterAnnotations()[i];
                 Class<?> parameterType = method.getParameterTypes()[i];
                 // Skip injected parameters
@@ -437,6 +446,7 @@ public class ScalarImplementation
                             .map(SqlType.class::cast)
                             .findFirst()
                             .orElseThrow(() -> new IllegalArgumentException(format("Method [%s] is missing @SqlType annotation for parameter", method)));
+                    TypeSignature typeSignature = parseTypeSignature(type.value(), literalParameters);
                     boolean nullableArgument = Stream.of(annotations).anyMatch(SqlNullable.class::isInstance);
                     checkArgument(nullableArgument || !containsLegacyNullable(annotations), "Method [%s] has parameter annotated with @Nullable but not @SqlNullable", method);
 
@@ -470,14 +480,19 @@ public class ScalarImplementation
                         specializedTypeParameters.put(type.value(), nativeParameterType);
                     }
                     argumentNativeContainerTypes.add(parameterType);
-                    argumentTypes.add(parseTypeSignature(type.value(), literalParameters));
+                    argumentTypes.add(typeSignature);
 
                     if (hasNullFlag) {
                         // skip @IsNull parameter
                         i++;
                     }
+
                     nullableArguments.add(nullableArgument);
                     nullFlags.add(hasNullFlag);
+                    if (typeSignature.getBase().equals("function")) {
+                        lambdaInterface.put(argumentIndex, parameterType);
+                    }
+                    argumentIndex++;
                 }
             }
         }
@@ -658,6 +673,7 @@ public class ScalarImplementation
                     nullable,
                     nullableArguments,
                     nullFlags,
+                    lambdaInterface,
                     methodHandle,
                     dependencies,
                     constructorMethodHandle,

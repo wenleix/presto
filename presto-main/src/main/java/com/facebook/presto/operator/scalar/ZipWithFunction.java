@@ -25,6 +25,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 
@@ -82,6 +83,8 @@ public final class ZipWithFunction
         return new ScalarFunctionImplementation(
                 false,
                 ImmutableList.of(false, false, false),
+                ImmutableList.of(false, false, false),
+                ImmutableMap.of(2, MethodHandle.class),
                 METHOD_HANDLE.bindTo(leftElementType).bindTo(rightElementType).bindTo(outputElementType),
                 isDeterministic());
     }

@@ -23,6 +23,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 
@@ -78,6 +79,8 @@ public final class InvokeFunction
         return new ScalarFunctionImplementation(
                 true,
                 ImmutableList.of(false),
+                ImmutableList.of(false),
+                ImmutableMap.of(0, MethodHandle.class),
                 METHOD_HANDLE.asType(
                         METHOD_HANDLE.type()
                                 .changeReturnType(wrap(returnType.getJavaType()))),

@@ -22,6 +22,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import java.lang.invoke.MethodHandle;
 
@@ -78,6 +79,8 @@ public final class ApplyFunction
         return new ScalarFunctionImplementation(
                 true,
                 ImmutableList.of(true, false),
+                ImmutableList.of(false, false),
+                ImmutableMap.of(1, MethodHandle.class),
                 METHOD_HANDLE.asType(
                         METHOD_HANDLE.type()
                                 .changeReturnType(wrap(returnType.getJavaType()))

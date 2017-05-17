@@ -23,6 +23,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Primitives;
 
 import java.lang.invoke.MethodHandle;
@@ -79,6 +80,8 @@ public final class ArrayReduceFunction
         return new ScalarFunctionImplementation(
                 true,
                 ImmutableList.of(false, true, false, false),
+                ImmutableList.of(false, false, false, false),
+                ImmutableMap.of(2, MethodHandle.class, 3, MethodHandle.class),
                 methodHandle.asType(
                         methodHandle.type()
                                 .changeParameterType(1, Primitives.wrap(intermediateType.getJavaType()))

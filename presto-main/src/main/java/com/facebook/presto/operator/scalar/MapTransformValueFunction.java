@@ -40,6 +40,7 @@ import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.facebook.presto.sql.gen.CallSiteBinder;
 import com.facebook.presto.sql.gen.SqlTypeBytecodeExpression;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Primitives;
 
 import java.lang.invoke.MethodHandle;
@@ -117,6 +118,8 @@ public final class MapTransformValueFunction
         return new ScalarFunctionImplementation(
                 false,
                 ImmutableList.of(false, false),
+                ImmutableList.of(false, false),
+                ImmutableMap.of(1, MethodHandle.class),
                 generateTransform(keyType, valueType, transformedValueType, resultMapType),
                 isDeterministic());
     }
