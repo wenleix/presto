@@ -40,7 +40,7 @@ public final class InvokeFunction
 {
     public static final InvokeFunction INVOKE_FUNCTION = new InvokeFunction();
 
-    private static final MethodHandle METHOD_HANDLE = methodHandle(InvokeFunction.class, "invoke", MethodHandle.class);
+    private static final MethodHandle METHOD_HANDLE = methodHandle(InvokeFunction.class, "invoke", InvokeLambda.class);
 
     private InvokeFunction()
     {
@@ -80,20 +80,26 @@ public final class InvokeFunction
                 true,
                 ImmutableList.of(false),
                 ImmutableList.of(false),
-                ImmutableList.of(Optional.of(MethodHandle.class)),
+                ImmutableList.of(Optional.of(InvokeLambda.class)),
                 METHOD_HANDLE.asType(
                         METHOD_HANDLE.type()
                                 .changeReturnType(wrap(returnType.getJavaType()))),
                 isDeterministic());
     }
 
-    public static Object invoke(MethodHandle function)
+    public static Object invoke(InvokeLambda function)
     {
         try {
-            return function.invoke();
+            return function.apply();
         }
         catch (Throwable throwable) {
             throw Throwables.propagate(throwable);
         }
+    }
+
+    @FunctionalInterface
+    public interface InvokeLambda
+    {
+        Object apply();
     }
 }
