@@ -141,11 +141,18 @@ public class ScalarImplementation
             return Optional.empty();
         }
         for (int i = 0; i < boundSignature.getArgumentTypes().size(); i++) {
-            Class<?> argumentType = typeManager.getType(boundSignature.getArgumentTypes().get(i)).getJavaType();
-            boolean nullableParameter = isParameterNullable(argumentType, nullableArguments.get(i), nullFlags.get(i));
-            Class<?> argumentContainerType = getNullAwareContainerType(argumentType, nullableParameter);
-            if (!argumentNativeContainerTypes.get(i).isAssignableFrom(argumentContainerType)) {
-                return Optional.empty();
+            if (boundSignature.getArgumentTypes().get(i).getBase().equals("function")) {
+                if (!(lambdaInterface.get(i).isPresent() && lambdaInterface.get(i).get().isAnnotationPresent(FunctionalInterface.class))) {
+                    return Optional.empty();
+                }
+            }
+            else {
+                Class<?> argumentType = typeManager.getType(boundSignature.getArgumentTypes().get(i)).getJavaType();
+                boolean nullableParameter = isParameterNullable(argumentType, nullableArguments.get(i), nullFlags.get(i));
+                Class<?> argumentContainerType = getNullAwareContainerType(argumentType, nullableParameter);
+                if (!argumentNativeContainerTypes.get(i).isAssignableFrom(argumentContainerType)) {
+                    return Optional.empty();
+                }
             }
         }
         MethodHandle methodHandle = this.methodHandle;
