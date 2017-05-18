@@ -20,6 +20,7 @@ import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.SqlScalarFunction;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
+import com.facebook.presto.sql.gen.lambda.UnaryFunctionInterface;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -39,7 +40,7 @@ public final class ApplyFunction
 {
     public static final ApplyFunction APPLY_FUNCTION = new ApplyFunction();
 
-    private static final MethodHandle METHOD_HANDLE = methodHandle(ApplyFunction.class, "apply", Object.class, MethodHandle.class);
+    private static final MethodHandle METHOD_HANDLE = methodHandle(ApplyFunction.class, "apply", Object.class, UnaryFunctionInterface.class);
 
     private ApplyFunction()
     {
@@ -80,7 +81,7 @@ public final class ApplyFunction
                 true,
                 ImmutableList.of(true, false),
                 ImmutableList.of(false, false),
-                ImmutableMap.of(1, MethodHandle.class),
+                ImmutableMap.of(1, UnaryFunctionInterface.class),
                 METHOD_HANDLE.asType(
                         METHOD_HANDLE.type()
                                 .changeReturnType(wrap(returnType.getJavaType()))
@@ -88,10 +89,10 @@ public final class ApplyFunction
                 isDeterministic());
     }
 
-    public static Object apply(Object input, MethodHandle function)
+    public static Object apply(Object input, UnaryFunctionInterface function)
     {
         try {
-            return function.invoke(input);
+            return function.apply(input);
         }
         catch (Throwable throwable) {
             throw Throwables.propagate(throwable);
