@@ -34,6 +34,7 @@ public class BytecodeGeneratorContext
     private final CallSiteBinder callSiteBinder;
     private final CachedInstanceBinder cachedInstanceBinder;
     private final FunctionRegistry registry;
+    private final PreGeneratedExpressions preGeneratedExpressions;
     private final Variable wasNull;
 
     public BytecodeGeneratorContext(
@@ -41,7 +42,8 @@ public class BytecodeGeneratorContext
             Scope scope,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
-            FunctionRegistry registry)
+            FunctionRegistry registry,
+            PreGeneratedExpressions preGeneratedExpressions)
     {
         requireNonNull(bytecodeGenerator, "bytecodeGenerator is null");
         requireNonNull(cachedInstanceBinder, "cachedInstanceBinder is null");
@@ -54,6 +56,7 @@ public class BytecodeGeneratorContext
         this.callSiteBinder = callSiteBinder;
         this.cachedInstanceBinder = cachedInstanceBinder;
         this.registry = registry;
+        this.preGeneratedExpressions = preGeneratedExpressions;
         this.wasNull = scope.getVariable("wasNull");
     }
 
@@ -70,6 +73,11 @@ public class BytecodeGeneratorContext
     public BytecodeNode generate(RowExpression expression)
     {
         return expression.accept(bytecodeGenerator, scope);
+    }
+
+    public BytecodeNode generateLambda(RowExpression lambdaExpression, Class lambdaJavaClass)
+    {
+        return LambdaBytecodeGenerator.generateLambda(this, lambdaExpression, preGeneratedExpressions.getLambdaFieldMap(), lambdaJavaClass);
     }
 
     public FunctionRegistry getRegistry()
