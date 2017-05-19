@@ -22,7 +22,6 @@ import com.facebook.presto.bytecode.Parameter;
 import com.facebook.presto.bytecode.ParameterizedType;
 import com.facebook.presto.bytecode.Scope;
 import com.facebook.presto.bytecode.Variable;
-import com.facebook.presto.bytecode.control.IfStatement;
 import com.facebook.presto.bytecode.expression.BytecodeExpression;
 import com.facebook.presto.bytecode.expression.BytecodeExpressions;
 import com.facebook.presto.metadata.FunctionRegistry;
@@ -43,7 +42,6 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
@@ -59,7 +57,6 @@ import static com.facebook.presto.bytecode.Parameter.arg;
 import static com.facebook.presto.bytecode.ParameterizedType.type;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantClass;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantFalse;
-import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantInt;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantString;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.getStatic;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.invokeDynamic;
@@ -216,27 +213,7 @@ public class LambdaBytecodeGenerator
         }
 
         if (MethodHandle.class.equals(lambdaInterface)) {
-            // generate captured lambda expression as MethodHandle
-            List<BytecodeExpression> bytecodeCaptureVariables = captureVariableBuilder.build().stream()
-                    .map(variable -> variable.cast(Object.class))
-                    .collect(toImmutableList());
-
-            Variable functionVariable = scope.createTempVariable(MethodHandle.class);
-            block.append(context.generate(lambda));
-            block.append(
-                    new IfStatement()
-                            .condition(wasNull)
-                            // ifTrue: do nothing i.e. Leave the null MethodHandle on the stack, and leave the wasNull variable set to true
-                            .ifFalse(
-                                    new BytecodeBlock()
-                                            .putVariable(functionVariable)
-                                            .append(invokeStatic(
-                                                    MethodHandles.class,
-                                                    "insertArguments",
-                                                    MethodHandle.class,
-                                                    functionVariable,
-                                                    constantInt(0),
-                                                    newArray(type(Object[].class), bytecodeCaptureVariables)))));
+            throw new UnsupportedOperationException();
         }
         else {
             MethodDefinition lambdaMethodDefinition = lambdaFieldsMap.get(lambda).getMethodDefinition();
