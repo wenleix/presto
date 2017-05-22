@@ -158,16 +158,19 @@ public class LambdaBytecodeGenerator
             CallExpression bindCall = (CallExpression) lambdaExpression;
             checkCondition(bindCall.getSignature().getName() == BIND, COMPILER_ERROR, "Lambda expression should be the direct argument to a function call");
 
+            int numCaptures = bindCall.getArguments().size() - 1;
             return generateLambda(
                     context,
-                    bindCall.getArguments(),
+                    bindCall.getArguments().subList(0, numCaptures),
+                    (LambdaDefinitionExpression) bindCall.getArguments().get(numCaptures),
                     lambdaFieldsMap,
                     lambdaInterface);
         }
         else if (lambdaExpression instanceof LambdaDefinitionExpression) {
             return generateLambda(
                     context,
-                    ImmutableList.of(lambdaExpression),
+                    ImmutableList.of(),
+                    (LambdaDefinitionExpression) lambdaExpression,
                     lambdaFieldsMap,
                     lambdaInterface);
         }
@@ -179,47 +182,54 @@ public class LambdaBytecodeGenerator
 
     public static BytecodeNode generateLambda(
             BytecodeGeneratorContext context,
-            List<RowExpression> arguments,
+            List<RowExpression> captureExpressions,
+            LambdaDefinitionExpression lambda,
             Map<LambdaDefinitionExpression, LambdaExpressionField> lambdaFieldsMap,
             Class lambdaInterface)
     {
-        if (!MethodHandle.class.equals(lambdaInterface)) {
-            throw new UnsupportedOperationException();
-        }
-
         BytecodeBlock block = new BytecodeBlock().setDescription("Partial apply");
         Scope scope = context.getScope();
 
         Variable wasNull = scope.getVariable("wasNull");
 
-        ImmutableList.Builder<BytecodeExpression> bytecodeCaptureVariablesBuilder = ImmutableList.builder();
-        int numValues = arguments.size() - 1;
-        for (int i = 0; i < numValues; i++) {
-            Class<?> valueType = Primitives.wrap(arguments.get(i).getType().getJavaType());
+        // generate values to be captured
+        ImmutableList.Builder<BytecodeExpression> bytecodeCaptureVariableBuilder = ImmutableList.builder();
+        for (RowExpression captureExpression : captureExpressions) {
+            Class<?> valueType = Primitives.wrap(captureExpression.getType().getJavaType());
             Variable valueVariable = scope.createTempVariable(valueType);
-            block.append(context.generate(arguments.get(i)));
+            block.append(context.generate(captureExpression));
             block.append(boxPrimitiveIfNecessary(scope, valueType));
             block.putVariable(valueVariable);
             block.append(wasNull.set(constantFalse()));
-            bytecodeCaptureVariablesBuilder.add(valueVariable.cast(Object.class));
+            bytecodeCaptureVariableBuilder.add(valueVariable);
         }
 
-        Variable functionVariable = scope.createTempVariable(MethodHandle.class);
-        block.append(context.generate(arguments.get(numValues)));
-        block.append(
-                new IfStatement()
-                        .condition(wasNull)
-                        // ifTrue: do nothing i.e. Leave the null MethodHandle on the stack, and leave the wasNull variable set to true
-                        .ifFalse(
-                                new BytecodeBlock()
-                                        .putVariable(functionVariable)
-                                        .append(invokeStatic(
-                                                MethodHandles.class,
-                                                "insertArguments",
-                                                MethodHandle.class,
-                                                functionVariable,
-                                                constantInt(0),
-                                                newArray(type(Object[].class), bytecodeCaptureVariablesBuilder.build())))));
+        if (MethodHandle.class.equals(lambdaInterface)) {
+            // generate captured lambda expression as MethodHandle
+            List<BytecodeExpression> bytecodeCaptureVariables = bytecodeCaptureVariableBuilder.build().stream()
+                    .map(variable -> variable.cast(Object.class))
+                    .collect(toImmutableList());
+
+            Variable functionVariable = scope.createTempVariable(MethodHandle.class);
+            block.append(context.generate(lambda));
+            block.append(
+                    new IfStatement()
+                            .condition(wasNull)
+                            // ifTrue: do nothing i.e. Leave the null MethodHandle on the stack, and leave the wasNull variable set to true
+                            .ifFalse(
+                                    new BytecodeBlock()
+                                            .putVariable(functionVariable)
+                                            .append(invokeStatic(
+                                                    MethodHandles.class,
+                                                    "insertArguments",
+                                                    MethodHandle.class,
+                                                    functionVariable,
+                                                    constantInt(0),
+                                                    newArray(type(Object[].class), bytecodeCaptureVariables)))));
+        }
+        else {
+            throw new UnsupportedOperationException();
+        }
 
         return block;
     }
