@@ -282,6 +282,15 @@ public class TestMapOperators
     }
 
     @Test
+    public void testSimpleJsonToMap()
+            throws Exception
+    {
+        assertFunction("CAST(JSON '{\"1\":2, \"3\": 4}' AS MAP<VARCHAR, BIGINT>)",
+                mapType(VARCHAR, BIGINT),
+                ImmutableMap.of("1", 2L, "3", 4L));
+    }
+
+        @Test
     public void testJsonToMap()
             throws Exception
     {
