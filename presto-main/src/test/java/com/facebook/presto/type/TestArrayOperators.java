@@ -184,6 +184,14 @@ public class TestArrayOperators
     }
 
     @Test
+    public void testJsonToArrayHaha()
+            throws Exception
+    {
+        assertFunction("CAST(JSON '[1, 2, 3]' AS ARRAY<BIGINT>)", new ArrayType(BIGINT), ImmutableList.of(1L, 2L, 3L));
+    }
+
+
+        @Test
     public void testJsonToArray()
             throws Exception
     {
