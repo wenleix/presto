@@ -225,6 +225,10 @@ public abstract class AbstractInterleavedBlock
         }
         int positionsPerColumn = positions.size() / columns;
 
+        if (positionsPerColumn > 16_000_000 / 8) {
+            System.out.println("humongous allocation!");
+        }
+
         List<List<Integer>> valuePositions = new ArrayList<>(columns);
         for (int i = 0; i < columns; i++) {
             valuePositions.add(new ArrayList<>(positionsPerColumn));

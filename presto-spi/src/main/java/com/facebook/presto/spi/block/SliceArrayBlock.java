@@ -42,6 +42,10 @@ public class SliceArrayBlock
 
     public SliceArrayBlock(int positionCount, Slice[] values, boolean valueSlicesAreDistinct)
     {
+        if (values.length > 16_000_000 / 8) {
+            System.out.println("humongous allocation!!!");
+        }
+
         this.positionCount = positionCount;
 
         if (values.length < positionCount) {
@@ -91,6 +95,10 @@ public class SliceArrayBlock
     @Override
     public Block copyPositions(List<Integer> positions)
     {
+        if (positions.size() > 16_000_000 / 8) {
+            System.out.println("Humongous allocation");
+        }
+
         checkValidPositions(positions, positionCount);
 
         Slice[] newValues = new Slice[positions.size()];

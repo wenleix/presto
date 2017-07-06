@@ -42,6 +42,10 @@ public abstract class AbstractArrayBlock
     @Override
     public Block copyPositions(List<Integer> positions)
     {
+        if (positions.size() > 16_000_000 / 8) {
+            System.out.println("humongous allocation");
+        }
+
         int[] newOffsets = new int[positions.size() + 1];
         boolean[] newValueIsNull = new boolean[positions.size()];
 

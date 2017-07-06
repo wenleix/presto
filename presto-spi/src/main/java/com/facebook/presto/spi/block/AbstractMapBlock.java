@@ -79,6 +79,10 @@ public abstract class AbstractMapBlock
         int[] newOffsets = new int[positions.size() + 1];
         boolean[] newMapIsNull = new boolean[positions.size()];
 
+        if (positions.size() > 16_000_000 / 8) {
+            System.out.println("May cause humongous allocation.");
+        }
+
         List<Integer> entriesPositions = new ArrayList<>();
         int newPosition = 0;
         for (int position : positions) {

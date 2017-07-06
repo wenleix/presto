@@ -134,6 +134,10 @@ public class IntArrayBlock
     @Override
     public Block copyPositions(List<Integer> positions)
     {
+        if (positions.size() > 16_000_000 / 8) {
+            System.out.println("Might have humongous allocation!!");
+        }
+
         boolean[] newValueIsNull = new boolean[positions.size()];
         int[] newValues = new int[positions.size()];
         for (int i = 0; i < positions.size(); i++) {

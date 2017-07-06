@@ -204,6 +204,12 @@ public class VariableWidthBlockBuilder
         if (!initialized) {
             initializeCapacity();
         }
+
+        if (sliceOutput.size() + length > sliceOutput.getUnderlyingSlice().length()) {
+            if (sliceOutput.getUnderlyingSlice().length() > 16_000_000) {
+                System.out.println("Humongous Allocation");
+            }
+        }
         sliceOutput.writeBytes(source, sourceIndex, length);
         currentEntrySize += length;
         return this;
@@ -250,6 +256,9 @@ public class VariableWidthBlockBuilder
     private void growCapacity()
     {
         int newSize = BlockUtil.calculateNewArraySize(valueIsNull.length);
+        if (newSize > 16_000_000 / 4) {
+            System.out.println("Humongous Allocation");
+        }
         valueIsNull = Arrays.copyOf(valueIsNull, newSize);
         offsets = Arrays.copyOf(offsets, newSize + 1);
         updateArraysDataSize();
@@ -260,6 +269,11 @@ public class VariableWidthBlockBuilder
         if (positions != 0 || currentEntrySize != 0) {
             throw new IllegalStateException(getClass().getSimpleName() + " was used before initialization");
         }
+
+        if (initialSliceOutputSize > 16_000_000 || initialEntryCount > 16_000_000 / 4) {
+            System.out.println("Humongous Allocation");
+        }
+
         initialized = true;
         valueIsNull = new boolean[initialEntryCount];
         offsets = new int[initialEntryCount + 1];

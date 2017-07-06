@@ -113,6 +113,10 @@ public class ShortArrayBlockBuilder
             initialized = true;
         }
 
+        if (newSize > 16_000_000 / 2) {
+            System.out.println("humongous allocation!!");
+        }
+
         valueIsNull = Arrays.copyOf(valueIsNull, newSize);
         values = Arrays.copyOf(values, newSize);
         updateDataSize();

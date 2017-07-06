@@ -159,6 +159,10 @@ public class SliceDirectStreamReader
             data = dataStream.next(toIntExact(totalLength));
         }
 
+        if (totalLength > 16_000_000) {
+            System.out.println("Humongous allocation");
+        }
+
         Slice[] sliceVector = new Slice[nextBatchSize];
 
         int offset = 0;

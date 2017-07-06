@@ -134,6 +134,10 @@ public class ByteArrayBlock
     @Override
     public Block copyPositions(List<Integer> positions)
     {
+        if (positions.size() > 16_000_000 / 8) {
+            System.out.println("Humongous Allocation!");
+        }
+
         boolean[] newValueIsNull = new boolean[positions.size()];
         byte[] newValues = new byte[positions.size()];
         for (int i = 0; i < positions.size(); i++) {

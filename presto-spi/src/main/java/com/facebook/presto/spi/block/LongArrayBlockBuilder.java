@@ -114,6 +114,10 @@ public class LongArrayBlockBuilder
             initialized = true;
         }
 
+        if (newSize > 16_000_000 / 8) {
+            System.out.println("Humongous Allocation !!!");
+        }
+
         valueIsNull = Arrays.copyOf(valueIsNull, newSize);
         values = Arrays.copyOf(values, newSize);
         updateDataSize();

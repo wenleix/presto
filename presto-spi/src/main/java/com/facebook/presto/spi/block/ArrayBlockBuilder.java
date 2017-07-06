@@ -217,6 +217,10 @@ public class ArrayBlockBuilder
             initialized = true;
         }
 
+        if (newSize > 16_000_000 / 4) {
+            // Will cause humongous allocation for offsets array
+            System.out.println("humongous allocation");
+        }
         valueIsNull = Arrays.copyOf(valueIsNull, newSize);
         offsets = Arrays.copyOf(offsets, newSize + 1);
         updateDataSize();

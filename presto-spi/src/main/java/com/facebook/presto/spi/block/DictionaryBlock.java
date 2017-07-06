@@ -268,6 +268,10 @@ public class DictionaryBlock
     {
         checkValidPositions(positions, positionCount);
 
+        if (positions.size() > 16_000_000 / 8) {
+            System.out.println("Might cause humongous allocation");
+        }
+
         List<Integer> positionsToCopy = new ArrayList<>();
         Map<Integer, Integer> oldIndexToNewIndex = new HashMap<>();
         int[] newIds = new int[positions.size()];
