@@ -165,6 +165,12 @@ public class IntArrayBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return arrayOffset == 0 && positionCount == values.length;
+    }
+
+    @Override
     public BlockEncoding getEncoding()
     {
         return new IntArrayBlockEncoding();

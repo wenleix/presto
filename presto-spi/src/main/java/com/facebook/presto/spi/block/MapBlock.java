@@ -161,6 +161,13 @@ public class MapBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return startOffset == 0 && positionCount == offsets.length - 1 &&
+                offsets[positionCount] == valueBlock.getPositionCount() && keyBlock.isCompact() && valueBlock.isCompact();
+    }
+
+    @Override
     public String toString()
     {
         StringBuilder sb = new StringBuilder("MapBlock{");

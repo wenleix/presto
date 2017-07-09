@@ -123,6 +123,12 @@ public class RunLengthEncodedBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     public int getSliceLength(int position)
     {
         return value.getSliceLength(0);

@@ -224,6 +224,12 @@ public class LazyBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return block.isCompact();
+    }
+
+    @Override
     public boolean isNull(int position)
     {
         assureLoaded();

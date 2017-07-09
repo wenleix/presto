@@ -223,6 +223,12 @@ public interface Block
     Block copyRegion(int position, int length);
 
     /**
+     * Is the representation the block exactly the same as
+     * the compact representation of the block?
+     */
+    boolean isCompact();
+
+    /**
      * Is the specified position null?
      *
      * @throws IllegalArgumentException if this position is not valid

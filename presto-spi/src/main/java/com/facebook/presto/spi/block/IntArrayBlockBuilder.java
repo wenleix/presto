@@ -225,6 +225,12 @@ public class IntArrayBlockBuilder
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     public BlockEncoding getEncoding()
     {
         return new IntArrayBlockEncoding();

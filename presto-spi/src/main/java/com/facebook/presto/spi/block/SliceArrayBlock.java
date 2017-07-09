@@ -156,6 +156,12 @@ public class SliceArrayBlock
         return new SliceArrayBlock(length, deepCopyAndCompact(values, positionOffset, length));
     }
 
+    @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
     static Slice[] deepCopyAndCompact(Slice[] values, int positionOffset, int length)
     {
         Slice[] newValues = Arrays.copyOfRange(values, positionOffset, positionOffset + length);

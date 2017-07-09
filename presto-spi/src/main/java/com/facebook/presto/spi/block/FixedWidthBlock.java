@@ -131,6 +131,12 @@ public class FixedWidthBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return slice.length() == positionCount * fixedSize && slice.isCompact();
+    }
+
+    @Override
     public String toString()
     {
         StringBuilder sb = new StringBuilder("FixedWidthBlock{");

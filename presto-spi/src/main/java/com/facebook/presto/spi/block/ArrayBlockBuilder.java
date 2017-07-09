@@ -114,6 +114,12 @@ public class ArrayBlockBuilder
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     protected Block getValues()
     {
         return values;

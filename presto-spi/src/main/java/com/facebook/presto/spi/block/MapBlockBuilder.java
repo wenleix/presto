@@ -180,6 +180,12 @@ public class MapBlockBuilder
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     public SingleMapBlockWriter beginBlockEntry()
     {
         if (currentEntryOpened) {

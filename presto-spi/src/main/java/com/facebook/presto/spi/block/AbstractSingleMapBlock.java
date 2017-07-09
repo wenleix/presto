@@ -246,4 +246,10 @@ public abstract class AbstractSingleMapBlock
     {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public boolean isCompact()
+    {
+        throw new UnsupportedOperationException();
+    }
 }

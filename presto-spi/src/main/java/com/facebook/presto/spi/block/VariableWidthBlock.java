@@ -183,6 +183,13 @@ public class VariableWidthBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return arrayOffset == 0 && positionCount == offsets.length - 1 &&
+                offsets[positionCount] == slice.length() && slice.isCompact();
+    }
+
+    @Override
     public String toString()
     {
         StringBuilder sb = new StringBuilder("VariableWidthBlock{");

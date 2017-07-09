@@ -266,6 +266,12 @@ public class FixedWidthBlockBuilder
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     public Block build()
     {
         if (currentEntrySize > 0) {

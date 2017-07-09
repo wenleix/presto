@@ -165,6 +165,12 @@ public class ByteArrayBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return arrayOffset == 0 && positionCount == values.length;
+    }
+
+    @Override
     public BlockEncoding getEncoding()
     {
         return new ByteArrayBlockEncoding();

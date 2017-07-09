@@ -108,6 +108,13 @@ public class ArrayBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return arrayOffset == 0 && positionCount == offsets.length - 1 &&
+                offsets[positionCount] == values.getPositionCount() && values.isCompact();
+    }
+
+    @Override
     protected Block getValues()
     {
         return values;

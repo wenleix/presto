@@ -251,6 +251,12 @@ public class InterleavedBlockBuilder
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     public InterleavedBlock build()
     {
         Block[] blocks = new Block[getBlockCount()];

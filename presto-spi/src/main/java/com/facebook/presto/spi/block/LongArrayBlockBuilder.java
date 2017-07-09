@@ -272,6 +272,12 @@ public class LongArrayBlockBuilder
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     public BlockEncoding getEncoding()
     {
         return new LongArrayBlockEncoding();

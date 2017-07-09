@@ -76,6 +76,12 @@ public class InterleavedBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     protected Block getBlock(int blockIndex)
     {
         if (blockIndex < 0) {

@@ -189,6 +189,12 @@ public class SingleMapBlockWriter
     }
 
     @Override
+    public boolean isCompact()
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Block build()
     {
         throw new UnsupportedOperationException();

@@ -303,6 +303,12 @@ public class VariableWidthBlockBuilder
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return false;
+    }
+
+    @Override
     public Block build()
     {
         if (currentEntrySize > 0) {

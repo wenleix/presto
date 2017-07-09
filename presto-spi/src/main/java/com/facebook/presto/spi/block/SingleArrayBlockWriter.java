@@ -61,6 +61,12 @@ public class SingleArrayBlockWriter
     }
 
     @Override
+    public boolean isCompact()
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public BlockBuilder writeByte(int value)
     {
         blockBuilder.writeByte(value);

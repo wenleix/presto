@@ -196,7 +196,8 @@ public class PagesIndex
             ObjectArrayList<Block> blocks = channels[channel];
             for (int i = nextBlockToCompact; i < blocks.size(); i++) {
                 Block block = blocks.get(i);
-                if (block.getSizeInBytes() < block.getRetainedSizeInBytes()) {
+//                if (block.getSizeInBytes() < block.getRetainedSizeInBytes()) {
+                if (!block.isCompact()) {
                     // Copy the block to compact its size
                     Block compactedBlock = block.copyRegion(0, block.getPositionCount());
                     blocks.set(i, compactedBlock);

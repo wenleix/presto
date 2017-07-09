@@ -70,6 +70,12 @@ public class GroupByIdBlock
     }
 
     @Override
+    public boolean isCompact()
+    {
+        return block.isCompact();
+    }
+
+    @Override
     public int getSliceLength(int position)
     {
         return block.getSliceLength(position);
