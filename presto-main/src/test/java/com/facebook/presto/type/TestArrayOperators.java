@@ -1166,6 +1166,12 @@ public class TestArrayOperators
     }
 
     @Test
+    public void testHaha()
+    {
+        assertFunction("haha(ARRAY[1, 2, 3])", new ArrayType(INTEGER), ImmutableList.of(1, 2, 3));
+    }
+
+    @Test
     public void testFlatten()
     {
         // BOOLEAN Tests
