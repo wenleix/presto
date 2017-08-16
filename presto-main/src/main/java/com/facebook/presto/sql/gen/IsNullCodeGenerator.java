@@ -29,10 +29,10 @@ import static io.airlift.bytecode.expression.BytecodeExpressions.constantFalse;
 import static io.airlift.bytecode.instruction.Constant.loadBoolean;
 
 public class IsNullCodeGenerator
-        implements BytecodeGenerator
+        extends BytecodeGenerator
 {
     @Override
-    public BytecodeNode generateExpression(Signature signature, BytecodeGeneratorContext generatorContext, Type returnType, List<RowExpression> arguments)
+    protected BytecodeNode generateExpression(Signature signature, BytecodeGeneratorContext generatorContext, Type returnType, List<RowExpression> arguments)
     {
         Preconditions.checkArgument(arguments.size() == 1);
 

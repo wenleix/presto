@@ -34,10 +34,10 @@ import static com.facebook.presto.sql.gen.BytecodeUtils.ifWasNullPopAndGoto;
 import static io.airlift.bytecode.expression.BytecodeExpressions.constantTrue;
 
 public class NullIfCodeGenerator
-        implements BytecodeGenerator
+        extends BytecodeGenerator
 {
     @Override
-    public BytecodeNode generateExpression(Signature signature, BytecodeGeneratorContext generatorContext, Type returnType, List<RowExpression> arguments)
+    protected BytecodeNode generateExpression(Signature signature, BytecodeGeneratorContext generatorContext, Type returnType, List<RowExpression> arguments)
     {
         Scope scope = generatorContext.getScope();
 

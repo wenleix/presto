@@ -34,10 +34,10 @@ import static io.airlift.bytecode.expression.BytecodeExpressions.constantInt;
 import static io.airlift.bytecode.expression.BytecodeExpressions.constantNull;
 
 public class RowConstructorCodeGenerator
-        implements BytecodeGenerator
+        extends BytecodeGenerator
 {
     @Override
-    public BytecodeNode generateExpression(Signature signature, BytecodeGeneratorContext context, Type rowType, List<RowExpression> arguments)
+    protected BytecodeNode generateExpression(Signature signature, BytecodeGeneratorContext context, Type rowType, List<RowExpression> arguments)
     {
         BytecodeBlock block = new BytecodeBlock().setDescription("Constructor for " + rowType.toString());
         CallSiteBinder binder = context.getCallSiteBinder();

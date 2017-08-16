@@ -59,7 +59,7 @@ import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
 public class InCodeGenerator
-        implements BytecodeGenerator
+        extends BytecodeGenerator
 {
     private final FunctionRegistry registry;
 
@@ -108,7 +108,7 @@ public class InCodeGenerator
     }
 
     @Override
-    public BytecodeNode generateExpression(Signature signature, BytecodeGeneratorContext generatorContext, Type returnType, List<RowExpression> arguments)
+    protected BytecodeNode generateExpression(Signature signature, BytecodeGeneratorContext generatorContext, Type returnType, List<RowExpression> arguments)
     {
         List<RowExpression> values = arguments.subList(1, arguments.size());
         // empty IN statements are not allowed by the standard, and not possible here
