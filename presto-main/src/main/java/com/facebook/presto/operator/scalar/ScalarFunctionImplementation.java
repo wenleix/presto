@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.operator.scalar;
 
+import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 
 import java.lang.invoke.MethodHandle;
@@ -149,5 +150,18 @@ public final class ScalarFunctionImplementation
     public boolean isDeterministic()
     {
         return deterministic;
+    }
+
+
+    public static class OutputDescription
+    {
+        private final boolean nullable;
+        private final Type outputType;
+        private final ReturnConvention returnConvention;
+    }
+
+    enum ReturnConvention {
+        RETURN_ON_STACK,
+        WRITE_TO_BLOCK_BUILDER
     }
 }
