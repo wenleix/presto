@@ -59,6 +59,7 @@ public class RowExpressionCompiler
 {
     private final CallSiteBinder callSiteBinder;
     private final CachedInstanceBinder cachedInstanceBinder;
+    private final InvocationAdapter invocationAdapter;
     private final RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler;
     private final FunctionRegistry registry;
     private final PreGeneratedExpressions preGeneratedExpressions;
@@ -66,12 +67,14 @@ public class RowExpressionCompiler
     RowExpressionCompiler(
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler,
             FunctionRegistry registry,
             PreGeneratedExpressions preGeneratedExpressions)
     {
         this.callSiteBinder = callSiteBinder;
         this.cachedInstanceBinder = cachedInstanceBinder;
+        this.invocationAdapter = invocationAdapter;
         this.fieldReferenceCompiler = fieldReferenceCompiler;
         this.registry = registry;
         this.preGeneratedExpressions = preGeneratedExpressions;
@@ -153,6 +156,7 @@ public class RowExpressionCompiler
                     context.getScope(),
                     callSiteBinder,
                     cachedInstanceBinder,
+                    invocationAdapter,
                     registry,
                     preGeneratedExpressions);
 
@@ -236,6 +240,7 @@ public class RowExpressionCompiler
                     context.getScope(),
                     callSiteBinder,
                     cachedInstanceBinder,
+                    invocationAdapter,
                     registry,
                     preGeneratedExpressions);
 

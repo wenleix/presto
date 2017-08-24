@@ -20,6 +20,7 @@ import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.operator.ParametricImplementation;
 import com.facebook.presto.operator.annotations.FunctionsParserHelper;
 import com.facebook.presto.operator.annotations.ImplementationDependency;
+import com.facebook.presto.operator.scalar.MapToMapCast;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.function.IsNull;
 import com.facebook.presto.spi.function.SqlNullable;
@@ -465,6 +466,9 @@ public class ScalarImplementation
 
         public static ScalarImplementation parseImplementation(String functionName, Method method, Map<Set<TypeParameter>, Constructor<?>> constructors)
         {
+            if (functionName.equals("$operator$CAST") && method.getName() == "toMap") {
+                System.err.println("interesting!!!");
+            }
             return new Parser(functionName, method, constructors).get();
         }
     }

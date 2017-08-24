@@ -32,6 +32,7 @@ import com.facebook.presto.sql.gen.ArrayGeneratorUtils;
 import com.facebook.presto.sql.gen.ArrayMapBytecodeExpression;
 import com.facebook.presto.sql.gen.CachedInstanceBinder;
 import com.facebook.presto.sql.gen.CallSiteBinder;
+import com.facebook.presto.sql.gen.InvocationAdapter;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
@@ -109,7 +110,8 @@ public class ArrayToArrayCast
         Type fromElementType = typeManager.getType(elementCastSignature.getArgumentTypes().get(0));
         Type toElementType = typeManager.getType(elementCastSignature.getReturnType());
         CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition, binder);
-        ArrayMapBytecodeExpression newArray = ArrayGeneratorUtils.map(scope, cachedInstanceBinder, fromElementType, toElementType, value, elementCastSignature.getName(), elementCast);
+        InvocationAdapter invocationAdapter = new InvocationAdapter(definition, binder);
+        ArrayMapBytecodeExpression newArray = ArrayGeneratorUtils.map(scope, cachedInstanceBinder, invocationAdapter, fromElementType, toElementType, value, elementCastSignature.getName(), elementCast);
 
         // return the block
         body.append(newArray.ret());
@@ -121,6 +123,7 @@ public class ArrayToArrayCast
                 .append(thisVariable)
                 .invokeConstructor(Object.class);
         cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
+        invocationAdapter.generateInitializations(thisVariable, constructorBody);
         constructorBody.ret();
 
         return defineClass(definition, Object.class, binder.getBindings(), ArrayToArrayCast.class.getClassLoader());

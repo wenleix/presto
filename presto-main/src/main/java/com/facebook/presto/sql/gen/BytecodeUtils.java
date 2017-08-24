@@ -27,6 +27,7 @@ import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.gen.InvocationAdapter.AdaptedScalarFunction;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -182,6 +183,7 @@ public final class BytecodeUtils
 
     public static BytecodeNode generateInvocation(
             CallSiteBinder binder,
+            InvocationAdapter invocationAdapter,
             Scope scope,
             String name,
             ScalarFunctionImplementation function,
@@ -190,6 +192,7 @@ public final class BytecodeUtils
     {
         return generateInvocation(
                 binder,
+                invocationAdapter,
                 scope,
                 name,
                 function,
@@ -201,6 +204,7 @@ public final class BytecodeUtils
 
     public static BytecodeNode generateInvocation(
             CallSiteBinder binder,
+            InvocationAdapter invocationAdapter,
             Scope scope,
             String name,
             ScalarFunctionImplementation function,
@@ -217,27 +221,11 @@ public final class BytecodeUtils
                 .setDescription("invoke " + name);
 
         List<Class<?>> stackTypes = new ArrayList<>();
-        block.append(loadConstant(binder.bind(function.getMethodHandle(), MethodHandle.class)));
+        AdaptedScalarFunction adaptedFunction = invocationAdapter.getAdaptedScalarFunction(name, function, outputBlock.isPresent(), outputType);
+        block.append(scope.getThis().getField(adaptedFunction.getField()));
         stackTypes.add(MethodHandle.class);
 
-        boolean sliceOutputBlockLastValueOnStack = false;
-        if (function.isWriteToOutputBlock() && !outputBlock.isPresent()) {
-            // bridge mode
-            // TODO: reuse the same PageBuilder across different calls
-            sliceOutputBlockLastValueOnStack = true;
-            Variable tempOutputBlock = scope.createTempVariable(BlockBuilder.class);
-            block.append(new BytecodeBlock()
-                    .setDescription("create temp block builder")
-                    .append(tempOutputBlock.set(
-                            constantType(binder, outputType.get()).invoke(
-                                    "createBlockBuilder",
-                                    BlockBuilder.class,
-                                    newInstance(BlockBuilderStatus.class),
-                                    constantInt(1)))));
-            outputBlock = Optional.of(tempOutputBlock);
-        }
-
-        MethodType methodType = function.getMethodHandle().type();
+        MethodType methodType = adaptedFunction.getAdaptedMethodType();
         Class<?> returnType = methodType.returnType();
         Class<?> unboxedReturnType = Primitives.unwrap(returnType);
 
@@ -248,10 +236,10 @@ public final class BytecodeUtils
 
         // Index of current parameter in the MethodHandle
         int currentParameterIndex = 0;
-        if (function.isWriteToOutputBlock()) {
-            checkState(outputBlock.isPresent());
+        if (outputBlock.isPresent()) {
             block.append(outputBlock.get());
             Class<?> type = methodType.parameterArray()[currentParameterIndex];
+            checkState(type == BlockBuilder.class);
             stackTypes.add(type);
             currentParameterIndex++;
         }
@@ -275,7 +263,7 @@ public final class BytecodeUtils
                 block.append(arguments.get(realParameterIndex));
                 if (!function.getNullableArguments().get(realParameterIndex)) {
                     checkArgument(!Primitives.isWrapperType(type), "Non-nullable argument must not be primitive wrapper type");
-                    if (function.isWriteToOutputBlock()) {
+                    if (outputBlock.isPresent()) {
                         block.append(ifWasNullPopAppendAndGoto(scope, end, unboxedReturnType, Lists.reverse(stackTypes), outputBlock.get()));
                     }
                     else {
@@ -302,43 +290,10 @@ public final class BytecodeUtils
         }
         block.invokeVirtual(stackTypes.get(0), "invokeExact", returnType, stackTypes.subList(1, stackTypes.size()));
 
-        if (function.isNullable() && !function.isWriteToOutputBlock()) {
+        if (function.isNullable() && !outputBlock.isPresent()) {
             block.append(unboxPrimitiveIfNecessary(scope, returnType));
         }
         block.visitLabel(end);
-
-        if (!function.isWriteToOutputBlock() && outputBlock.isPresent()) {
-            //  result is on the stack, append it to the output BlockBuilder
-            block.append(generateWrite(binder, scope, scope.getVariable("wasNull"), outputType.get(), outputBlock.get()));
-        }
-
-        if (sliceOutputBlockLastValueOnStack) {
-            Class<?> valueJavaType = outputType.get().getJavaType();
-            if (!valueJavaType.isPrimitive() && valueJavaType != Slice.class) {
-                valueJavaType = Object.class;
-            }
-            String methodName = "get" + Primitives.wrap(valueJavaType).getSimpleName();
-
-            block.append(new BytecodeBlock()
-                    .setDescription("slice the result on stack")
-                    .comment("if outputBlock.isNull(outputBlock.getPositionCount() - 1)")
-                    .append(new IfStatement()
-                            .condition(outputBlock.get().invoke("isNull", boolean.class, subtract(outputBlock.get().invoke("getPositionCount", int.class), constantInt(1))))
-                            .ifTrue(new BytecodeBlock()
-                                    .comment("loadJavaDefault(%s); wasNull = true", outputType.get().getJavaType().getName())
-                                    .pushJavaDefault(outputType.get().getJavaType())
-                                    .append(scope.getVariable("wasNull").set(constantTrue())))
-                            .ifFalse(new BytecodeBlock()
-                                    .comment("%s.%s(outputBlock.getPositionCount() - 1)", outputType.get().getTypeSignature(), methodName)
-                                    .append(constantType(binder, outputType.get())
-                                            .invoke(
-                                                    methodName,
-                                                    valueJavaType,
-                                                    outputBlock.get().cast(Block.class),
-                                                    subtract(outputBlock.get().invoke("getPositionCount", int.class), constantInt(1)))
-                                            .cast(outputType.get().getJavaType())))));
-        }
-
         return block;
     }
 

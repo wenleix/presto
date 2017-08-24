@@ -37,6 +37,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.gen.CachedInstanceBinder;
 import com.facebook.presto.sql.gen.CallSiteBinder;
+import com.facebook.presto.sql.gen.InvocationAdapter;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.hash.Hashing;
@@ -124,6 +125,7 @@ public class RowToRowCast
         body.append(wasNull.set(constantBoolean(false)));
 
         CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition, binder);
+        InvocationAdapter invocationAdapter = new InvocationAdapter(definition, binder);
 
         // create the interleave block builder
         body.newObject(InterleavedBlockBuilder.class)
@@ -147,7 +149,7 @@ public class RowToRowCast
                 continue;
             }
             BytecodeExpression fromElement = constantType(binder, currentFromType).getValue(value, constantInt(i));
-            BytecodeExpression toElement = invokeFunction(scope, cachedInstanceBinder, signature.getName(), function, fromElement);
+            BytecodeExpression toElement = invokeFunction(scope, cachedInstanceBinder, invocationAdapter, signature.getName(), function, fromElement);
             IfStatement ifElementNull = new IfStatement("if the element in the row type is null...");
 
             ifElementNull.condition(value.invoke("isNull", boolean.class, constantInt(i)))
@@ -169,6 +171,7 @@ public class RowToRowCast
                 .append(thisVariable)
                 .invokeConstructor(Object.class);
         cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
+        invocationAdapter.generateInitializations(thisVariable, constructorBody);
         constructorBody.ret();
 
         return defineClass(definition, Object.class, binder.getBindings(), RowToRowCast.class.getClassLoader());

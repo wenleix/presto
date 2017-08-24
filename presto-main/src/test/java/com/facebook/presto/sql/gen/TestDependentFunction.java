@@ -20,6 +20,7 @@ import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.SqlScalarFunction;
 import com.facebook.presto.operator.scalar.AbstractTestFunctions;
 import com.facebook.presto.operator.scalar.ScalarFunctionImplementation;
+import com.facebook.presto.operator.scalar.ScalarFunctionImplementation.DependentFunctionInfo;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
@@ -35,6 +36,7 @@ import org.testng.annotations.Test;
 import java.lang.invoke.MethodHandle;
 import java.util.Optional;
 
+import static com.facebook.presto.metadata.Signature.internalScalarFunction;
 import static com.facebook.presto.metadata.Signature.typeVariable;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
@@ -42,6 +44,7 @@ import static com.facebook.presto.spi.type.IntegerType.INTEGER;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
+import static com.facebook.presto.sql.gen.TestDependentFunction.TestIdentity2.IDENTITY2;
 import static com.facebook.presto.sql.gen.TestWriteToOutputBlock.TestIdentity.IDENTITY;
 import static com.facebook.presto.sql.gen.TestWriteToOutputBlock.TestNullSwitch.NULL_SWITCH;
 import static com.facebook.presto.util.Reflection.methodHandle;
@@ -49,23 +52,23 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.slice.Slices.utf8Slice;
 
-public class TestWriteToOutputBlock
+public class TestDependentFunction
         extends AbstractTestFunctions
 {
     @BeforeClass
     public void setUp()
     {
         registerScalarFunction(IDENTITY);
-        registerScalarFunction(NULL_SWITCH);
+        registerScalarFunction(IDENTITY2);
     }
 
     @Test
     public void test()
             throws Exception
     {
+        assertFunction("identity2(123)", INTEGER, 123);
+        assertFunction("identity2(identity2(123))", INTEGER, 123);
         assertFunction("identity(CAST(null AS INTEGER))", INTEGER, null);
-        assertFunction("identity(identity(123))", INTEGER, 123);
-        assertFunction("identity(123)", INTEGER, 123);
         assertFunction("identity(identity(CAST(null AS INTEGER)))", INTEGER, null);
 
         assertFunction("identity(123.4)", DOUBLE, 123.4);
@@ -88,30 +91,6 @@ public class TestWriteToOutputBlock
         assertFunction("identity(CAST(null AS ARRAY<INTEGER>))", new ArrayType(INTEGER), null);
         assertFunction("identity(identity(CAST(null AS ARRAY<INTEGER>)))", new ArrayType(INTEGER), null);
 
-        assertFunction("null_switch(123)", INTEGER, null);
-        assertFunction("null_switch(null_switch(123))", INTEGER, 123);
-        assertFunction("null_switch(CAST(null AS INTEGER))", INTEGER, 123);
-        assertFunction("null_switch(null_switch(CAST(null AS INTEGER)))", INTEGER, null);
-
-        assertFunction("null_switch(123.4)", DOUBLE, null);
-        assertFunction("null_switch(null_switch(123.4))", DOUBLE, 123.4);
-        assertFunction("null_switch(CAST(null AS DOUBLE))", DOUBLE, 123.4);
-        assertFunction("null_switch(null_switch(CAST(null AS DOUBLE)))", DOUBLE, null);
-
-        assertFunction("null_switch(true)", BOOLEAN, null);
-        assertFunction("null_switch(null_switch(true))", BOOLEAN, true);
-        assertFunction("null_switch(CAST(null AS BOOLEAN))", BOOLEAN, true);
-        assertFunction("null_switch(null_switch(CAST(null AS BOOLEAN)))", BOOLEAN, null);
-
-        assertFunction("null_switch('abc')", VarcharType.createVarcharType(3), null);
-        assertFunction("null_switch(null_switch('abc'))", createVarcharType(3), "abc");
-        assertFunction("null_switch(CAST(null AS VARCHAR))", VARCHAR, "abc");
-        assertFunction("null_switch(null_switch(CAST(null AS VARCHAR)))", VARCHAR, null);
-
-        assertFunction("null_switch(ARRAY[1,2,3])", new ArrayType(INTEGER), null);
-        assertFunction("null_switch(null_switch(ARRAY[1,2,3]))", new ArrayType(INTEGER), ImmutableList.of(1, 2, 3));
-        assertFunction("null_switch(CAST(null AS ARRAY<INTEGER>))", new ArrayType(INTEGER), ImmutableList.of(1, 2, 3));
-        assertFunction("null_switch(null_switch(CAST(null AS ARRAY<INTEGER>)))", new ArrayType(INTEGER), null);
     }
 
     public static class TestIdentity
@@ -216,20 +195,22 @@ public class TestWriteToOutputBlock
         }
     }
 
-    public static class TestNullSwitch
+    public static class TestIdentity2
             extends SqlScalarFunction
     {
-        public static final TestNullSwitch NULL_SWITCH = new TestNullSwitch();
-        private static final MethodHandle METHOD_HANDLE_LONG = methodHandle(TestNullSwitch.class, "nullSwitchLong", Type.class, BlockBuilder.class, long.class, boolean.class);
-        private static final MethodHandle METHOD_HANDLE_DOUBLE = methodHandle(TestNullSwitch.class, "nullSwitchDouble", Type.class, BlockBuilder.class, double.class, boolean.class);
-        private static final MethodHandle METHOD_HANDLE_BOOLEAN = methodHandle(TestNullSwitch.class, "nullSwitchBoolean", Type.class, BlockBuilder.class, boolean.class, boolean.class);
-        private static final MethodHandle METHOD_HANDLE_SLICE = methodHandle(TestNullSwitch.class, "nullSwitchSlice", Type.class, BlockBuilder.class, Slice.class, boolean.class);
-        private static final MethodHandle METHOD_HANDLE_BLOCK = methodHandle(TestNullSwitch.class, "nullSwitchBlock", Type.class, BlockBuilder.class, Block.class, boolean.class);
+        public static final TestIdentity2 IDENTITY2 = new TestIdentity2();
 
-        private TestNullSwitch()
+        private static final MethodHandle METHOD_HANDLE_LONG = methodHandle(TestIdentity.class, "identityLong", Type.class, BlockBuilder.class, long.class);
+        private static final MethodHandle METHOD_HANDLE_DOUBLE = methodHandle(TestIdentity.class, "identityDouble", Type.class, BlockBuilder.class, double.class);
+        private static final MethodHandle METHOD_HANDLE_BOOLEAN = methodHandle(TestIdentity.class, "identityBoolean", Type.class, BlockBuilder.class, boolean.class);
+        private static final MethodHandle METHOD_HANDLE_SLICE = methodHandle(TestIdentity.class, "identitySlice", Type.class, BlockBuilder.class, Slice.class);
+        private static final MethodHandle METHOD_HANDLE_BLOCK = methodHandle(TestIdentity.class, "identityBlock", Type.class, BlockBuilder.class, Block.class);
+
+
+        private TestIdentity2()
         {
             super(new Signature(
-                    "null_switch",
+                    "identity2",
                     FunctionKind.SCALAR,
                     ImmutableList.of(typeVariable("T")),
                     ImmutableList.of(),
@@ -253,7 +234,7 @@ public class TestWriteToOutputBlock
         @Override
         public String getDescription()
         {
-            return "switch between null and predefined value";
+            return "return the same value";
         }
 
         @Override
@@ -261,93 +242,50 @@ public class TestWriteToOutputBlock
         {
             Type type = boundVariables.getTypeVariable("T");
             MethodHandle methodHandle = null;
-            if (type.getJavaType() == long.class) {
-                methodHandle = METHOD_HANDLE_LONG.bindTo(type);
-            }
-            else if (type.getJavaType() == double.class) {
-                methodHandle = METHOD_HANDLE_DOUBLE.bindTo(type);
-            }
-            else if (type.getJavaType() == boolean.class) {
-                methodHandle = METHOD_HANDLE_BOOLEAN.bindTo(type);
-            }
-            else if (type.getJavaType() == Slice.class) {
-                methodHandle = METHOD_HANDLE_SLICE.bindTo(type);
-            }
-            else if (type.getJavaType() == Block.class) {
-                methodHandle = METHOD_HANDLE_BLOCK.bindTo(type);
-            }
-            else {
-                checkState(false);
-            }
+
+            Signature dependentSignature = internalScalarFunction("identity", type.getTypeSignature(), type.getTypeSignature());
+            ScalarFunctionImplementation dependentFunctionImplementation = functionRegistry.getScalarFunctionImplementation(dependentSignature);
 
             return new ScalarFunctionImplementation(
-                    true,
-                    ImmutableList.of(true),
-                    ImmutableList.of(true),
+                    false,
+                    ImmutableList.of(false),
+                    ImmutableList.of(false),
                     ImmutableList.of(Optional.empty()),
                     methodHandle,
                     Optional.empty(),
                     true,
-                    ImmutableList.of(),
+                    ImmutableList.of(new DependentFunctionInfo("identity", dependentFunctionImplementation, type)),
                     isDeterministic());
         }
 
-        public static void nullSwitchLong(Type type, BlockBuilder outputBlock, long value, boolean isNull)
+        public static long identityLong(MethodHandle identity, long value)
+                throws Throwable
         {
-            if (isNull) {
-                type.writeLong(outputBlock, 123);
-            }
-            else {
-                outputBlock.appendNull();
-            }
+            return (long) identity.invokeExact(value);
         }
 
-        public static void nullSwitchDouble(Type type, BlockBuilder outputBlock, double value, boolean isNull)
+        public static double identityDouble(MethodHandle identity, double value)
+                throws Throwable
         {
-            if (isNull) {
-                type.writeDouble(outputBlock, 123.4);
-            }
-            else {
-                outputBlock.appendNull();
-            }
+            return (double) identity.invokeExact(value);
+    }
+
+        public static boolean identityBoolean(MethodHandle identity, boolean value)
+                throws Throwable
+        {
+            return (boolean) identity.invokeExact(value);
         }
 
-        public static void nullSwitchBoolean(Type type, BlockBuilder outputBlock, boolean value, boolean isNull)
+        public static Slice identitySlice(MethodHandle identity, Slice value)
+                throws Throwable
         {
-            if (isNull) {
-                type.writeBoolean(outputBlock, true);
-            }
-            else {
-                outputBlock.appendNull();
-            }
+            return (Slice) identity.invokeExact(value);
         }
 
-        public static void nullSwitchSlice(Type type, BlockBuilder outputBlock, Slice value, boolean isNull)
+        public static Block identityBlock(MethodHandle identity, Block value)
+                throws Throwable
         {
-            if (isNull) {
-                type.writeSlice(outputBlock, utf8Slice("abc"));
-            }
-            else {
-                outputBlock.appendNull();
-            }
-        }
-
-        public static void nullSwitchBlock(Type type, BlockBuilder outputBlock, Block value, boolean isNull)
-        {
-            checkArgument(type.equals(new ArrayType(INTEGER)));
-
-            if (isNull) {
-                BlockBuilder blockBuilder = type.createBlockBuilder(new BlockBuilderStatus(), 1);
-                BlockBuilder entryBuilder = blockBuilder.beginBlockEntry();
-                INTEGER.writeLong(entryBuilder, 1);
-                INTEGER.writeLong(entryBuilder, 2);
-                INTEGER.writeLong(entryBuilder, 3);
-                blockBuilder.closeEntry();
-                type.writeObject(outputBlock, type.getObject(blockBuilder, 0));
-            }
-            else {
-                outputBlock.appendNull();
-            }
+            return (Block) identity.invokeExact(value);
         }
     }
 }

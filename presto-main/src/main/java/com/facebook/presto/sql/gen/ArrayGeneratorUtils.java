@@ -29,7 +29,7 @@ public final class ArrayGeneratorUtils
     {
     }
 
-    public static ArrayMapBytecodeExpression map(Scope scope, CachedInstanceBinder cachedInstanceBinder, Type fromElementType, Type toElementType, Variable array, String elementFunctionName, ScalarFunctionImplementation elementFunction)
+    public static ArrayMapBytecodeExpression map(Scope scope, CachedInstanceBinder cachedInstanceBinder, InvocationAdapter invocationAdapter, Type fromElementType, Type toElementType, Variable array, String elementFunctionName, ScalarFunctionImplementation elementFunction)
     {
         return map(
                 scope,
@@ -37,7 +37,7 @@ public final class ArrayGeneratorUtils
                 fromElementType,
                 toElementType,
                 array,
-                element -> invokeFunction(scope, cachedInstanceBinder, elementFunctionName, elementFunction, element));
+                element -> invokeFunction(scope, cachedInstanceBinder, invocationAdapter, elementFunctionName, elementFunction, element));
     }
 
     public static ArrayMapBytecodeExpression map(

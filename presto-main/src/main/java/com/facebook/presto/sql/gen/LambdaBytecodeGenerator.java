@@ -91,6 +91,7 @@ public class LambdaBytecodeGenerator
             PreGeneratedExpressions preGeneratedExpressions,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             FunctionRegistry functionRegistry)
     {
         ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
@@ -108,6 +109,7 @@ public class LambdaBytecodeGenerator
         RowExpressionCompiler innerExpressionCompiler = new RowExpressionCompiler(
                 callSiteBinder,
                 cachedInstanceBinder,
+                invocationAdapter,
                 variableReferenceCompiler(parameterMapBuilder.build()),
                 functionRegistry,
                 preGeneratedExpressions);

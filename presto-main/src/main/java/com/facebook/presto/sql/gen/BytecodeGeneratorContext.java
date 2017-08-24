@@ -35,6 +35,7 @@ public class BytecodeGeneratorContext
     private final Scope scope;
     private final CallSiteBinder callSiteBinder;
     private final CachedInstanceBinder cachedInstanceBinder;
+    private final InvocationAdapter invocationAdapter;
     private final FunctionRegistry registry;
     private final PreGeneratedExpressions preGeneratedExpressions;
     private final Variable wasNull;
@@ -44,6 +45,7 @@ public class BytecodeGeneratorContext
             Scope scope,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             FunctionRegistry registry,
             PreGeneratedExpressions preGeneratedExpressions)
     {
@@ -57,6 +59,7 @@ public class BytecodeGeneratorContext
         this.scope = scope;
         this.callSiteBinder = callSiteBinder;
         this.cachedInstanceBinder = cachedInstanceBinder;
+        this.invocationAdapter = invocationAdapter;
         this.registry = registry;
         this.preGeneratedExpressions = preGeneratedExpressions;
         this.wasNull = scope.getVariable("wasNull");
@@ -111,7 +114,7 @@ public class BytecodeGeneratorContext
             FieldDefinition field = cachedInstanceBinder.getCachedInstance(function.getInstanceFactory().get());
             instance = Optional.of(scope.getThis().getField(field));
         }
-        return generateInvocation(callSiteBinder, scope, name, function, instance, arguments, outputBlock, outputType);
+        return generateInvocation(callSiteBinder, invocationAdapter, scope, name, function, instance, arguments, outputBlock, outputType);
     }
 
     public Variable wasNull()

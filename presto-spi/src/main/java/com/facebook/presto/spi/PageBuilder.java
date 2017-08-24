@@ -26,6 +26,7 @@ import java.util.stream.Stream;
 
 import static com.facebook.presto.spi.block.BlockBuilderStatus.DEFAULT_MAX_BLOCK_SIZE_IN_BYTES;
 import static com.facebook.presto.spi.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
+import static java.util.Arrays.asList;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Objects.requireNonNull;
 
@@ -35,6 +36,11 @@ public class PageBuilder
     private final List<Type> types;
     private PageBuilderStatus pageBuilderStatus;
     private int declaredPositions;
+
+    public PageBuilder(Type type)
+    {
+        this(Integer.MAX_VALUE, asList(type));
+    }
 
     public PageBuilder(List<? extends Type> types)
     {

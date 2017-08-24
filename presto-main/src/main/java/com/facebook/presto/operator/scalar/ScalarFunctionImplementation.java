@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.operator.scalar;
 
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 
 import java.lang.invoke.MethodHandle;
@@ -34,6 +36,7 @@ public final class ScalarFunctionImplementation
     private final MethodHandle methodHandle;
     private final Optional<MethodHandle> instanceFactory;
     private final boolean writeToOutputBlock;
+    private final List<DependentFunctionInfo> dependentFunctionInfos;
     private final boolean deterministic;
 
     public ScalarFunctionImplementation(boolean nullable, List<Boolean> nullableArguments, MethodHandle methodHandle, boolean deterministic)
@@ -46,6 +49,7 @@ public final class ScalarFunctionImplementation
                 methodHandle,
                 Optional.empty(),
                 false,
+                ImmutableList.of(),
                 deterministic);
     }
 
@@ -59,6 +63,7 @@ public final class ScalarFunctionImplementation
                 methodHandle,
                 Optional.empty(),
                 false,
+                ImmutableList.of(),
                 deterministic);
     }
 
@@ -78,6 +83,7 @@ public final class ScalarFunctionImplementation
                 methodHandle,
                 Optional.empty(),
                 false,
+                ImmutableList.of(),
                 deterministic);
     }
 
@@ -98,6 +104,7 @@ public final class ScalarFunctionImplementation
                 methodHandle,
                 instanceFactory,
                 false,
+                ImmutableList.of(),
                 deterministic);
     }
 
@@ -109,6 +116,7 @@ public final class ScalarFunctionImplementation
             MethodHandle methodHandle,
             Optional<MethodHandle> instanceFactory,
             boolean writeToOutputBlock,
+            List<DependentFunctionInfo> dependentFunctionInfos,
             boolean deterministic)
     {
         this.nullable = nullable;
@@ -118,6 +126,7 @@ public final class ScalarFunctionImplementation
         this.methodHandle = requireNonNull(methodHandle, "methodHandle is null");
         this.instanceFactory = requireNonNull(instanceFactory, "instanceFactory is null");
         this.writeToOutputBlock = writeToOutputBlock;
+        this.dependentFunctionInfos = dependentFunctionInfos;
         this.deterministic = deterministic;
 
         if (instanceFactory.isPresent()) {
@@ -177,8 +186,43 @@ public final class ScalarFunctionImplementation
         return writeToOutputBlock;
     }
 
+    public List<DependentFunctionInfo> getDependentFunctionInfos()
+    {
+        return dependentFunctionInfos;
+    }
+
     public boolean isDeterministic()
     {
         return deterministic;
+    }
+
+    public static class DependentFunctionInfo
+    {
+        private String name;
+        private ScalarFunctionImplementation implementation;
+        private Type outputType;
+
+        public DependentFunctionInfo(String name, ScalarFunctionImplementation implementation, Type outputType)
+        {
+            // TODO: Add checkNull
+            this.name = name;
+            this.implementation = implementation;
+            this.outputType = outputType;
+        }
+
+        public String getName()
+        {
+            return name;
+        }
+
+        public ScalarFunctionImplementation getImplementation()
+        {
+            return implementation;
+        }
+
+        public Type getOutputType()
+        {
+            return outputType;
+        }
     }
 }

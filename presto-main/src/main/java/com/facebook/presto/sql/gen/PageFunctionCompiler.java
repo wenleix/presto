@@ -231,11 +231,12 @@ public class PageFunctionCompiler
         FieldDefinition blockBuilderField = classDefinition.declareField(a(PRIVATE), "blockBuilder", BlockBuilder.class);
 
         CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition, callSiteBinder);
+        InvocationAdapter invocationAdapter = new InvocationAdapter(classDefinition, callSiteBinder);
 
         generatePageProjectMethod(classDefinition, blockBuilderField);
 
-        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, projection);
-        generateProjectMethod(classDefinition, callSiteBinder, cachedInstanceBinder, preGeneratedExpressions, projection, blockBuilderField);
+        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, projection);
+        generateProjectMethod(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, preGeneratedExpressions, projection, blockBuilderField);
 
         // getType
         BytecodeExpression type = invoke(callSiteBinder.bind(projection.getType(), Type.class), "type");
@@ -264,7 +265,7 @@ public class PageFunctionCompiler
                 .append(invoke(callSiteBinder.bind(toStringResult, String.class), "toString").ret());
 
         // constructor
-        generateConstructor(classDefinition, cachedInstanceBinder, preGeneratedExpressions, method -> {
+        generateConstructor(classDefinition, cachedInstanceBinder, invocationAdapter, preGeneratedExpressions, method -> {
             Variable thisVariable = method.getThis();
             BytecodeBlock body = method.getBody();
             body.append(thisVariable.setField(
@@ -334,6 +335,7 @@ public class PageFunctionCompiler
             ClassDefinition classDefinition,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             PreGeneratedExpressions preGeneratedExpressions,
             RowExpression projection,
             FieldDefinition blockBuilder)
@@ -364,6 +366,7 @@ public class PageFunctionCompiler
         RowExpressionCompiler compiler = new RowExpressionCompiler(
                 callSiteBinder,
                 cachedInstanceBinder,
+                invocationAdapter,
                 fieldReferenceCompiler(callSiteBinder),
                 metadata.getFunctionRegistry(),
                 preGeneratedExpressions);
@@ -426,9 +429,10 @@ public class PageFunctionCompiler
                 type(PageFilter.class));
 
         CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition, callSiteBinder);
+        InvocationAdapter invocationAdapter = new InvocationAdapter(classDefinition, callSiteBinder);
 
-        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, filter);
-        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, preGeneratedExpressions, filter);
+        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, filter);
+        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, preGeneratedExpressions, filter);
 
         FieldDefinition selectedPositions = classDefinition.declareField(a(PRIVATE), "selectedPositions", boolean[].class);
         generatePageFilterMethod(classDefinition, selectedPositions);
@@ -457,7 +461,7 @@ public class PageFunctionCompiler
                 .retObject();
 
         // constructor
-        generateConstructor(classDefinition, cachedInstanceBinder, preGeneratedExpressions, method -> {
+        generateConstructor(classDefinition, cachedInstanceBinder, invocationAdapter, preGeneratedExpressions, method -> {
             Variable thisVariable = method.getScope().getThis();
             method.getBody().append(thisVariable.setField(selectedPositions, newArray(type(boolean[].class), 0)));
         });
@@ -512,6 +516,7 @@ public class PageFunctionCompiler
             ClassDefinition classDefinition,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             PreGeneratedExpressions preGeneratedExpressions,
             RowExpression filter)
     {
@@ -540,6 +545,7 @@ public class PageFunctionCompiler
         RowExpressionCompiler compiler = new RowExpressionCompiler(
                 callSiteBinder,
                 cachedInstanceBinder,
+                invocationAdapter,
                 fieldReferenceCompiler(callSiteBinder),
                 metadata.getFunctionRegistry(),
                 preGeneratedExpressions);
@@ -556,6 +562,7 @@ public class PageFunctionCompiler
             ClassDefinition containerClassDefinition,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             RowExpression expression)
     {
         Set<RowExpression> lambdaAndTryExpressions = ImmutableSet.copyOf(extractLambdaAndTryExpressions(expression));
@@ -575,6 +582,7 @@ public class PageFunctionCompiler
                 RowExpressionCompiler innerExpressionCompiler = new RowExpressionCompiler(
                         callSiteBinder,
                         cachedInstanceBinder,
+                        invocationAdapter,
                         fieldReferenceCompiler(callSiteBinder),
                         metadata.getFunctionRegistry(),
                         new PreGeneratedExpressions(tryMethodMap.build(), compiledLambdaMap.build()));
@@ -606,6 +614,7 @@ public class PageFunctionCompiler
                         preGeneratedExpressions,
                         callSiteBinder,
                         cachedInstanceBinder,
+                        invocationAdapter,
                         metadata.getFunctionRegistry());
                 compiledLambdaMap.put(lambdaExpression, compiledLambda);
             }
@@ -621,6 +630,7 @@ public class PageFunctionCompiler
     private static void generateConstructor(
             ClassDefinition classDefinition,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             PreGeneratedExpressions preGeneratedExpressions,
             Consumer<MethodDefinition> additionalStatements)
     {
@@ -636,6 +646,7 @@ public class PageFunctionCompiler
         additionalStatements.accept(constructorDefinition);
 
         cachedInstanceBinder.generateInitializations(thisVariable, body);
+        invocationAdapter.generateInitializations(thisVariable, body);
         for (CompiledLambda compiledLambda : preGeneratedExpressions.getCompiledLambdaMap().values()) {
             compiledLambda.generateInitialization(thisVariable, body);
         }

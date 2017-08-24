@@ -144,19 +144,21 @@ public class JoinFilterFunctionCompiler
     private void generateMethods(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, RowExpression filter, int leftBlocksSize)
     {
         CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition, callSiteBinder);
+        InvocationAdapter invocationAdapter = new InvocationAdapter(classDefinition, callSiteBinder);
 
         FieldDefinition sessionField = classDefinition.declareField(a(PRIVATE, FINAL), "session", ConnectorSession.class);
 
-        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, leftBlocksSize, filter);
-        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, preGeneratedExpressions, filter, leftBlocksSize, sessionField);
+        PreGeneratedExpressions preGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, leftBlocksSize, filter);
+        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, preGeneratedExpressions, filter, leftBlocksSize, sessionField);
 
-        generateConstructor(classDefinition, sessionField, cachedInstanceBinder, preGeneratedExpressions);
+        generateConstructor(classDefinition, sessionField, cachedInstanceBinder, invocationAdapter, preGeneratedExpressions);
     }
 
     private static void generateConstructor(
             ClassDefinition classDefinition,
             FieldDefinition sessionField,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             PreGeneratedExpressions preGeneratedExpressions)
     {
         Parameter sessionParameter = arg("session", ConnectorSession.class);
@@ -171,6 +173,7 @@ public class JoinFilterFunctionCompiler
 
         body.append(thisVariable.setField(sessionField, sessionParameter));
         cachedInstanceBinder.generateInitializations(thisVariable, body);
+        invocationAdapter.generateInitializations(thisVariable, body);
         for (CompiledLambda compiledLambda : preGeneratedExpressions.getCompiledLambdaMap().values()) {
             compiledLambda.generateInitialization(thisVariable, body);
         }
@@ -181,6 +184,7 @@ public class JoinFilterFunctionCompiler
             ClassDefinition classDefinition,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             PreGeneratedExpressions preGeneratedExpressions,
             RowExpression filter,
             int leftBlocksSize,
@@ -213,6 +217,7 @@ public class JoinFilterFunctionCompiler
         RowExpressionCompiler compiler = new RowExpressionCompiler(
                 callSiteBinder,
                 cachedInstanceBinder,
+                invocationAdapter,
                 fieldReferenceCompiler(callSiteBinder, leftPosition, leftBlocks, rightPosition, rightBlocks, leftBlocksSize),
                 metadata.getFunctionRegistry(),
                 preGeneratedExpressions);
@@ -232,6 +237,7 @@ public class JoinFilterFunctionCompiler
             ClassDefinition containerClassDefinition,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             int leftBlocksSize,
             RowExpression filter)
     {
@@ -254,6 +260,7 @@ public class JoinFilterFunctionCompiler
                 RowExpressionCompiler innerExpressionCompiler = new RowExpressionCompiler(
                         callSiteBinder,
                         cachedInstanceBinder,
+                        invocationAdapter,
                         fieldReferenceCompiler(callSiteBinder, leftPosition, leftBlocks, rightPosition, rightBlocks, leftBlocksSize),
                         metadata.getFunctionRegistry(),
                         new PreGeneratedExpressions(tryMethodMap.build(), compiledLambdaMap.build()));
@@ -287,6 +294,7 @@ public class JoinFilterFunctionCompiler
                         preGeneratedExpressions,
                         callSiteBinder,
                         cachedInstanceBinder,
+                        invocationAdapter,
                         metadata.getFunctionRegistry());
                 compiledLambdaMap.put(lambdaExpression, compiledLambda);
             }

@@ -79,19 +79,20 @@ public class CursorProcessorCompiler
     public void generateMethods(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, RowExpression filter, List<RowExpression> projections)
     {
         CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition, callSiteBinder);
+        InvocationAdapter invocationAdapter = new InvocationAdapter(classDefinition, callSiteBinder);
         List<PreGeneratedExpressions> allPreGeneratedExpressions = new ArrayList<>(projections.size() + 1);
 
         generateProcessMethod(classDefinition, projections.size());
 
-        PreGeneratedExpressions filterPreGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, filter, "filter");
+        PreGeneratedExpressions filterPreGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, filter, "filter");
         allPreGeneratedExpressions.add(filterPreGeneratedExpressions);
-        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, filterPreGeneratedExpressions, filter);
+        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, filterPreGeneratedExpressions, filter);
 
         for (int i = 0; i < projections.size(); i++) {
             String methodName = "project_" + i;
-            PreGeneratedExpressions projectPreGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, projections.get(i), methodName);
+            PreGeneratedExpressions projectPreGeneratedExpressions = generateMethodsForLambdaAndTry(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, projections.get(i), methodName);
             allPreGeneratedExpressions.add(projectPreGeneratedExpressions);
-            generateProjectMethod(classDefinition, callSiteBinder, cachedInstanceBinder, projectPreGeneratedExpressions, methodName, projections.get(i));
+            generateProjectMethod(classDefinition, callSiteBinder, cachedInstanceBinder, invocationAdapter, projectPreGeneratedExpressions, methodName, projections.get(i));
         }
 
         MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC));
@@ -102,6 +103,7 @@ public class CursorProcessorCompiler
                 .invokeConstructor(Object.class);
 
         cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
+        invocationAdapter.generateInitializations(thisVariable, constructorBody);
         for (PreGeneratedExpressions preGeneratedExpressions : allPreGeneratedExpressions) {
             for (CompiledLambda compiledLambda : preGeneratedExpressions.getCompiledLambdaMap().values()) {
                 compiledLambda.generateInitialization(thisVariable, constructorBody);
@@ -207,6 +209,7 @@ public class CursorProcessorCompiler
             ClassDefinition containerClassDefinition,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             RowExpression projection,
             String methodPrefix)
     {
@@ -232,6 +235,7 @@ public class CursorProcessorCompiler
                 RowExpressionCompiler innerExpressionCompiler = new RowExpressionCompiler(
                         callSiteBinder,
                         cachedInstanceBinder,
+                        invocationAdapter,
                         fieldReferenceCompiler(cursor),
                         metadata.getFunctionRegistry(),
                         new PreGeneratedExpressions(tryMethodMap.build(), compiledLambdaMap.build()));
@@ -258,6 +262,7 @@ public class CursorProcessorCompiler
                         preGeneratedExpressions,
                         callSiteBinder,
                         cachedInstanceBinder,
+                        invocationAdapter,
                         metadata.getFunctionRegistry());
                 compiledLambdaMap.put(lambdaExpression, compiledLambda);
             }
@@ -274,6 +279,7 @@ public class CursorProcessorCompiler
             ClassDefinition classDefinition,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             PreGeneratedExpressions preGeneratedExpressions,
             RowExpression filter)
     {
@@ -289,6 +295,7 @@ public class CursorProcessorCompiler
         RowExpressionCompiler compiler = new RowExpressionCompiler(
                 callSiteBinder,
                 cachedInstanceBinder,
+                invocationAdapter,
                 fieldReferenceCompiler(cursor),
                 metadata.getFunctionRegistry(),
                 preGeneratedExpressions);
@@ -312,6 +319,7 @@ public class CursorProcessorCompiler
             ClassDefinition classDefinition,
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
+            InvocationAdapter invocationAdapter,
             PreGeneratedExpressions preGeneratedExpressions,
             String methodName,
             RowExpression projection)
@@ -329,6 +337,7 @@ public class CursorProcessorCompiler
         RowExpressionCompiler compiler = new RowExpressionCompiler(
                 callSiteBinder,
                 cachedInstanceBinder,
+                invocationAdapter,
                 fieldReferenceCompiler(cursor),
                 metadata.getFunctionRegistry(),
                 preGeneratedExpressions);
