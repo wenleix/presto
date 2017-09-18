@@ -13,54 +13,32 @@
  */
 package com.facebook.presto.verifier;
 
-import com.facebook.presto.jdbc.PrestoConnection;
-import com.facebook.presto.jdbc.PrestoStatement;
-import com.facebook.presto.jdbc.QueryStats;
-import com.facebook.presto.spi.type.SqlVarbinary;
 import com.facebook.presto.verifier.Validator.ChangedRow.Changed;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
-import com.google.common.base.Stopwatch;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedMultiset;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Multisets;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.SortedMultiset;
-import com.google.common.util.concurrent.SimpleTimeLimiter;
-import com.google.common.util.concurrent.TimeLimiter;
-import com.google.common.util.concurrent.UncheckedTimeoutException;
 import io.airlift.units.Duration;
 
-import java.math.BigDecimal;
-import java.sql.Array;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLClientInfoException;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static com.facebook.presto.verifier.QueryResult.State;
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.primitives.Doubles.isFinite;
-import static io.airlift.units.Duration.nanosSince;
 import static java.lang.String.format;
-import static java.util.Collections.unmodifiableList;
 import static java.util.Objects.requireNonNull;
 
 public class Validator
@@ -405,150 +383,19 @@ public class Validator
 
     private QueryResult executeQuery(String url, String username, String password, Query query, String sql, Duration timeout, Map<String, String> sessionProperties)
     {
-        String queryId = null;
-        try (Connection connection = DriverManager.getConnection(url, username, password)) {
-            trySetConnectionProperties(query, connection);
-            for (Map.Entry<String, String> entry : sessionProperties.entrySet()) {
-                connection.unwrap(PrestoConnection.class).setSessionProperty(entry.getKey(), entry.getValue());
-            }
-
-            try (Statement statement = connection.createStatement()) {
-                TimeLimiter limiter = new SimpleTimeLimiter();
-                Stopwatch stopwatch = Stopwatch.createStarted();
-                Statement limitedStatement = limiter.newProxy(statement, Statement.class, timeout.toMillis(), TimeUnit.MILLISECONDS);
-                if (explainOnly) {
-                    sql = "EXPLAIN " + sql;
-                }
-                long start = System.nanoTime();
-                PrestoStatement prestoStatement = limitedStatement.unwrap(PrestoStatement.class);
-                ProgressMonitor progressMonitor = new ProgressMonitor();
-                prestoStatement.setProgressMonitor(progressMonitor);
-                try {
-                    boolean isSelectQuery = limitedStatement.execute(sql);
-                    List<List<Object>> results = null;
-                    if (isSelectQuery) {
-                        results = limiter.callWithTimeout(
-                                getResultSetConverter(limitedStatement.getResultSet()),
-                                timeout.toMillis() - stopwatch.elapsed(TimeUnit.MILLISECONDS),
-                                TimeUnit.MILLISECONDS, true);
-                    }
-                    else {
-                        results = ImmutableList.of(ImmutableList.of(limitedStatement.getLargeUpdateCount()));
-                    }
-                    prestoStatement.clearProgressMonitor();
-                    QueryStats queryStats = progressMonitor.getFinalQueryStats();
-                    if (queryStats == null) {
-                        throw new VerifierException("Cannot fetch query stats");
-                    }
-                    Duration queryCpuTime = new Duration(queryStats.getCpuTimeMillis(), TimeUnit.MILLISECONDS);
-                    queryId = queryStats.getQueryId();
-                    return new QueryResult(State.SUCCESS, null, nanosSince(start), queryCpuTime, queryId, results);
-                }
-                catch (AssertionError e) {
-                    if (e.getMessage().startsWith("unimplemented type:")) {
-                        return new QueryResult(State.INVALID, null, null, null, queryId, ImmutableList.of());
-                    }
-                    throw e;
-                }
-                catch (SQLException | VerifierException e) {
-                    throw e;
-                }
-                catch (UncheckedTimeoutException e) {
-                    return new QueryResult(State.TIMEOUT, null, null, null, queryId, ImmutableList.of());
-                }
-                catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw Throwables.propagate(e);
-                }
-                catch (Exception e) {
-                    throw Throwables.propagate(e);
-                }
-            }
+        if (explainOnly) {
+            sql = "EXPLAIN " + sql;
         }
-        catch (SQLException e) {
-            Exception exception = e;
-            if (("Error executing query".equals(e.getMessage()) || "Error fetching results".equals(e.getMessage())) &&
-                    (e.getCause() instanceof Exception)) {
-                exception = (Exception) e.getCause();
-            }
-            State state = isPrestoQueryInvalid(e) ? State.INVALID : State.FAILED;
-            return new QueryResult(state, exception, null, null, null, null);
-        }
-        catch (VerifierException e) {
-            return new QueryResult(State.TOO_MANY_ROWS, e, null, null, null, null);
-        }
-    }
-
-    private void trySetConnectionProperties(Query query, Connection connection)
-            throws SQLException
-    {
-        // Required for jdbc drivers that do not implement all/some of these functions (eg. impala jdbc driver)
-        // For these drivers, set the database default values in the query database
-        try {
-            connection.setClientInfo("ApplicationName", "verifier-test:" + queryPair.getName());
-            connection.setCatalog(query.getCatalog());
-            connection.setSchema(query.getSchema());
-        }
-        catch (SQLClientInfoException ignored) {
-            // Do nothing
-        }
-    }
-
-    private Callable<List<List<Object>>> getResultSetConverter(ResultSet resultSet)
-    {
-        return () -> convertJdbcResultSet(resultSet);
-    }
-
-    private static boolean isPrestoQueryInvalid(SQLException e)
-    {
-        for (Throwable t = e.getCause(); t != null; t = t.getCause()) {
-            if (t.toString().contains(".SemanticException:")) {
-                return true;
-            }
-            if (t.toString().contains(".ParsingException:")) {
-                return true;
-            }
-            if (nullToEmpty(t.getMessage()).matches("Function .* not registered")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private List<List<Object>> convertJdbcResultSet(ResultSet resultSet)
-            throws SQLException, VerifierException
-    {
-        int rowCount = 0;
-        int columnCount = resultSet.getMetaData().getColumnCount();
-
-        ImmutableList.Builder<List<Object>> rows = ImmutableList.builder();
-        while (resultSet.next()) {
-            List<Object> row = new ArrayList<>();
-            for (int i = 1; i <= columnCount; i++) {
-                Object object = resultSet.getObject(i);
-                if (object instanceof BigDecimal) {
-                    if (((BigDecimal) object).scale() <= 0) {
-                        object = ((BigDecimal) object).longValueExact();
-                    }
-                    else {
-                        object = ((BigDecimal) object).doubleValue();
-                    }
-                }
-                if (object instanceof Array) {
-                    object = ((Array) object).getArray();
-                }
-                if (object instanceof byte[]) {
-                    object = new SqlVarbinary((byte[]) object);
-                }
-                row.add(object);
-            }
-            rows.add(unmodifiableList(row));
-            rowCount++;
-            if (rowCount > maxRowCount) {
-                throw new VerifierException("More than '" + maxRowCount + "' rows, failing query");
-            }
-        }
-        return rows.build();
+        return QueryExecutionUtil.executeQuery(
+                url,
+                username,
+                password,
+                query,
+                sql,
+                timeout,
+                maxRowCount,
+                sessionProperties,
+                ImmutableMap.of("ApplicationName", "verifier-test:" + queryPair.getName()));
     }
 
     private static boolean resultsMatch(QueryResult controlResult, QueryResult testResult, int precision)
@@ -782,26 +629,6 @@ public class Validator
                     .compare(this.row, that.row, rowComparator(precision))
                     .compareFalseFirst(this.changed == Changed.ADDED, that.changed == Changed.ADDED)
                     .result();
-        }
-    }
-
-    private static class ProgressMonitor
-            implements Consumer<QueryStats>
-    {
-        private QueryStats queryStats;
-        private boolean finished = false;
-
-        @Override
-        public synchronized void accept(QueryStats queryStats)
-        {
-            checkState(!finished);
-            this.queryStats = queryStats;
-        }
-
-        public synchronized QueryStats getFinalQueryStats()
-        {
-            finished = true;
-            return queryStats;
         }
     }
 }
