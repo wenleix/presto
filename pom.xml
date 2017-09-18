@@ -564,7 +564,13 @@
             <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>airline</artifactId>
-                <version>0.7</version>
+                <version>0.8</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.google.code.findbugs</groupId>
+                        <artifactId>jsr305</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
 
             <dependency>
