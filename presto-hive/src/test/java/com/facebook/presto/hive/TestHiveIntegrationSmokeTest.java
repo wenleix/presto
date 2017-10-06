@@ -962,6 +962,88 @@ public class TestHiveIntegrationSmokeTest
     }
 
     @Test
+    public void testInsertBucketedPartition()
+            throws Exception
+    {
+        testInsertBucketedPartition(HiveStorageFormat.RCBINARY);
+    }
+
+    public void testInsertBucketedPartition(HiveStorageFormat storageFormat)
+    {
+        String tableName1 = "test_insert_bucketed_partition_table1";
+        String tableName2 = "test_insert_bucketed_partition_table2";
+
+        assertUpdate("" +
+                "CREATE TABLE " + tableName1 + " (" +
+                "  custkey bigint," +
+                "  totalprice double," +
+                "  comment varchar," +
+                "  part bigint)" +
+                "WITH (" +
+                "format = '" + storageFormat + "', " +
+                "partitioned_by = ARRAY[ 'part' ], " +
+                "bucketed_by = ARRAY[ 'custkey' ], " +
+                "bucket_count = 11)");
+
+        assertUpdate("" +
+                "CREATE TABLE " + tableName2 + " (" +
+                "  custkey bigint," +
+                "  totalprice double," +
+                "  comment varchar," +
+                "  part bigint)" +
+                "WITH (" +
+                "format = '" + storageFormat + "', " +
+                "partitioned_by = ARRAY[ 'part' ], " +
+                "bucketed_by = ARRAY[ 'custkey' ], " +
+                "bucket_count = 17)");
+
+        assertUpdate(
+                "INSERT INTO " + tableName1 + " " +
+                        "SELECT custkey, totalprice, comment, 1 AS part " +
+                        "FROM tpch.tiny.orders",
+                "SELECT count(*) FROM orders");
+        assertQuery(
+                "SELECT custkey, totalprice, comment FROM " + tableName1 + " WHERE part = 1",
+                "SELECT custkey, totalprice, comment FROM orders");
+        assertQuery(
+                "SELECT count(*) FROM " + tableName1 + " WHERE part = 1 AND \"$bucket\" = 7",
+                "SELECT 1381");
+
+        // insert bucketed partition with desired bucket property
+        assertUpdate(
+                "INSERT INTO " + tableName1 + " " +
+                        "SELECT custkey, totalprice, comment, 2 AS part " +
+                        "FROM " + tableName1 + " " +
+                        "WHERE part = 1",
+                "SELECT count(*) FROM orders");
+        assertQuery(
+                "SELECT custkey, totalprice, comment FROM " + tableName1 + " WHERE part = 2",
+                "SELECT custkey, totalprice, comment FROM orders");
+        assertQuery(
+                "SELECT count(*) FROM " + tableName1 + " WHERE part = 2 AND \"$bucket\" = 7",
+                "SELECT 1381");
+
+        // insert the bucketed partition with different bucket property
+        assertUpdate(
+                "INSERT INTO " + tableName2 + " " +
+                        "SELECT custkey, totalprice, comment, 1 AS part " +
+                        "FROM " + tableName1 + " " +
+                        "WHERE part = 1",
+                "SELECT count(*) FROM orders");
+        assertQuery(
+                "SELECT custkey, totalprice, comment FROM " + tableName2 + " WHERE part = 1",
+                "SELECT custkey, totalprice, comment FROM orders");
+        assertQuery(
+                "SELECT count(*) FROM " + tableName2 + " WHERE part = 1 AND \"$bucket\" = 7",
+                "SELECT 931");
+
+        assertUpdate("DROP TABLE " + tableName1);
+        assertFalse(getQueryRunner().tableExists(getSession(), tableName1));
+        assertUpdate("DROP TABLE " + tableName2);
+        assertFalse(getQueryRunner().tableExists(getSession(), tableName2));
+    }
+
+    @Test
     public void insertTable()
             throws Exception
     {

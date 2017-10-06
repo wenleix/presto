@@ -548,11 +548,18 @@ public class AddExchanges
             PlanWithProperties source = node.getSource().accept(this, context);
 
             Optional<PartitioningScheme> partitioningScheme = node.getPartitioningScheme();
+
+            if (partitioningScheme.isPresent() && source.getProperties().getNodePartitioning().isPresent() &&
+                    partitioningScheme.get().getPartitioning().equals(source.getProperties().getNodePartitioning().get())) {
+                // if the source is already partitioned as required, just use it
+                return rebaseAndDeriveProperties(node, source);
+            }
+
             if (!partitioningScheme.isPresent() && redistributeWrites) {
                 partitioningScheme = Optional.of(new PartitioningScheme(Partitioning.create(FIXED_ARBITRARY_DISTRIBUTION, ImmutableList.of()), source.getNode().getOutputSymbols()));
             }
 
-            if (partitioningScheme.isPresent()) {
+            if (partitioningScheme.isPresent() && !source.getProperties().isNodePartitionedOn(partitioningScheme.get().getPartitioning(), false)) {
                 source = withDerivedProperties(
                         partitionedExchange(
                                 idAllocator.getNextId(),
