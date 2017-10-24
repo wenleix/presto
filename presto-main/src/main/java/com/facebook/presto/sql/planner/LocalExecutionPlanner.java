@@ -253,6 +253,7 @@ public class LocalExecutionPlanner
     private final PartitioningSpillerFactory partitioningSpillerFactory;
     private final BlockEncodingSerde blockEncodingSerde;
     private final PagesIndex.Factory pagesIndexFactory;
+    private final boolean pagesIndexEagerCompact;
     private final JoinCompiler joinCompiler;
     private final LookupJoinOperators lookupJoinOperators;
 
@@ -303,6 +304,7 @@ public class LocalExecutionPlanner
         this.maxPartialAggregationMemorySize = taskManagerConfig.getMaxPartialAggregationMemoryUsage();
         this.maxPagePartitioningBufferSize = taskManagerConfig.getMaxPagePartitioningBufferSize();
         this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
+        this.pagesIndexEagerCompact = requireNonNull(taskManagerConfig, "taskManagerConfig is null").isPagesIndexEagerCompact();
         this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
         this.lookupJoinOperators = requireNonNull(lookupJoinOperators, "lookupJoinOperators is null");
 
@@ -863,7 +865,8 @@ public class LocalExecutionPlanner
                     10_000,
                     orderByChannels,
                     sortOrder.build(),
-                    pagesIndexFactory);
+                    pagesIndexFactory,
+                    pagesIndexEagerCompact);
 
             return new PhysicalOperation(operator, source.getLayout(), source);
         }
@@ -1641,6 +1644,7 @@ public class LocalExecutionPlanner
                     10_000,
                     partitionCount,
                     pagesIndexFactory,
+                    pagesIndexEagerCompact,
                     spillEnabled && !buildOuter && partitionCount > 1,
                     singleStreamSpillerFactory);
 

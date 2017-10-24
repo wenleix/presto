@@ -70,6 +70,7 @@ public class TaskManagerConfig
     private BigDecimal levelTimeMultiplier = new BigDecimal(2.0);
 
     private boolean legacySchedulingBehavior = true;
+    private boolean pagesIndexEagerCompact = false;
 
     @MinDuration("1ms")
     @MaxDuration("10s")
@@ -401,6 +402,18 @@ public class TaskManagerConfig
     public TaskManagerConfig setLegacySchedulingBehavior(boolean legacySchedulingBehavior)
     {
         this.legacySchedulingBehavior = legacySchedulingBehavior;
+        return this;
+    }
+
+    public boolean isPagesIndexEagerCompact()
+    {
+        return pagesIndexEagerCompact;
+    }
+
+    @Config("task.pages-index.eager-compact")
+    public TaskManagerConfig setPagesIndexEagerCompact(boolean pagesIndexEagerCompact)
+    {
+        this.pagesIndexEagerCompact = pagesIndexEagerCompact;
         return this;
     }
 }

@@ -66,6 +66,7 @@ public class HashBuilderOperator
         private final PagesIndex.Factory pagesIndexFactory;
 
         private final int expectedPositions;
+        private final boolean pagesIndexEagerCompact;
         private final boolean spillEnabled;
         private final SingleStreamSpillerFactory singleStreamSpillerFactory;
 
@@ -87,6 +88,7 @@ public class HashBuilderOperator
                 int expectedPositions,
                 int partitionCount,
                 PagesIndex.Factory pagesIndexFactory,
+                boolean pagesIndexEagerCompact,
                 boolean spillEnabled,
                 SingleStreamSpillerFactory singleStreamSpillerFactory)
         {
@@ -113,6 +115,7 @@ public class HashBuilderOperator
             this.sortChannel = sortChannel;
             this.searchFunctionFactories = ImmutableList.copyOf(searchFunctionFactories);
             this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
+            this.pagesIndexEagerCompact = pagesIndexEagerCompact;
             this.spillEnabled = spillEnabled;
             this.singleStreamSpillerFactory = requireNonNull(singleStreamSpillerFactory, "singleStreamSpillerFactory is null");
 
@@ -147,6 +150,7 @@ public class HashBuilderOperator
                     searchFunctionFactories,
                     expectedPositions,
                     pagesIndexFactory,
+                    pagesIndexEagerCompact,
                     spillEnabled,
                     singleStreamSpillerFactory);
 
@@ -221,6 +225,7 @@ public class HashBuilderOperator
     private final List<JoinFilterFunctionFactory> searchFunctionFactories;
 
     private final PagesIndex index;
+    private final boolean pagesIndexEagerCompact;
 
     private final boolean spillEnabled;
     private final SingleStreamSpillerFactory singleStreamSpillerFactory;
@@ -251,6 +256,7 @@ public class HashBuilderOperator
             List<JoinFilterFunctionFactory> searchFunctionFactories,
             int expectedPositions,
             PagesIndex.Factory pagesIndexFactory,
+            boolean pagesIndexEagerCompact,
             boolean spillEnabled,
             SingleStreamSpillerFactory singleStreamSpillerFactory)
     {
@@ -263,6 +269,7 @@ public class HashBuilderOperator
         this.searchFunctionFactories = searchFunctionFactories;
 
         this.index = pagesIndexFactory.newPagesIndex(lookupSourceFactory.getTypes(), expectedPositions);
+        this.pagesIndexEagerCompact = pagesIndexEagerCompact;
         this.lookupSourceFactory = lookupSourceFactory;
         lookupSourceFactoryDestroyed = lookupSourceFactory.isDestroyed();
 
@@ -359,10 +366,10 @@ public class HashBuilderOperator
             operatorContext.setRevocableMemoryReservation(index.getEstimatedSize().toBytes());
         }
         else {
-            if (!operatorContext.trySetMemoryReservation(index.getEstimatedSize().toBytes())) {
+            if (pagesIndexEagerCompact || !operatorContext.trySetMemoryReservation(index.getEstimatedSize().toBytes())) {
                 index.compact();
-                operatorContext.setMemoryReservation(index.getEstimatedSize().toBytes());
             }
+            operatorContext.setMemoryReservation(index.getEstimatedSize().toBytes());
         }
         operatorContext.recordGeneratedOutput(page.getSizeInBytes(), page.getPositionCount());
     }

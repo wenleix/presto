@@ -42,6 +42,7 @@ public class OrderByOperator
         private final List<Type> types;
         private boolean closed;
         private final PagesIndex.Factory pagesIndexFactory;
+        private final boolean pagesIndexEagerCompact;
 
         public OrderByOperatorFactory(
                 int operatorId,
@@ -51,7 +52,8 @@ public class OrderByOperator
                 int expectedPositions,
                 List<Integer> sortChannels,
                 List<SortOrder> sortOrder,
-                PagesIndex.Factory pagesIndexFactory)
+                PagesIndex.Factory pagesIndexFactory,
+                boolean pagesIndexEagerCompact)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
@@ -63,6 +65,7 @@ public class OrderByOperator
 
             this.types = toTypes(sourceTypes, outputChannels);
             this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
+            this.pagesIndexEagerCompact = pagesIndexEagerCompact;
         }
 
         @Override
@@ -84,7 +87,8 @@ public class OrderByOperator
                     expectedPositions,
                     sortChannels,
                     sortOrder,
-                    pagesIndexFactory);
+                    pagesIndexFactory,
+                    pagesIndexEagerCompact);
         }
 
         @Override
@@ -96,7 +100,7 @@ public class OrderByOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new OrderByOperatorFactory(operatorId, planNodeId, sourceTypes, outputChannels, expectedPositions, sortChannels, sortOrder, pagesIndexFactory);
+            return new OrderByOperatorFactory(operatorId, planNodeId, sourceTypes, outputChannels, expectedPositions, sortChannels, sortOrder, pagesIndexFactory, pagesIndexEagerCompact);
         }
     }
 
@@ -116,6 +120,7 @@ public class OrderByOperator
     private final PagesIndex pageIndex;
 
     private final PageBuilder pageBuilder;
+    private final boolean pagesIndexEagerCompact;
     private int currentPosition;
 
     private State state = State.NEEDS_INPUT;
@@ -127,7 +132,8 @@ public class OrderByOperator
             int expectedPositions,
             List<Integer> sortChannels,
             List<SortOrder> sortOrder,
-            PagesIndex.Factory pagesIndexFactory)
+            PagesIndex.Factory pagesIndexFactory,
+            boolean pagesIndexEagerCompact)
     {
         requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
 
@@ -138,6 +144,7 @@ public class OrderByOperator
         this.sortOrder = ImmutableList.copyOf(requireNonNull(sortOrder, "sortOrder is null"));
 
         this.pageIndex = pagesIndexFactory.newPagesIndex(sourceTypes, expectedPositions);
+        this.pagesIndexEagerCompact = pagesIndexEagerCompact;
 
         this.pageBuilder = new PageBuilder(this.types);
     }
@@ -185,7 +192,7 @@ public class OrderByOperator
 
         pageIndex.addPage(page);
 
-        if (!operatorContext.trySetMemoryReservation(pageIndex.getEstimatedSize().toBytes())) {
+        if (pagesIndexEagerCompact || !operatorContext.trySetMemoryReservation(pageIndex.getEstimatedSize().toBytes())) {
             pageIndex.compact();
         }
 
