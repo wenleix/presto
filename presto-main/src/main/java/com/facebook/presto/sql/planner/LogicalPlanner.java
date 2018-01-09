@@ -130,6 +130,7 @@ public class LogicalPlanner
 
         if (stage.ordinal() >= Stage.OPTIMIZED.ordinal()) {
             for (PlanOptimizer optimizer : planOptimizers) {
+//                System.err.println("Try to use optimizer " + optimizer);
                 root = optimizer.optimize(root, session, symbolAllocator.getTypes(), symbolAllocator, idAllocator);
                 requireNonNull(root, format("%s returned a null plan", optimizer.getClass().getName()));
             }

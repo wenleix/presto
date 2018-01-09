@@ -52,6 +52,7 @@ import com.facebook.presto.sql.tree.FrameBound;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.GroupingOperation;
 import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
+import com.facebook.presto.sql.tree.LambdaExpression;
 import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.NodeRef;
 import com.facebook.presto.sql.tree.OrderBy;
@@ -443,9 +444,12 @@ class QueryPlanner
                 .collect(toImmutableSet());
 
         ImmutableList.Builder<Expression> arguments = ImmutableList.builder();
+
+        // lambda expressions shouldn't be treated as input (but bounded to aggregation node)
         analysis.getAggregates(node).stream()
                 .map(FunctionCall::getArguments)
                 .flatMap(List::stream)
+                .filter(exp -> !(exp instanceof LambdaExpression))
                 .forEach(arguments::add);
 
         analysis.getAggregates(node).stream()

@@ -488,6 +488,8 @@ public class AccumulatorCompiler
                     pushStackType(scope, block, parameterMetadata.getSqlType(), getBlockBytecode, parameters[i], callSiteBinder);
                     inputChannel++;
                     break;
+                case LAMBDA:
+
                 default:
                     throw new IllegalArgumentException("Unsupported parameter type: " + parameterMetadata.getParameterType());
             }
