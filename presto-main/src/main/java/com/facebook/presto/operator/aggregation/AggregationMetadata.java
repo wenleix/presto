@@ -30,6 +30,7 @@ import java.util.Set;
 import static com.facebook.presto.operator.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.BLOCK_INDEX;
 import static com.facebook.presto.operator.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.BLOCK_INPUT_CHANNEL;
 import static com.facebook.presto.operator.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.INPUT_CHANNEL;
+import static com.facebook.presto.operator.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.LAMBDA;
 import static com.facebook.presto.operator.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.NULLABLE_BLOCK_INPUT_CHANNEL;
 import static com.facebook.presto.operator.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.STATE;
 import static com.facebook.presto.operator.aggregation.AggregationMetadata.ParameterMetadata.ParameterType.inputChannelParameterType;
@@ -142,6 +143,9 @@ public class AggregationMetadata
                 case BLOCK_INDEX:
                     checkArgument(parameters[i] == int.class, "Block index parameter must be an int");
                     break;
+                case LAMBDA:
+                    checkArgument(parameters[i].isAnnotationPresent(FunctionalInterface.class), "Lambda expression must be annoated with FunctionalInterface");
+                    break;
                 default:
                     throw new IllegalArgumentException("Unsupported parameter: " + metadata.getParameterType());
             }
@@ -192,7 +196,7 @@ public class AggregationMetadata
 
         public ParameterMetadata(ParameterType parameterType, Type sqlType)
         {
-            checkArgument((sqlType == null) == (parameterType == BLOCK_INDEX || parameterType == STATE),
+            checkArgument((sqlType == null) == (parameterType == BLOCK_INDEX || parameterType == STATE || parameterType == LAMBDA),
                     "sqlType must be provided only for input channels");
             this.parameterType = parameterType;
             this.sqlType = sqlType;
@@ -229,7 +233,8 @@ public class AggregationMetadata
             BLOCK_INPUT_CHANNEL,
             NULLABLE_BLOCK_INPUT_CHANNEL,
             BLOCK_INDEX,
-            STATE;
+            STATE,
+            LAMBDA;
 
             static ParameterType inputChannelParameterType(boolean isNullable, boolean isBlock, String methodName)
             {
