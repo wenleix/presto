@@ -16,6 +16,7 @@ package com.facebook.presto.operator;
 import com.facebook.presto.memory.LocalMemoryContext;
 import com.facebook.presto.operator.aggregation.Accumulator;
 import com.facebook.presto.operator.aggregation.AccumulatorFactory;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -158,7 +159,7 @@ public class AggregationOperator
 
         long memorySize = 0;
         for (Aggregator aggregate : aggregates) {
-            aggregate.processPage(page);
+            aggregate.processPage(operatorContext.getSession().toConnectorSession(), page);
             memorySize += aggregate.getEstimatedSize();
         }
         if (partial) {
@@ -231,13 +232,13 @@ public class AggregationOperator
             }
         }
 
-        public void processPage(Page page)
+        public void processPage(ConnectorSession session, Page page)
         {
             if (step.isInputRaw()) {
-                aggregation.addInput(page);
+                aggregation.addInput(session, page);
             }
             else {
-                aggregation.addIntermediate(page.getBlock(intermediateChannel));
+                aggregation.addIntermediate(session, page.getBlock(intermediateChannel));
             }
         }
 

@@ -104,7 +104,7 @@ public class MergingHashAggregationBuilder
                     // we can produce output  after every page, because sortedPages does not have
                     // hash values that span multiple pages (guaranteed by MergeHashSort)
                     while (sortedPages.hasNext() && !shouldProduceOutput(memorySize)) {
-                        boolean done = hashAggregationBuilder.processPage(sortedPages.next()).process();
+                        boolean done = hashAggregationBuilder.processPage(operatorContext.getSession().toConnectorSession(), sortedPages.next()).process();
                         // TODO: this class does not yield wrt memory limit; enable it
                         verify(done);
                         memorySize = hashAggregationBuilder.getSizeInMemory();

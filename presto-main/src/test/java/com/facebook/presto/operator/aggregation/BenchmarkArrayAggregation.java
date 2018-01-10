@@ -68,7 +68,7 @@ public class BenchmarkArrayAggregation
     public void arrayAggregation(BenchmarkData data)
             throws Throwable
     {
-        data.getAccumulator().addInput(data.getPage());
+        data.getAccumulator().addInput(null, data.getPage());
     }
 
     @SuppressWarnings("FieldMayBeFinal")

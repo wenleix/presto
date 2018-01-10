@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.operator.aggregation;
 
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -29,11 +30,11 @@ public interface Accumulator
 
     Type getIntermediateType();
 
-    void addInput(Page page);
+    void addInput(ConnectorSession session, Page page);
 
     void addInput(WindowIndex index, List<Integer> channels, int startPosition, int endPosition);
 
-    void addIntermediate(Block block);
+    void addIntermediate(ConnectorSession session, Block block);
 
     void evaluateIntermediate(BlockBuilder blockBuilder);
 

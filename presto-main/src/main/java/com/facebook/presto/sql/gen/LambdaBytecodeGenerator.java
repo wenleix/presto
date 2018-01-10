@@ -167,6 +167,7 @@ public class LambdaBytecodeGenerator
             captureVariableBuilder.add(valueVariable);
         }
 
+        // TODO: this assumes ConnectorSession is always with variable name "session", which should be fixed.
         List<BytecodeExpression> captureVariables = ImmutableList.<BytecodeExpression>builder()
                 .add(scope.getThis(), scope.getVariable("session"))
                 .addAll(captureVariableBuilder.build())

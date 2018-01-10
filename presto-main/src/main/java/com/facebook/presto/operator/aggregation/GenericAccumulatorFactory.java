@@ -15,6 +15,8 @@ package com.facebook.presto.operator.aggregation;
 
 import com.facebook.presto.operator.GroupByIdBlock;
 import com.facebook.presto.operator.PagesIndex;
+import com.facebook.presto.operator.aggregation.lambda.LambdaChannelProvider;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -46,6 +48,7 @@ public class GenericAccumulatorFactory
     private final Constructor<? extends Accumulator> accumulatorConstructor;
     private final Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor;
     private final Optional<Integer> maskChannel;
+    private final List<LambdaChannelProvider> lambdaChannel;
     private final List<Integer> inputChannels;
     private final List<Type> sourceTypes;
     private final List<Integer> orderByChannels;
@@ -59,6 +62,7 @@ public class GenericAccumulatorFactory
             Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor,
             List<Integer> inputChannels,
             Optional<Integer> maskChannel,
+            List<LambdaChannelProvider> lambdaChannel,
             List<Type> sourceTypes,
             List<Integer> orderByChannels,
             List<SortOrder> orderings,
@@ -69,6 +73,7 @@ public class GenericAccumulatorFactory
         this.accumulatorConstructor = requireNonNull(accumulatorConstructor, "accumulatorConstructor is null");
         this.groupedAccumulatorConstructor = requireNonNull(groupedAccumulatorConstructor, "groupedAccumulatorConstructor is null");
         this.maskChannel = requireNonNull(maskChannel, "maskChannel is null");
+        this.lambdaChannel = requireNonNull(lambdaChannel, "lambdaChannel is null");
         this.inputChannels = ImmutableList.copyOf(requireNonNull(inputChannels, "inputChannels is null"));
         this.sourceTypes = ImmutableList.copyOf(requireNonNull(sourceTypes, "sourceTypes is null"));
         this.orderByChannels = ImmutableList.copyOf(requireNonNull(orderByChannels, "orderByChannels is null"));
@@ -186,7 +191,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addInput(Page page)
+        public void addInput(ConnectorSession session, Page page)
         {
             pagesIndex.addPage(page);
         }
@@ -198,7 +203,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addIntermediate(Block block)
+        public void addIntermediate(ConnectorSession session, Block block)
         {
             throw new UnsupportedOperationException();
         }
@@ -214,7 +219,8 @@ public class GenericAccumulatorFactory
         {
             pagesIndex.sort(orderByChannels, orderings);
             Iterator<Page> pagesIterator = pagesIndex.getSortedPages();
-            pagesIterator.forEachRemaining(accumulator::addInput);
+            // hack!!!
+            pagesIterator.forEachRemaining(page -> accumulator.addInput(null, page));
             accumulator.evaluateFinal(blockBuilder);
         }
     }
@@ -265,7 +271,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addInput(GroupByIdBlock groupIdsBlock, Page page)
+        public void addInput(ConnectorSession session, GroupByIdBlock groupIdsBlock, Page page)
         {
             Block[] blocks = new Block[page.getChannelCount() + 1];
             for (int i = 0; i < page.getChannelCount(); i++) {
@@ -278,7 +284,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addIntermediate(GroupByIdBlock groupIdsBlock, Block block)
+        public void addIntermediate(ConnectorSession session, GroupByIdBlock groupIdsBlock, Block block)
         {
             throw new UnsupportedOperationException();
         }
@@ -305,7 +311,9 @@ public class GenericAccumulatorFactory
                 GroupByIdBlock groupIds = new GroupByIdBlock(groupCount, page.getBlock(page.getChannelCount() - 1));
                 // We pass group id together with the other input channels to accumulator. Accumulator knows which input channels
                 // to use. Since we did not change the order of original input channels, passing the group id is safe.
-                accumulator.addInput(groupIds, page);
+
+                // Super hack!!!
+                accumulator.addInput(null, groupIds, page);
             });
         }
     }

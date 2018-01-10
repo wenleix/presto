@@ -24,6 +24,7 @@ import com.facebook.presto.operator.UpdateMemory;
 import com.facebook.presto.operator.Work;
 import com.facebook.presto.operator.aggregation.AccumulatorFactory;
 import com.facebook.presto.operator.aggregation.GroupedAccumulator;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -154,7 +155,7 @@ public class InMemoryHashAggregationBuilder
     }
 
     @Override
-    public Work<?> processPage(Page page)
+    public Work<?> processPage(ConnectorSession session, Page page)
     {
         if (aggregators.isEmpty()) {
             return groupByHash.addPage(page);
@@ -164,7 +165,7 @@ public class InMemoryHashAggregationBuilder
                     groupByHash.getGroupIds(page),
                     groupByIdBlock -> {
                         for (Aggregator aggregator : aggregators) {
-                            aggregator.processPage(groupByIdBlock, page);
+                            aggregator.processPage(session, groupByIdBlock, page);
                         }
                         // we do not need any output from TransformWork for this case
                         return null;
@@ -415,13 +416,13 @@ public class InMemoryHashAggregationBuilder
             }
         }
 
-        public void processPage(GroupByIdBlock groupIds, Page page)
+        public void processPage(ConnectorSession session, GroupByIdBlock groupIds, Page page)
         {
             if (step.isInputRaw()) {
-                aggregation.addInput(groupIds, page);
+                aggregation.addInput(session, groupIds, page);
             }
             else {
-                aggregation.addIntermediate(groupIds, page.getBlock(intermediateChannel));
+                aggregation.addIntermediate(session, groupIds, page.getBlock(intermediateChannel));
             }
         }
 

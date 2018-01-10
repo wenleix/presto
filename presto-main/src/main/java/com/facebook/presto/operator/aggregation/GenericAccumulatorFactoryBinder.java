@@ -14,6 +14,7 @@
 package com.facebook.presto.operator.aggregation;
 
 import com.facebook.presto.operator.PagesIndex;
+import com.facebook.presto.operator.aggregation.lambda.LambdaChannelProvider;
 import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.spi.function.AccumulatorStateFactory;
 import com.facebook.presto.spi.function.AccumulatorStateSerializer;
@@ -47,14 +48,16 @@ public class GenericAccumulatorFactoryBinder
             accumulatorConstructor = accumulatorClass.getConstructor(
                     AccumulatorStateSerializer.class,
                     AccumulatorStateFactory.class,
-                    List.class,
-                    Optional.class);
+                    List.class,     /* inputChannels */
+                    Optional.class, /* maskChannel */
+                    List.class      /* lambdaChannel */);
 
             groupedAccumulatorConstructor = groupedAccumulatorClass.getConstructor(
                     AccumulatorStateSerializer.class,
                     AccumulatorStateFactory.class,
                     List.class,
-                    Optional.class);
+                    Optional.class,
+                    List.class      /* lambdaChannel */);
         }
         catch (NoSuchMethodException e) {
             throw new RuntimeException(e);
@@ -62,9 +65,25 @@ public class GenericAccumulatorFactoryBinder
     }
 
     @Override
-    public AccumulatorFactory bind(List<Integer> argumentChannels, Optional<Integer> maskChannel, List<Type> sourceTypes, List<Integer> orderByChannels, List<SortOrder> orderings, PagesIndex.Factory pagesIndexFactory)
+    public AccumulatorFactory bind(
+            List<Integer> argumentChannels,
+            Optional<Integer> maskChannel,
+            List<Type> sourceTypes,
+            List<Integer> orderByChannels,
+            List<SortOrder> orderings,
+            PagesIndex.Factory pagesIndexFactory)
     {
-        return new GenericAccumulatorFactory(stateSerializer, stateFactory, accumulatorConstructor, groupedAccumulatorConstructor, argumentChannels, maskChannel, sourceTypes, orderByChannels, orderings, pagesIndexFactory);
+        return new GenericAccumulatorFactory(
+                stateSerializer,
+                stateFactory,
+                accumulatorConstructor,
+                groupedAccumulatorConstructor,
+                argumentChannels,
+                maskChannel,
+                sourceTypes,
+                orderByChannels,
+                orderings,
+                pagesIndexFactory);
     }
 
     @VisibleForTesting

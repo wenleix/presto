@@ -1,4 +1,4 @@
-package com.facebook.presto.operator.aggregation;
+package com.facebook.presto.operator.aggregation.lambda;
 
 import com.facebook.presto.spi.ConnectorSession;
 

@@ -405,7 +405,7 @@ public class HashAggregationOperator
         }
 
         // process the current page; save the unfinished work if we are waiting for memory
-        unfinishedWork = aggregationBuilder.processPage(page);
+        unfinishedWork = aggregationBuilder.processPage(operatorContext.getSession().toConnectorSession(), page);
         if (unfinishedWork.process()) {
             unfinishedWork = null;
         }

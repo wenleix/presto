@@ -39,6 +39,7 @@ import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.RealType.REAL;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.facebook.presto.util.StructuralTestUtil.mapType;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -69,15 +70,15 @@ public class TestRealHistogramAggregation
             throws Exception
     {
         Accumulator singleStep = factory.createAccumulator();
-        singleStep.addInput(input);
+        singleStep.addInput(SESSION, input);
         Block expected = getFinalBlock(singleStep);
 
         Accumulator partialStep = factory.createAccumulator();
-        partialStep.addInput(input);
+        partialStep.addInput(SESSION, input);
         Block partialBlock = getIntermediateBlock(partialStep);
 
         Accumulator finalStep = factory.createAccumulator();
-        finalStep.addIntermediate(partialBlock);
+        finalStep.addIntermediate(SESSION, partialBlock);
         Block actual = getFinalBlock(finalStep);
 
         assertEquals(extractSingleValue(actual), extractSingleValue(expected));
@@ -88,17 +89,17 @@ public class TestRealHistogramAggregation
             throws Exception
     {
         Accumulator singleStep = factory.createAccumulator();
-        singleStep.addInput(input);
+        singleStep.addInput(SESSION, input);
         Block singleStepResult = getFinalBlock(singleStep);
 
         Accumulator partialStep = factory.createAccumulator();
-        partialStep.addInput(input);
+        partialStep.addInput(SESSION, input);
         Block intermediate = getIntermediateBlock(partialStep);
 
         Accumulator finalStep = factory.createAccumulator();
 
-        finalStep.addIntermediate(intermediate);
-        finalStep.addIntermediate(intermediate);
+        finalStep.addIntermediate(SESSION, intermediate);
+        finalStep.addIntermediate(SESSION, intermediate);
         Block actual = getFinalBlock(finalStep);
 
         Map<Float, Float> expected = Maps.transformValues(extractSingleValue(singleStepResult), value -> value * 2);
@@ -121,7 +122,7 @@ public class TestRealHistogramAggregation
     public void testBadNumberOfBuckets()
     {
         Accumulator singleStep = factory.createAccumulator();
-        singleStep.addInput(makeInput(0));
+        singleStep.addInput(SESSION, makeInput(0));
         getFinalBlock(singleStep);
     }
 

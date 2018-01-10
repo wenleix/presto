@@ -27,6 +27,8 @@ import com.facebook.presto.bytecode.control.IfStatement;
 import com.facebook.presto.bytecode.expression.BytecodeExpression;
 import com.facebook.presto.bytecode.expression.BytecodeExpressions;
 import com.facebook.presto.operator.GroupByIdBlock;
+import com.facebook.presto.operator.aggregation.lambda.LambdaChannelProvider;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -117,6 +119,8 @@ public class AccumulatorCompiler
         FieldDefinition inputChannelsField = definition.declareField(a(PRIVATE, FINAL), "inputChannels", type(List.class, Integer.class));
         FieldDefinition maskChannelField = definition.declareField(a(PRIVATE, FINAL), "maskChannel", type(Optional.class, Integer.class));
         FieldDefinition stateField = definition.declareField(a(PRIVATE, FINAL), "state", grouped ? stateFactory.getGroupedStateClass() : stateFactory.getSingleStateClass());
+        // TODO: make multiple lambda channels...
+        FieldDefinition lambdaChannelProviderField = definition.declareField(a(PRIVATE, FINAL), "lambdaChannel", type(List.class, LambdaChannelProvider.class));
 
         // Generate constructor
         generateConstructor(
@@ -126,6 +130,7 @@ public class AccumulatorCompiler
                 inputChannelsField,
                 maskChannelField,
                 stateField,
+                lambdaChannelProviderField,
                 grouped);
 
         // Generate methods
@@ -198,6 +203,8 @@ public class AccumulatorCompiler
             boolean grouped)
     {
         ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
+        Parameter session = arg("session", ConnectorSession.class);
+        parameters.add(session);
         if (grouped) {
             parameters.add(arg("groupIdsBlock", GroupByIdBlock.class));
         }
@@ -240,7 +247,16 @@ public class AccumulatorCompiler
                     .invokeVirtual(Page.class, "getBlock", Block.class, int.class)
                     .putVariable(parameterVariables.get(i));
         }
-        BytecodeBlock block = generateInputForLoop(stateField, parameterMetadatas, inputFunction, scope, parameterVariables, masksBlock, callSiteBinder, grouped);
+        BytecodeBlock block = generateInputForLoop(
+                stateField,
+                parameterMetadatas,
+                inputFunction,
+                scope,
+                session,
+                parameterVariables,
+                masksBlock,
+                callSiteBinder,
+                grouped);
 
         body.append(block);
         body.ret();
@@ -384,6 +400,7 @@ public class AccumulatorCompiler
             List<ParameterMetadata> parameterMetadatas,
             MethodHandle inputFunction,
             Scope scope,
+            Variable sessionVariable,
             List<Variable> parameterVariables,
             Variable masksBlock,
             CallSiteBinder callSiteBinder,
@@ -400,7 +417,16 @@ public class AccumulatorCompiler
                 .putVariable(rowsVariable)
                 .initializeVariable(positionVariable);
 
-        BytecodeNode loopBody = generateInvokeInputFunction(scope, stateField, positionVariable, parameterVariables, parameterMetadatas, inputFunction, callSiteBinder, grouped);
+        BytecodeNode loopBody = generateInvokeInputFunction(
+                scope,
+                stateField,
+                sessionVariable,
+                positionVariable,
+                parameterVariables,
+                parameterMetadatas,
+                inputFunction,
+                callSiteBinder,
+                grouped);
 
         //  Wrap with null checks
         List<Boolean> nullable = new ArrayList<>();
@@ -451,6 +477,7 @@ public class AccumulatorCompiler
     private static BytecodeBlock generateInvokeInputFunction(
             Scope scope,
             FieldDefinition stateField,
+            Variable session,
             Variable position,
             List<Variable> parameterVariables,
             List<ParameterMetadata> parameterMetadatas,
@@ -758,18 +785,21 @@ public class AccumulatorCompiler
             FieldDefinition inputChannelsField,
             FieldDefinition maskChannelField,
             FieldDefinition stateField,
+            FieldDefinition lambdaChannelProviderField,
             boolean grouped)
     {
         Parameter stateSerializer = arg("stateSerializer", AccumulatorStateSerializer.class);
         Parameter stateFactory = arg("stateFactory", AccumulatorStateFactory.class);
         Parameter inputChannels = arg("inputChannels", type(List.class, Integer.class));
         Parameter maskChannel = arg("maskChannel", type(Optional.class, Integer.class));
+        Parameter lambdaChannelProvider = arg("lambdaChannelProvider", type(List.class, LambdaChannelProvider.class));
         MethodDefinition method = definition.declareConstructor(
                 a(PUBLIC),
                 stateSerializer,
                 stateFactory,
                 inputChannels,
-                maskChannel);
+                maskChannel,
+                lambdaChannelProvider);
 
         BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
@@ -782,6 +812,7 @@ public class AccumulatorCompiler
         body.append(thisVariable.setField(stateFactoryField, generateRequireNotNull(stateFactory)));
         body.append(thisVariable.setField(inputChannelsField, generateRequireNotNull(inputChannels)));
         body.append(thisVariable.setField(maskChannelField, generateRequireNotNull(maskChannel)));
+        body.append(thisVariable.setField(lambdaChannelProviderField, generateRequireNotNull(lambdaChannelProvider)));
 
         String createState;
         if (grouped) {

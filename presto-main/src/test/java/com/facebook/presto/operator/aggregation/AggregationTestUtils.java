@@ -175,7 +175,7 @@ public final class AggregationTestUtils
         Accumulator aggregation = function.bind(Ints.asList(args), maskChannel).createAccumulator();
         for (Page page : pages) {
             if (page.getPositionCount() > 0) {
-                aggregation.addInput(page);
+                aggregation.addInput(null, page);
             }
         }
 
@@ -210,18 +210,18 @@ public final class AggregationTestUtils
         Accumulator emptyAggregation = factory.createAccumulator();
         Block emptyBlock = getIntermediateBlock(emptyAggregation);
 
-        finalAggregation.addIntermediate(emptyBlock);
+        finalAggregation.addIntermediate(null, emptyBlock);
 
         for (Page page : pages) {
             Accumulator partialAggregation = factory.createAccumulator();
             if (page.getPositionCount() > 0) {
-                partialAggregation.addInput(page);
+                partialAggregation.addInput(null, page);
             }
             Block partialBlock = getIntermediateBlock(partialAggregation);
-            finalAggregation.addIntermediate(partialBlock);
+            finalAggregation.addIntermediate(null, partialBlock);
         }
 
-        finalAggregation.addIntermediate(emptyBlock);
+        finalAggregation.addIntermediate(null, emptyBlock);
 
         Block finalBlock = getFinalBlock(finalAggregation);
         return BlockAssertions.getOnlyValue(finalAggregation.getFinalType(), finalBlock);
@@ -249,12 +249,12 @@ public final class AggregationTestUtils
     {
         GroupedAccumulator groupedAggregation = function.bind(Ints.asList(args), Optional.empty()).createGroupedAccumulator();
         for (Page page : pages) {
-            groupedAggregation.addInput(createGroupByIdBlock(0, page.getPositionCount()), page);
+            groupedAggregation.addInput(null, createGroupByIdBlock(0, page.getPositionCount()), page);
         }
         Object groupValue = getGroupValue(groupedAggregation, 0);
 
         for (Page page : pages) {
-            groupedAggregation.addInput(createGroupByIdBlock(4000, page.getPositionCount()), page);
+            groupedAggregation.addInput(null, createGroupByIdBlock(4000, page.getPositionCount()), page);
         }
         Object largeGroupValue = getGroupValue(groupedAggregation, 4000);
         assertEquals(largeGroupValue, groupValue, "Inconsistent results with large group id");
@@ -289,16 +289,16 @@ public final class AggregationTestUtils
         GroupedAccumulator emptyAggregation = factory.createGroupedAccumulator();
         Block emptyBlock = getIntermediateBlock(emptyAggregation);
 
-        finalAggregation.addIntermediate(createGroupByIdBlock(0, emptyBlock.getPositionCount()), emptyBlock);
+        finalAggregation.addIntermediate(null, createGroupByIdBlock(0, emptyBlock.getPositionCount()), emptyBlock);
 
         for (Page page : pages) {
             GroupedAccumulator partialAggregation = factory.createGroupedAccumulator();
-            partialAggregation.addInput(createGroupByIdBlock(0, page.getPositionCount()), page);
+            partialAggregation.addInput(null, createGroupByIdBlock(0, page.getPositionCount()), page);
             Block partialBlock = getIntermediateBlock(partialAggregation);
-            finalAggregation.addIntermediate(createGroupByIdBlock(0, partialBlock.getPositionCount()), partialBlock);
+            finalAggregation.addIntermediate(null, createGroupByIdBlock(0, partialBlock.getPositionCount()), partialBlock);
         }
 
-        finalAggregation.addIntermediate(createGroupByIdBlock(0, emptyBlock.getPositionCount()), emptyBlock);
+        finalAggregation.addIntermediate(null, createGroupByIdBlock(0, emptyBlock.getPositionCount()), emptyBlock);
 
         return getGroupValue(finalAggregation, 0);
     }
