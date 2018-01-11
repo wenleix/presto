@@ -22,6 +22,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 
+import java.lang.invoke.MethodHandle;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,6 +46,7 @@ public class LazyAccumulatorFactoryBinder
     public AccumulatorFactory bind(
             List<Integer> argumentChannels,
             Optional<Integer> maskChannel,
+            List<MethodHandle> lambdaChannelProviderFactory,
             List<Type> sourceTypes,
             List<Integer> orderByChannels,
             List<SortOrder> orderings,
@@ -53,6 +55,7 @@ public class LazyAccumulatorFactoryBinder
         return binder.get().bind(
                 argumentChannels,
                 maskChannel,
+                lambdaChannelProviderFactory,
                 sourceTypes,
                 orderByChannels,
                 orderings,

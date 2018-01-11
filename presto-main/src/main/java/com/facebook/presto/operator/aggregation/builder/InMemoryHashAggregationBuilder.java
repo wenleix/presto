@@ -422,7 +422,7 @@ public class InMemoryHashAggregationBuilder
                 aggregation.addInput(session, groupIds, page);
             }
             else {
-                aggregation.addIntermediate(session, groupIds, page.getBlock(intermediateChannel));
+                aggregation.addIntermediate(groupIds, page.getBlock(intermediateChannel));
             }
         }
 

@@ -25,8 +25,11 @@ import com.facebook.presto.spi.function.AccumulatorStateFactory;
 import com.facebook.presto.spi.function.AccumulatorStateSerializer;
 import com.facebook.presto.spi.function.WindowIndex;
 import com.facebook.presto.spi.type.Type;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import org.jetbrains.annotations.NotNull;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -48,7 +51,7 @@ public class GenericAccumulatorFactory
     private final Constructor<? extends Accumulator> accumulatorConstructor;
     private final Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor;
     private final Optional<Integer> maskChannel;
-    private final List<LambdaChannelProvider> lambdaChannel;
+    private final List<MethodHandle> lambdaChannelProviderFactory;
     private final List<Integer> inputChannels;
     private final List<Type> sourceTypes;
     private final List<Integer> orderByChannels;
@@ -62,7 +65,7 @@ public class GenericAccumulatorFactory
             Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor,
             List<Integer> inputChannels,
             Optional<Integer> maskChannel,
-            List<LambdaChannelProvider> lambdaChannel,
+            List<MethodHandle> lambdaChannelProviderFactory,
             List<Type> sourceTypes,
             List<Integer> orderByChannels,
             List<SortOrder> orderings,
@@ -73,7 +76,7 @@ public class GenericAccumulatorFactory
         this.accumulatorConstructor = requireNonNull(accumulatorConstructor, "accumulatorConstructor is null");
         this.groupedAccumulatorConstructor = requireNonNull(groupedAccumulatorConstructor, "groupedAccumulatorConstructor is null");
         this.maskChannel = requireNonNull(maskChannel, "maskChannel is null");
-        this.lambdaChannel = requireNonNull(lambdaChannel, "lambdaChannel is null");
+        this.lambdaChannelProviderFactory = requireNonNull(lambdaChannelProviderFactory, "lambdaChannelProviderFactory is null");
         this.inputChannels = ImmutableList.copyOf(requireNonNull(inputChannels, "inputChannels is null"));
         this.sourceTypes = ImmutableList.copyOf(requireNonNull(sourceTypes, "sourceTypes is null"));
         this.orderByChannels = ImmutableList.copyOf(requireNonNull(orderByChannels, "orderByChannels is null"));
@@ -116,12 +119,13 @@ public class GenericAccumulatorFactory
         }
     }
 
+    // We can either add connector session here, or add into addInput() functions...
     @Override
     public GroupedAccumulator createGroupedAccumulator()
     {
         GroupedAccumulator accumulator;
         try {
-            accumulator = groupedAccumulatorConstructor.newInstance(stateSerializer, stateFactory, inputChannels, maskChannel);
+            accumulator = groupedAccumulatorConstructor.newInstance(stateSerializer, stateFactory, inputChannels, maskChannel, getLambdaChannelProviders());
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
@@ -138,11 +142,25 @@ public class GenericAccumulatorFactory
     public GroupedAccumulator createGroupedIntermediateAccumulator()
     {
         try {
-            return groupedAccumulatorConstructor.newInstance(stateSerializer, stateFactory, ImmutableList.of(), maskChannel);
+            return groupedAccumulatorConstructor.newInstance(stateSerializer, stateFactory, ImmutableList.of(), maskChannel, getLambdaChannelProviders());
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public List<LambdaChannelProvider> getLambdaChannelProviders()
+    {
+        ImmutableList.Builder<LambdaChannelProvider> builder = ImmutableList.builder();
+        for (MethodHandle factory : lambdaChannelProviderFactory) {
+            try {
+                builder.add((LambdaChannelProvider) factory.invoke(null));  // TODO whether to inject ConnectorSession here or in addInput is a question.
+            }
+            catch (Throwable throwable) {
+                Throwables.propagate(throwable);
+            }
+        }
+        return builder.build();
     }
 
     @Override
@@ -284,7 +302,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addIntermediate(ConnectorSession session, GroupByIdBlock groupIdsBlock, Block block)
+        public void addIntermediate(GroupByIdBlock groupIdsBlock, Block block)
         {
             throw new UnsupportedOperationException();
         }

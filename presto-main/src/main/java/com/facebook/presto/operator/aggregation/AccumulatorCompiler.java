@@ -39,6 +39,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.Binding;
 import com.facebook.presto.sql.gen.CallSiteBinder;
 import com.facebook.presto.sql.gen.CompilerOperations;
+import com.facebook.presto.sql.gen.lambda.BinaryFunctionInterface;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 
@@ -59,6 +60,7 @@ import static com.facebook.presto.bytecode.Parameter.arg;
 import static com.facebook.presto.bytecode.ParameterizedType.type;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantFalse;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantInt;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantNull;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantString;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.invokeDynamic;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.invokeStatic;
@@ -134,7 +136,7 @@ public class AccumulatorCompiler
                 grouped);
 
         // Generate methods
-        generateAddInput(definition, stateField, inputChannelsField, maskChannelField, metadata.getInputMetadata(), metadata.getInputFunction(), callSiteBinder, grouped);
+        generateAddInput(definition, stateField, inputChannelsField, maskChannelField, lambdaChannelProviderField, metadata.getInputMetadata(), metadata.getInputFunction(), callSiteBinder, grouped);
         generateAddInputWindowIndex(definition, stateField, metadata.getInputMetadata(), metadata.getInputFunction(), callSiteBinder);
         generateGetEstimatedSize(definition, stateField);
         generateGetIntermediateType(definition, callSiteBinder, stateSerializer.getSerializedType());
@@ -197,6 +199,7 @@ public class AccumulatorCompiler
             FieldDefinition stateField,
             FieldDefinition inputChannelsField,
             FieldDefinition maskChannelField,
+            FieldDefinition lambdaChannelProviderField,
             List<ParameterMetadata> parameterMetadatas,
             MethodHandle inputFunction,
             CallSiteBinder callSiteBinder,
@@ -249,6 +252,7 @@ public class AccumulatorCompiler
         }
         BytecodeBlock block = generateInputForLoop(
                 stateField,
+                lambdaChannelProviderField,
                 parameterMetadatas,
                 inputFunction,
                 scope,
@@ -389,6 +393,11 @@ public class AccumulatorCompiler
 
                     inputChannel++;
                     break;
+                case LAMBDA:
+                    expressions.add(constantNull(BinaryFunctionInterface.class));
+                    break;
+                default:
+                    throw new IllegalArgumentException("Unsupported parameter type: " + parameterMetadata.getParameterType());
             }
         }
 
@@ -397,6 +406,7 @@ public class AccumulatorCompiler
 
     private static BytecodeBlock generateInputForLoop(
             FieldDefinition stateField,
+            FieldDefinition lambdaChannelProviderField,
             List<ParameterMetadata> parameterMetadatas,
             MethodHandle inputFunction,
             Scope scope,
@@ -420,6 +430,7 @@ public class AccumulatorCompiler
         BytecodeNode loopBody = generateInvokeInputFunction(
                 scope,
                 stateField,
+                lambdaChannelProviderField,
                 sessionVariable,
                 positionVariable,
                 parameterVariables,
@@ -477,6 +488,7 @@ public class AccumulatorCompiler
     private static BytecodeBlock generateInvokeInputFunction(
             Scope scope,
             FieldDefinition stateField,
+            FieldDefinition lambdaChannelProviderField,
             Variable session,
             Variable position,
             List<Variable> parameterVariables,
@@ -516,7 +528,15 @@ public class AccumulatorCompiler
                     inputChannel++;
                     break;
                 case LAMBDA:
+                    block.append(scope.getThis().getField(lambdaChannelProviderField)
+                        .invoke("get", Object.class, constantInt(0))
+                        .cast(LambdaChannelProvider.class)
+                        .invoke("getLambda", Object.class)
+                        .cast(BinaryFunctionInterface.class));   //hack!!!
 
+                    // block.append(constantNull(BinaryFunctionInterface.class).cast(BinaryFunctionInterface.class));
+
+                    break;
                 default:
                     throw new IllegalArgumentException("Unsupported parameter type: " + parameterMetadata.getParameterType());
             }

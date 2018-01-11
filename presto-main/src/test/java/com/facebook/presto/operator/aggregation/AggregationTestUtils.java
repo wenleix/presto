@@ -289,16 +289,16 @@ public final class AggregationTestUtils
         GroupedAccumulator emptyAggregation = factory.createGroupedAccumulator();
         Block emptyBlock = getIntermediateBlock(emptyAggregation);
 
-        finalAggregation.addIntermediate(null, createGroupByIdBlock(0, emptyBlock.getPositionCount()), emptyBlock);
+        finalAggregation.addIntermediate(createGroupByIdBlock(0, emptyBlock.getPositionCount()), emptyBlock);
 
         for (Page page : pages) {
             GroupedAccumulator partialAggregation = factory.createGroupedAccumulator();
             partialAggregation.addInput(null, createGroupByIdBlock(0, page.getPositionCount()), page);
             Block partialBlock = getIntermediateBlock(partialAggregation);
-            finalAggregation.addIntermediate(null, createGroupByIdBlock(0, partialBlock.getPositionCount()), partialBlock);
+            finalAggregation.addIntermediate(createGroupByIdBlock(0, partialBlock.getPositionCount()), partialBlock);
         }
 
-        finalAggregation.addIntermediate(null, createGroupByIdBlock(0, emptyBlock.getPositionCount()), emptyBlock);
+        finalAggregation.addIntermediate(createGroupByIdBlock(0, emptyBlock.getPositionCount()), emptyBlock);
 
         return getGroupValue(finalAggregation, 0);
     }

@@ -35,7 +35,7 @@ public class ReduceAggregationStateFactory
     @Override
     public ReduceAggregationState createGroupedState()
     {
-        return new SingleReduceAggregationState();
+        return new GroupedReduceAggregationState();
     }
 
     @Override

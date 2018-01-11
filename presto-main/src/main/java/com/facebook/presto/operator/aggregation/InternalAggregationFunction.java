@@ -20,6 +20,7 @@ import com.facebook.presto.spi.type.Type;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 
+import java.lang.invoke.MethodHandle;
 import java.util.List;
 import java.util.Optional;
 
@@ -92,12 +93,14 @@ public final class InternalAggregationFunction
                 ImmutableList.of(),
                 ImmutableList.of(),
                 ImmutableList.of(),
+                ImmutableList.of(),
                 null);
     }
 
     public AccumulatorFactory bind(
             List<Integer> inputChannels,
             Optional<Integer> maskChannel,
+            List<MethodHandle> lambdaChannelProviderFactory,
             List<Type> sourceTypes,
             List<Integer> orderByChannels,
             List<SortOrder> orderings,
@@ -106,6 +109,7 @@ public final class InternalAggregationFunction
         return factory.bind(
                 inputChannels,
                 maskChannel,
+                lambdaChannelProviderFactory,
                 sourceTypes,
                 orderByChannels,
                 orderings,

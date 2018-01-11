@@ -58,12 +58,11 @@ public class ReduceAggregationFunction
             ReduceAggregationFunction.class,
             "input",
             Type.class,
-            Type.class,
             ReduceAggregationState.class,
             Block.class,
-            int.class,
-            Object.class,
-            BinaryFunctionInterface.class);
+            int.class
+            ,BinaryFunctionInterface.class
+    );
 
     private static final MethodHandle COMBINE_FUNCTION = methodHandle(
             ReduceAggregationFunction.class,
@@ -76,7 +75,6 @@ public class ReduceAggregationFunction
             ReduceAggregationFunction.class,
             "output",
             Type.class,
-            Type.class,
             ReduceAggregationState.class,
             BlockBuilder.class);
 
@@ -86,7 +84,10 @@ public class ReduceAggregationFunction
                 ImmutableList.of(typeVariable("T")),
                 ImmutableList.of(),
                 parseTypeSignature("T"),
-                ImmutableList.of(parseTypeSignature("T"), parseTypeSignature("function(T,T,T)")));
+                ImmutableList.of(
+                        parseTypeSignature("T")
+                        ,parseTypeSignature("function(T,T,T)")
+                ));
     }
 
     @Override
@@ -119,9 +120,7 @@ public class ReduceAggregationFunction
                 // TODO: this name is not correct, need to find someway to generate name based on hash of lambda
                 generateAggregationName(getSignature().getName(), type.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
                 createInputParameterMetadata(type),
-                inputMethodHandle.asType(
-                        inputMethodHandle.type()
-                                .changeParameterType(3, type.getJavaType())),
+                inputMethodHandle,
                 combineMethodHandle,
                 outputMethodHandle,
                 ReduceAggregationState.class,
@@ -138,24 +137,25 @@ public class ReduceAggregationFunction
         return ImmutableList.of(
                 new ParameterMetadata(STATE),
                 new ParameterMetadata(NULLABLE_BLOCK_INPUT_CHANNEL, type),
-                new ParameterMetadata(BLOCK_INDEX),
+                new ParameterMetadata(BLOCK_INDEX)
 
                 // TODO: Add functional interface into the ParameterMetadata
-                new ParameterMetadata(LAMBDA)
+              ,  new ParameterMetadata(LAMBDA)
         );
     }
 
-    public static void input(Type type, ReduceAggregationState state, Block block, int position, BinaryFunctionInterface mergeValue)
+    public static void input(Type type, ReduceAggregationState state, Block block, int position
+            ,BinaryFunctionInterface mergeValue
+    )
     {
         // Prototype only!!!
-        Object currentStateValue = null;
         Object newStateValue;
 
         if (state.getState() == null) {
             newStateValue = readNativeValue(type, block, position);
         }
         else {
-            currentStateValue = readNativeValue(type, state.getState(), 0);
+            Object currentStateValue = readNativeValue(type, state.getState(), 0);
             Object inputValue = readNativeValue(type, block, position);
 
             try {
@@ -200,12 +200,12 @@ public class ReduceAggregationFunction
         }
     }
 
-    public static void output(Type stateType, Type outputType, ReduceAggregationState state, BlockBuilder out)
+    public static void output(Type type, ReduceAggregationState state, BlockBuilder out)
     {
         Object stateValue = null;
         if (state.getState() != null) {
-            stateValue = readNativeValue(stateType, state.getState(), 0);
+            stateValue = readNativeValue(type, state.getState(), 0);
         }
-        writeNativeValue(outputType, out, stateValue);
+        writeNativeValue(type, out, stateValue);
     }
 }

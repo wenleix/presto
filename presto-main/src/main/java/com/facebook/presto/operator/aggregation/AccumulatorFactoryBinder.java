@@ -18,6 +18,7 @@ import com.facebook.presto.operator.aggregation.lambda.LambdaChannelProvider;
 import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.spi.type.Type;
 
+import java.lang.invoke.MethodHandle;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,6 +27,7 @@ public interface AccumulatorFactoryBinder
     AccumulatorFactory bind(
             List<Integer> argumentChannels,
             Optional<Integer> maskChannel,
+            List<MethodHandle> lambdaChannelProviderFactory,
             List<Type> sourceTypes,
             List<Integer> orderByChannels,
             List<SortOrder> orderings,

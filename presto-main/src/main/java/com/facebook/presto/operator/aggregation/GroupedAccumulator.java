@@ -30,7 +30,7 @@ public interface GroupedAccumulator
 
     void addInput(ConnectorSession session, GroupByIdBlock groupIdsBlock, Page page);
 
-    void addIntermediate(ConnectorSession session, GroupByIdBlock groupIdsBlock, Block block);
+    void addIntermediate(GroupByIdBlock groupIdsBlock, Block block);
 
     void evaluateIntermediate(int groupId, BlockBuilder output);
 

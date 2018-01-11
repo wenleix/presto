@@ -21,6 +21,7 @@ import com.facebook.presto.spi.function.AccumulatorStateSerializer;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.annotations.VisibleForTesting;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Optional;
@@ -68,18 +69,20 @@ public class GenericAccumulatorFactoryBinder
     public AccumulatorFactory bind(
             List<Integer> argumentChannels,
             Optional<Integer> maskChannel,
+            List<MethodHandle> lambdaChannelProviderFactory,
             List<Type> sourceTypes,
             List<Integer> orderByChannels,
             List<SortOrder> orderings,
             PagesIndex.Factory pagesIndexFactory)
     {
-        return new GenericAccumulatorFactory(
+        return  new GenericAccumulatorFactory(
                 stateSerializer,
                 stateFactory,
                 accumulatorConstructor,
                 groupedAccumulatorConstructor,
                 argumentChannels,
                 maskChannel,
+                lambdaChannelProviderFactory,
                 sourceTypes,
                 orderByChannels,
                 orderings,
