@@ -15,6 +15,13 @@ package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
+import com.facebook.presto.bytecode.BytecodeBlock;
+import com.facebook.presto.bytecode.ClassDefinition;
+import com.facebook.presto.bytecode.FieldDefinition;
+import com.facebook.presto.bytecode.MethodDefinition;
+import com.facebook.presto.bytecode.Parameter;
+import com.facebook.presto.bytecode.Scope;
+import com.facebook.presto.bytecode.Variable;
 import com.facebook.presto.cost.CostCalculator;
 import com.facebook.presto.execution.QueryPerformanceFetcher;
 import com.facebook.presto.execution.StageId;
@@ -28,7 +35,6 @@ import com.facebook.presto.operator.AggregationOperator.AggregationOperatorFacto
 import com.facebook.presto.operator.AssignUniqueIdOperator;
 import com.facebook.presto.operator.DeleteOperator.DeleteOperatorFactory;
 import com.facebook.presto.operator.DriverFactory;
-import com.facebook.presto.operator.DriverYieldSignal;
 import com.facebook.presto.operator.EnforceSingleRowOperator;
 import com.facebook.presto.operator.ExchangeClientSupplier;
 import com.facebook.presto.operator.ExchangeOperator.ExchangeOperatorFactory;
@@ -68,7 +74,10 @@ import com.facebook.presto.operator.TopNRowNumberOperator;
 import com.facebook.presto.operator.ValuesOperator.ValuesOperatorFactory;
 import com.facebook.presto.operator.WindowFunctionDefinition;
 import com.facebook.presto.operator.WindowOperator.WindowOperatorFactory;
+import com.facebook.presto.operator.Work;
+import com.facebook.presto.operator.aggregation.AccumulatorCompiler;
 import com.facebook.presto.operator.aggregation.AccumulatorFactory;
+import com.facebook.presto.operator.aggregation.lambda.LambdaChannelProvider;
 import com.facebook.presto.operator.aggregation.lambda.ToyLambdaChannelProvider;
 import com.facebook.presto.operator.exchange.LocalExchange.LocalExchangeFactory;
 import com.facebook.presto.operator.exchange.LocalExchangeSinkOperator.LocalExchangeSinkOperatorFactory;
@@ -87,7 +96,6 @@ import com.facebook.presto.operator.project.InterpretedPageProjection;
 import com.facebook.presto.operator.project.PageFilter;
 import com.facebook.presto.operator.project.PageProcessor;
 import com.facebook.presto.operator.project.PageProjection;
-import com.facebook.presto.operator.project.SelectedPositions;
 import com.facebook.presto.operator.window.FrameInfo;
 import com.facebook.presto.operator.window.WindowFunctionSupplier;
 import com.facebook.presto.spi.ColumnHandle;
@@ -97,7 +105,6 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordSet;
-import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
 import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.spi.predicate.NullableValue;
@@ -108,11 +115,19 @@ import com.facebook.presto.spiller.SpillerFactory;
 import com.facebook.presto.split.MappedRecordSet;
 import com.facebook.presto.split.PageSinkManager;
 import com.facebook.presto.split.PageSourceProvider;
+import com.facebook.presto.sql.gen.AggregationLambdaCompiler;
+import com.facebook.presto.sql.gen.BytecodeGeneratorContext;
+import com.facebook.presto.sql.gen.CachedInstanceBinder;
+import com.facebook.presto.sql.gen.CallSiteBinder;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
 import com.facebook.presto.sql.gen.JoinCompiler;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler.JoinFilterFunctionFactory;
+import com.facebook.presto.sql.gen.LambdaBytecodeGenerator;
 import com.facebook.presto.sql.gen.PageFunctionCompiler;
+import com.facebook.presto.sql.gen.PreGeneratedExpressions;
+import com.facebook.presto.sql.gen.RowExpressionCompiler;
+import com.facebook.presto.sql.gen.lambda.BinaryFunctionInterface;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.Partitioning.ArgumentBinding;
 import com.facebook.presto.sql.planner.optimizations.IndexJoinOptimizer;
@@ -154,6 +169,7 @@ import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.planner.plan.WindowNode.Frame;
+import com.facebook.presto.sql.relational.LambdaDefinitionExpression;
 import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.sql.relational.SqlToRowExpressionTranslator;
 import com.facebook.presto.sql.tree.Expression;
@@ -179,6 +195,7 @@ import io.airlift.units.DataSize;
 
 import javax.inject.Inject;
 
+import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -201,6 +218,15 @@ import static com.facebook.presto.SystemSessionProperties.getTaskConcurrency;
 import static com.facebook.presto.SystemSessionProperties.getTaskWriterCount;
 import static com.facebook.presto.SystemSessionProperties.isExchangeCompressionEnabled;
 import static com.facebook.presto.SystemSessionProperties.isSpillEnabled;
+import static com.facebook.presto.bytecode.Access.FINAL;
+import static com.facebook.presto.bytecode.Access.PRIVATE;
+import static com.facebook.presto.bytecode.Access.PUBLIC;
+import static com.facebook.presto.bytecode.Access.a;
+import static com.facebook.presto.bytecode.CompilerUtils.defineClass;
+import static com.facebook.presto.bytecode.CompilerUtils.makeClassName;
+import static com.facebook.presto.bytecode.Parameter.arg;
+import static com.facebook.presto.bytecode.ParameterizedType.type;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantFalse;
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
 import static com.facebook.presto.operator.DistinctLimitOperator.DistinctLimitOperatorFactory;
 import static com.facebook.presto.operator.NestedLoopBuildOperator.NestedLoopBuildOperatorFactory;
@@ -217,6 +243,7 @@ import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.TypeUtils.writeNativeValue;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypesFromInput;
+import static com.facebook.presto.sql.gen.LambdaBytecodeGenerator.generateLambda;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.COORDINATOR_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_ARBITRARY_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_BROADCAST_DISTRIBUTION;
@@ -996,13 +1023,19 @@ public class LocalExecutionPlanner
             PhysicalOperation source = node.getSource().accept(this, context);
 
             if (node.getGroupingKeys().isEmpty()) {
-                return planGlobalAggregation(context.getNextOperatorId(), node, source);
+                return planGlobalAggregation(context.getSession(), context.getNextOperatorId(), node, source);
             }
 
             boolean spillEnabled = isSpillEnabled(context.getSession());
             DataSize unspillMemoryLimit = getAggregationOperatorUnspillMemoryLimit(context.getSession());
 
-            return planGroupByAggregation(node, source, context.getNextOperatorId(), spillEnabled, unspillMemoryLimit);
+            return planGroupByAggregation(
+                    context.getSession(),
+                    node,
+                    source,
+                    context.getNextOperatorId(),
+                    spillEnabled,
+                    unspillMemoryLimit);
         }
 
         @Override
@@ -2072,18 +2105,121 @@ public class LocalExecutionPlanner
         }
 
         private AccumulatorFactory buildAccumulatorFactory(
+                Session session,
                 PhysicalOperation source,
                 Aggregation aggregation)
         {
-            List<Integer> arguments = new ArrayList<>();
+            // Try to get the RowExpression of the FunctionCall...
+            Map<Symbol, Integer> sourceLayout = source.getLayout();
+            Map<Integer, Type> sourceTypes = getInputTypes(source.getLayout(), source.getTypes());
+
+            // Expression Analyzer inputs instead of symbols, so rewrite the expressions first
+            SymbolToInputRewriter symbolToInputRewriter = new SymbolToInputRewriter(sourceLayout);
+            FunctionCall rewrittenAggregationFunctionCall = (FunctionCall) symbolToInputRewriter.rewrite(aggregation.getCall());
+
+            Map<NodeRef<Expression>, Type> expressionTypes = getExpressionTypesFromInput(
+                    session,
+                    metadata,
+                    sqlParser,
+                    sourceTypes,
+                    rewrittenAggregationFunctionCall,
+                    emptyList());
+
+            List<Integer> valueChannels = new ArrayList<>();
+            List<MethodHandle> lambdaChannelProviderFactories = new ArrayList<>();
             for (Expression argument : aggregation.getCall().getArguments()) {
                 if (argument instanceof LambdaExpression) {
-                    // TODO: Compile the lambda and add it into LambdaChannelProvider
-                    continue;
-                }
+                    // Compile it!
+                    // TODO: refactor the following into AggregationLambdaCompiler
 
-                Symbol argumentSymbol = Symbol.from(argument);
-                arguments.add(source.getLayout().get(argumentSymbol));
+                    LambdaDefinitionExpression lambda = (LambdaDefinitionExpression) toRowExpression(argument, expressionTypes);
+
+                    // The container class for lambda
+                    ClassDefinition lambdaChannelProviderClassDefinition = new ClassDefinition(
+                            a(PUBLIC, FINAL),
+                            makeClassName("LambdaChannelProvider"),
+                            type(Object.class),
+                            type(LambdaChannelProvider.class));
+
+                    FieldDefinition sessionField = lambdaChannelProviderClassDefinition.declareField(a(PRIVATE), "session", ConnectorSession.class);
+
+                    CallSiteBinder callSiteBinder = new CallSiteBinder();
+                    CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(lambdaChannelProviderClassDefinition, callSiteBinder);
+
+                    PreGeneratedExpressions preGeneratedExpressions = LambdaBytecodeGenerator.generateMethodsForLambda(
+                            lambdaChannelProviderClassDefinition,
+                            callSiteBinder,
+                            cachedInstanceBinder,
+                            lambda,
+                            metadata.getFunctionRegistry());
+
+                    MethodDefinition method = lambdaChannelProviderClassDefinition.declareMethod(
+                            a(PUBLIC),
+                            "getLambda",
+                            type(Object.class),
+                            ImmutableList.of());
+
+                    method.comment("Generate lambda function");
+
+                    Scope scope = method.getScope();
+                    BytecodeBlock body = method.getBody();
+                    scope.declareVariable("wasNull", body, constantFalse());
+                    scope.declareVariable("session", body, method.getThis().getField(sessionField));
+
+                    RowExpressionCompiler rowExpressionCompiler = new RowExpressionCompiler(
+                            callSiteBinder,
+                            cachedInstanceBinder,
+                            AggregationLambdaCompiler.fieldReferenceCompiler(),
+                            metadata.getFunctionRegistry(),
+                            preGeneratedExpressions);
+
+                    BytecodeGeneratorContext generatorContext = new BytecodeGeneratorContext(
+                            rowExpressionCompiler,
+                            scope,
+                            callSiteBinder,
+                            cachedInstanceBinder,
+                            metadata.getFunctionRegistry(),
+                            preGeneratedExpressions);
+
+                    body.append(
+                            generateLambda(
+                                generatorContext,
+                                ImmutableList.of(),
+                                preGeneratedExpressions.getCompiledLambdaMap().get(lambda),
+                                // (TODO) get the desired lambda interface class through InternalAggregationFunction
+                                BinaryFunctionInterface.class))
+//                            .checkCast(Object.class)
+                            .retObject();
+
+                    // Constructor
+                    Parameter sessionParameter = arg("session", ConnectorSession.class);
+
+                    MethodDefinition constructorDefinition = lambdaChannelProviderClassDefinition.declareConstructor(a(PUBLIC), sessionParameter);
+                    BytecodeBlock constructorBody = constructorDefinition.getBody();
+                    Variable constructorThisVariable = constructorDefinition.getThis();
+
+                    constructorBody.comment("super();")
+                            .append(constructorThisVariable)
+                            .invokeConstructor(Object.class)
+                            .append(constructorThisVariable.setField(sessionField, sessionParameter));
+
+                    cachedInstanceBinder.generateInitializations(constructorThisVariable, constructorBody);
+                    constructorBody.ret();
+
+                    Class<? extends LambdaChannelProvider> lambdaChannelProviderClass;
+                    try {
+                        lambdaChannelProviderClass = defineClass(lambdaChannelProviderClassDefinition, LambdaChannelProvider.class, callSiteBinder.getBindings(), AccumulatorCompiler.class.getClassLoader());
+                    }
+                    catch (Exception e) {
+                        throw new PrestoException(COMPILER_ERROR, e);
+                    }
+
+                    lambdaChannelProviderFactories.add(constructorMethodHandle(lambdaChannelProviderClass, ConnectorSession.class));
+                }
+                else {
+                    Symbol argumentSymbol = Symbol.from(argument);
+                    valueChannels.add(sourceLayout.get(argumentSymbol));
+                }
             }
 
             Optional<Integer> maskChannel = Optional.empty();
@@ -2110,17 +2246,18 @@ public class LocalExecutionPlanner
                     .getFunctionRegistry()
                     .getAggregateFunctionImplementation(aggregation.getSignature())
                     .bind(
-                            arguments,
+                            valueChannels,
                             maskChannel,
                             // TODO: We need to compile these LambdaChannelProvider
-                            ImmutableList.of(constructorMethodHandle(ToyLambdaChannelProvider.class, ConnectorSession.class)),
+//                            ImmutableList.of(constructorMethodHandle(ToyLambdaChannelProvider.class, ConnectorSession.class)),
+                            lambdaChannelProviderFactories,
                             source.getTypes(),
                             getChannelsForSymbols(sortKeys, source.getLayout()),
                             sortOrders,
                             pagesIndexFactory);
         }
 
-        private PhysicalOperation planGlobalAggregation(int operatorId, AggregationNode node, PhysicalOperation source)
+        private PhysicalOperation planGlobalAggregation(Session session, int operatorId, AggregationNode node, PhysicalOperation source)
         {
             int outputChannel = 0;
             ImmutableMap.Builder<Symbol, Integer> outputMappings = ImmutableMap.builder();
@@ -2128,7 +2265,7 @@ public class LocalExecutionPlanner
             for (Map.Entry<Symbol, Aggregation> entry : node.getAggregations().entrySet()) {
                 Symbol symbol = entry.getKey();
                 Aggregation aggregation = entry.getValue();
-                accumulatorFactories.add(buildAccumulatorFactory(source, aggregation));
+                accumulatorFactories.add(buildAccumulatorFactory(session, source, aggregation));
                 outputMappings.put(symbol, outputChannel); // one aggregation per channel
                 outputChannel++;
             }
@@ -2139,6 +2276,7 @@ public class LocalExecutionPlanner
         }
 
         private PhysicalOperation planGroupByAggregation(
+                Session session,
                 AggregationNode node,
                 PhysicalOperation source,
                 int operatorId,
@@ -2153,7 +2291,7 @@ public class LocalExecutionPlanner
                 Symbol symbol = entry.getKey();
                 Aggregation aggregation = entry.getValue();
 
-                accumulatorFactories.add(buildAccumulatorFactory(source, aggregation));
+                accumulatorFactories.add(buildAccumulatorFactory(session, source, aggregation));
                 aggregationOutputSymbols.add(symbol);
             }
 

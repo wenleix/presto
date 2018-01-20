@@ -34,6 +34,7 @@ import com.facebook.presto.sql.relational.VariableReferenceExpression;
 import com.google.common.base.VerifyException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.Primitives;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
@@ -43,6 +44,7 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.facebook.presto.bytecode.Access.PUBLIC;
 import static com.facebook.presto.bytecode.Access.a;
@@ -54,9 +56,12 @@ import static com.facebook.presto.spi.StandardErrorCode.COMPILER_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.sql.gen.BytecodeUtils.boxPrimitiveIfNecessary;
 import static com.facebook.presto.sql.gen.BytecodeUtils.unboxPrimitiveIfNecessary;
+import static com.facebook.presto.sql.gen.LambdaAndTryExpressionExtractor.extractLambdaAndTryExpressions;
 import static com.facebook.presto.sql.gen.LambdaCapture.LAMBDA_CAPTURE_METHOD;
 import static com.facebook.presto.util.Failures.checkCondition;
+import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static org.objectweb.asm.Type.getMethodType;
 import static org.objectweb.asm.Type.getType;
@@ -67,9 +72,37 @@ public class LambdaBytecodeGenerator
     {
     }
 
-    /**
-     * @return a MethodHandle field that represents the lambda expression
-     */
+    public static  PreGeneratedExpressions generateMethodsForLambda(
+            ClassDefinition containerClassDefinition,
+            CallSiteBinder callSiteBinder,
+            CachedInstanceBinder cachedInstanceBinder,
+            RowExpression expression,
+            FunctionRegistry functionRegistry)
+    {
+        Set<RowExpression> lambdaExpressions = ImmutableSet.copyOf(extractLambdaAndTryExpressions(expression));
+        ImmutableMap.Builder<CallExpression, MethodDefinition> tryMethodMap = ImmutableMap.builder();
+        ImmutableMap.Builder<LambdaDefinitionExpression, CompiledLambda> compiledLambdaMap = ImmutableMap.builder();
+
+        int counter = 0;
+        for (RowExpression rowExpression : lambdaExpressions) {
+            verify(rowExpression instanceof LambdaDefinitionExpression, format("unexpected expression: %s", rowExpression.toString()));
+            LambdaDefinitionExpression lambdaExpression = (LambdaDefinitionExpression) rowExpression;
+            PreGeneratedExpressions preGeneratedExpressions = new PreGeneratedExpressions(tryMethodMap.build(), compiledLambdaMap.build());
+            CompiledLambda compiledLambda = LambdaBytecodeGenerator.preGenerateLambdaExpression(
+                    lambdaExpression,
+                    "lambda_" + counter,
+                    containerClassDefinition,
+                    preGeneratedExpressions,
+                    callSiteBinder,
+                    cachedInstanceBinder,
+                    functionRegistry);
+            compiledLambdaMap.put(lambdaExpression, compiledLambda);
+            counter++;
+        }
+
+        return new PreGeneratedExpressions(tryMethodMap.build(), compiledLambdaMap.build());
+    }
+
     public static CompiledLambda preGenerateLambdaExpression(
             LambdaDefinitionExpression lambdaExpression,
             String methodName,
@@ -246,7 +279,7 @@ public class LambdaBytecodeGenerator
         };
     }
 
-    static class CompiledLambda
+    public static class CompiledLambda
     {
         // lambda method information
         private final Handle lambdaAsmHandle;

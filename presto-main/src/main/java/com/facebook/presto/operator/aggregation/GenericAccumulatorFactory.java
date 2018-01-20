@@ -154,7 +154,8 @@ public class GenericAccumulatorFactory
         ImmutableList.Builder<LambdaChannelProvider> builder = ImmutableList.builder();
         for (MethodHandle factory : lambdaChannelProviderFactory) {
             try {
-                builder.add((LambdaChannelProvider) factory.invoke(null));  // TODO whether to inject ConnectorSession here or in addInput is a question.
+                // This assumes connector session needs to be provided for the constructor of LambdaChannelProvider
+                builder.add((LambdaChannelProvider) factory.invoke(null));
             }
             catch (Throwable throwable) {
                 Throwables.propagate(throwable);

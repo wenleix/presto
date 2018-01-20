@@ -58,7 +58,7 @@ public class RowExpressionCompiler
     private final FunctionRegistry registry;
     private final PreGeneratedExpressions preGeneratedExpressions;
 
-    RowExpressionCompiler(
+    public RowExpressionCompiler(
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
             RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler,

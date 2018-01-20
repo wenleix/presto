@@ -445,7 +445,7 @@ class QueryPlanner
 
         ImmutableList.Builder<Expression> arguments = ImmutableList.builder();
 
-        // lambda expressions shouldn't be treated as input (but bounded to aggregation node)
+        // lambda expressions shouldn't be pre-project
         analysis.getAggregates(node).stream()
                 .map(FunctionCall::getArguments)
                 .flatMap(List::stream)

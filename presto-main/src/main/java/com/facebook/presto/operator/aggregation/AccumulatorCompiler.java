@@ -121,7 +121,6 @@ public class AccumulatorCompiler
         FieldDefinition inputChannelsField = definition.declareField(a(PRIVATE, FINAL), "inputChannels", type(List.class, Integer.class));
         FieldDefinition maskChannelField = definition.declareField(a(PRIVATE, FINAL), "maskChannel", type(Optional.class, Integer.class));
         FieldDefinition stateField = definition.declareField(a(PRIVATE, FINAL), "state", grouped ? stateFactory.getGroupedStateClass() : stateFactory.getSingleStateClass());
-        // TODO: make multiple lambda channels...
         FieldDefinition lambdaChannelProviderField = definition.declareField(a(PRIVATE, FINAL), "lambdaChannel", type(List.class, LambdaChannelProvider.class));
 
         // Generate constructor
