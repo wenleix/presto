@@ -17,8 +17,11 @@ import com.facebook.presto.operator.aggregation.state.BlockState;
 import com.facebook.presto.operator.aggregation.state.NullableBooleanState;
 import com.facebook.presto.operator.aggregation.state.NullableDoubleState;
 import com.facebook.presto.operator.aggregation.state.NullableLongState;
+import com.facebook.presto.operator.aggregation.state.ObjectBlockPositionState;
+import com.facebook.presto.operator.aggregation.state.SliceBlockPositionState;
 import com.facebook.presto.operator.aggregation.state.SliceState;
 import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.type.Type;
 import io.airlift.slice.Slice;
 
 import java.lang.invoke.MethodHandle;
@@ -64,22 +67,6 @@ public class MinMaxHelper
         }
     }
 
-    public static void combineStateWithValue(MethodHandle comparator, SliceState state, Slice value)
-    {
-        if (state.getSlice() == null) {
-            state.setSlice(value);
-            return;
-        }
-        try {
-            if ((boolean) comparator.invokeExact(value, state.getSlice())) {
-                state.setSlice(value);
-            }
-        }
-        catch (Throwable t) {
-            throw internalError(t);
-        }
-    }
-
     public static void combineStateWithValue(MethodHandle comparator, NullableBooleanState state, boolean value)
     {
         if (state.isNull()) {
@@ -97,19 +84,55 @@ public class MinMaxHelper
         }
     }
 
-    public static void combineStateWithValue(MethodHandle comparator, BlockState state, Block value)
+    public static void minCombineStateWithValue(Type type, SliceBlockPositionState state, Block block, int position)
     {
         if (state.getBlock() == null) {
-            state.setBlock(value);
+            state.setBlock(block);
+            state.setPosition(position);
             return;
         }
-        try {
-            if ((boolean) comparator.invokeExact(value, state.getBlock())) {
-                state.setBlock(value);
-            }
+        if (type.compareTo(block, position, state.getBlock(), state.getPosition()) < 0) {
+            state.setBlock(block);
+            state.setPosition(position);
         }
-        catch (Throwable t) {
-            throw internalError(t);
+    }
+
+    public static void maxCombineStateWithValue(Type type, SliceBlockPositionState state, Block block, int position)
+    {
+        if (state.getBlock() == null) {
+            state.setBlock(block);
+            state.setPosition(position);
+            return;
+        }
+        if (type.compareTo(block, position, state.getBlock(), state.getPosition()) > 0) {
+            state.setBlock(block);
+            state.setPosition(position);
+        }
+    }
+
+    public static void minCombineStateWithValue(Type type, ObjectBlockPositionState state, Block block, int position)
+    {
+        if (state.getBlock() == null) {
+            state.setBlock(block);
+            state.setPosition(position);
+            return;
+        }
+        if (type.compareTo(block, position, state.getBlock(), state.getPosition()) < 0) {
+            state.setBlock(block);
+            state.setPosition(position);
+        }
+    }
+
+    public static void maxCombineStateWithValue(Type type, ObjectBlockPositionState state, Block block, int position)
+    {
+        if (state.getBlock() == null) {
+            state.setBlock(block);
+            state.setPosition(position);
+            return;
+        }
+        if (type.compareTo(block, position, state.getBlock(), state.getPosition()) > 0) {
+            state.setBlock(block);
+            state.setPosition(position);
         }
     }
 
@@ -147,22 +170,6 @@ public class MinMaxHelper
         }
     }
 
-    public static void combineStateWithState(MethodHandle comparator, SliceState state, SliceState otherState)
-    {
-        if (state.getSlice() == null) {
-            state.setSlice(otherState.getSlice());
-            return;
-        }
-        try {
-            if ((boolean) comparator.invokeExact(otherState.getSlice(), state.getSlice())) {
-                state.setSlice(otherState.getSlice());
-            }
-        }
-        catch (Throwable t) {
-            throw internalError(t);
-        }
-    }
-
     public static void combineStateWithState(MethodHandle comparator, NullableBooleanState state, NullableBooleanState otherState)
     {
         if (state.isNull()) {
@@ -180,19 +187,55 @@ public class MinMaxHelper
         }
     }
 
-    public static void combineStateWithState(MethodHandle comparator, BlockState state, BlockState otherState)
+    public static void minCombineStateWithState(Type type, SliceBlockPositionState state, SliceBlockPositionState otherState)
     {
         if (state.getBlock() == null) {
             state.setBlock(otherState.getBlock());
+            state.setPosition(otherState.getPosition());
             return;
         }
-        try {
-            if ((boolean) comparator.invokeExact(otherState.getBlock(), state.getBlock())) {
-                state.setBlock(otherState.getBlock());
-            }
+        if (type.compareTo(otherState.getBlock(), otherState.getPosition(), state.getBlock(), state.getPosition()) < 0) {
+            state.setBlock(otherState.getBlock());
+            state.setPosition(otherState.getPosition());
         }
-        catch (Throwable t) {
-            throw internalError(t);
+    }
+
+    public static void maxCombineStateWithState(Type type, SliceBlockPositionState state, SliceBlockPositionState otherState)
+    {
+        if (state.getBlock() == null) {
+            state.setBlock(otherState.getBlock());
+            state.setPosition(otherState.getPosition());
+            return;
+        }
+        if (type.compareTo(otherState.getBlock(), otherState.getPosition(), state.getBlock(), state.getPosition()) > 0) {
+            state.setBlock(otherState.getBlock());
+            state.setPosition(otherState.getPosition());
+        }
+    }
+
+    public static void minCombineStateWithState(Type type, ObjectBlockPositionState state, ObjectBlockPositionState otherState)
+    {
+        if (state.getBlock() == null) {
+            state.setBlock(otherState.getBlock());
+            state.setPosition(otherState.getPosition());
+            return;
+        }
+        if (type.compareTo(otherState.getBlock(), otherState.getPosition(), state.getBlock(), state.getPosition()) < 0) {
+            state.setBlock(otherState.getBlock());
+            state.setPosition(otherState.getPosition());
+        }
+    }
+
+    public static void maxCombineStateWithState(Type type, ObjectBlockPositionState state, ObjectBlockPositionState otherState)
+    {
+        if (state.getBlock() == null) {
+            state.setBlock(otherState.getBlock());
+            state.setPosition(otherState.getPosition());
+            return;
+        }
+        if (type.compareTo(otherState.getBlock(), otherState.getPosition(), state.getBlock(), state.getPosition()) > 0) {
+            state.setBlock(otherState.getBlock());
+            state.setPosition(otherState.getPosition());
         }
     }
 }
