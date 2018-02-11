@@ -229,7 +229,6 @@ public class RowBlockBuilder
             }
             else {
                 block.writePositionTo(i, fieldBlockBuilders[i]);
-                fieldBlockBuilders[i].closeEntry();
             }
         }
         return this;

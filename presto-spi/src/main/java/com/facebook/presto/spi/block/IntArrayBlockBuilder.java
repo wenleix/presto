@@ -179,7 +179,7 @@ public class IntArrayBlockBuilder
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);
-        blockBuilder.writeInt(values[position]);
+        blockBuilder.writeInt(values[position]).closeEntry();
     }
 
     @Override

@@ -179,7 +179,7 @@ public class ShortArrayBlockBuilder
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);
-        blockBuilder.writeShort(values[position]);
+        blockBuilder.writeShort(values[position]).closeEntry();
     }
 
     @Override

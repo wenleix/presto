@@ -165,7 +165,7 @@ public class LongArrayBlock
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);
-        blockBuilder.writeLong(values[position + arrayOffset]);
+        blockBuilder.writeLong(values[position + arrayOffset]).closeEntry();
     }
 
     @Override

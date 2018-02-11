@@ -226,7 +226,7 @@ public class LongArrayBlockBuilder
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);
-        blockBuilder.writeLong(values[position]);
+        blockBuilder.writeLong(values[position]).closeEntry();
     }
 
     @Override

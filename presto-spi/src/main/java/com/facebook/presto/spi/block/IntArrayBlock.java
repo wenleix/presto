@@ -118,7 +118,7 @@ public class IntArrayBlock
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);
-        blockBuilder.writeInt(values[position + arrayOffset]);
+        blockBuilder.writeInt(values[position + arrayOffset]).closeEntry();
     }
 
     @Override
