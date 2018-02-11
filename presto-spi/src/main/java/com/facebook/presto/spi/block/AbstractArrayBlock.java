@@ -150,6 +150,16 @@ public abstract class AbstractArrayBlock
     }
 
     @Override
+    public void copyRegionTo(int position, int length, BlockBuilder blockBuilder)
+    {
+        int positionCount = getPositionCount();
+        checkValidRegion(positionCount, position, length);
+
+        ArrayBlockBuilder arrayBlockBuilder = (ArrayBlockBuilder) blockBuilder;
+        arrayBlockBuilder.appendArrays(this, position, length);
+    }
+
+    @Override
     public Block getSingleValueBlock(int position)
     {
         checkReadablePosition(position);

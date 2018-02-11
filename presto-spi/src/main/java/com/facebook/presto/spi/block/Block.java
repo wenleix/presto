@@ -114,6 +114,18 @@ public interface Block
      */
     void writePositionTo(int position, BlockBuilder blockBuilder);
 
+    default void copyRegionTo(int position, int length, BlockBuilder blockBuilder)
+    {
+        for (int i = 0; i < length; i++) {
+            if (isNull(position + i)) {
+                blockBuilder.appendNull();
+            }
+            else {
+                writePositionTo(position + i, blockBuilder);
+            }
+        }
+    }
+
     /**
      * Is the byte sequences at {@code offset} in the value at {@code position} equal
      * to the byte sequence at {@code otherOffset} in the value at {@code otherPosition}

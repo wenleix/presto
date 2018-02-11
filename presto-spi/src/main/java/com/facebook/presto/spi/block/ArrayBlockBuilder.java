@@ -191,6 +191,31 @@ public class ArrayBlockBuilder
         return this;
     }
 
+    public BlockBuilder appendArrays(AbstractArrayBlock arrayBlock, int position, int length)
+    {
+        ensureCapacity(positionCount + length);
+
+        int startValueOffset = arrayBlock.getOffset(position);
+        int endValueOffset = arrayBlock.getOffset(position + length);
+
+        arrayBlock.getValues().copyRegionTo(startValueOffset, endValueOffset - startValueOffset, values);
+        System.arraycopy(arrayBlock.getValueIsNull(), position + arrayBlock.getOffsetBase(), valueIsNull, positionCount, length);
+
+//        int[] arrayBlockOffsets = arrayBlock.getOffsets();
+        for (int i = 0; i < length; i++) {
+//            int arrayLength = arrayBlockOffsets[position + arrayBlock.getOffsetBase() + 1] - arrayBlockOffsets[position + arrayBlock.getOffsetBase()];
+            int arrayLength = arrayBlock.getOffset(position + i + 1) - arrayBlock.getOffset(position + i);
+            offsets[positionCount + i + 1] = offsets[positionCount + i] + arrayLength;
+        }
+        positionCount += length;
+
+        if (blockBuilderStatus != null) {
+            blockBuilderStatus.addBytes((Integer.BYTES + Byte.BYTES) * length);
+        }
+
+        return this;
+    }
+
     private void entryAdded(boolean isNull)
     {
         if (valueIsNull.length <= positionCount) {
@@ -203,6 +228,25 @@ public class ArrayBlockBuilder
         if (blockBuilderStatus != null) {
             blockBuilderStatus.addBytes(Integer.BYTES + Byte.BYTES);
         }
+    }
+
+    private void ensureCapacity(int capacity)
+    {
+        int newSize;
+        if (initialized) {
+            newSize = valueIsNull.length;
+            while (newSize < capacity) {
+                newSize = BlockUtil.calculateNewArraySize(newSize);
+            }
+        }
+        else {
+            newSize = capacity;
+            initialized = true;
+        }
+
+        valueIsNull = Arrays.copyOf(valueIsNull, newSize);
+        offsets = Arrays.copyOf(offsets, newSize + 1);
+        updateDataSize();
     }
 
     private void growCapacity()

@@ -155,7 +155,8 @@ public class ArrayType
             blockBuilder.appendNull();
         }
         else {
-            block.writePositionTo(position, blockBuilder);
+        //    block.writePositionTo(position, blockBuilder);
+            block.copyRegionTo(position, 1, blockBuilder);
         }
     }
 
