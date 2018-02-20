@@ -70,10 +70,17 @@ public class IntArrayBlockBuilder
 
     public BlockBuilder appendInts(int[] intValues, boolean[] isNull, int offset, int length)
     {
-        ensureCapacity(this.values.length + length);
+        ensureCapacity(positionCount + length);
 
-        System.arraycopy(intValues, offset, this.values, positionCount, length);
-        System.arraycopy(isNull, offset, this.valueIsNull, positionCount, length);
+//        System.err.println(offset + ", " + length);
+//        System.arraycopy(intValues, offset, this.values, positionCount, length);
+//        System.arraycopy(isNull, offset, this.valueIsNull, positionCount, length);
+
+        for (int i = 0; i < length; i++) {
+            this.valueIsNull[positionCount + i] = isNull[offset + i];
+            this.values[positionCount + i] = intValues[offset + i];
+        }
+
         positionCount += length;
         if (blockBuilderStatus != null) {
             blockBuilderStatus.addBytes((Byte.BYTES + Integer.BYTES) * length);
@@ -141,6 +148,7 @@ public class IntArrayBlockBuilder
         while (newSize < capacity) {
             newSize = BlockUtil.calculateNewArraySize(newSize);
         }
+//        System.err.println("New size = " + newSize);
 
         valueIsNull = Arrays.copyOf(valueIsNull, newSize);
         values = Arrays.copyOf(values, newSize);

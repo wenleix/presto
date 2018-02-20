@@ -22,7 +22,6 @@ import java.util.Arrays;
 import java.util.function.BiConsumer;
 
 import static com.facebook.presto.spi.block.BlockUtil.calculateBlockResetSize;
-import static com.facebook.presto.spi.block.ColumnarArray.toColumnarArray;
 import static io.airlift.slice.SizeOf.sizeOf;
 import static java.lang.Math.max;
 import static java.util.Objects.requireNonNull;
@@ -167,6 +166,7 @@ public class ArrayBlockBuilder
             throw new IllegalStateException("Expected current entry to be closed but was opened");
         }
 
+        /*
         ColumnarArray columnarArray = toColumnarArray(block);
         ensureCapacity(positionCount + length);
 
@@ -178,6 +178,30 @@ public class ArrayBlockBuilder
             offsets[positionCount + i + 1] = offsets[positionCount + i] + columnarArray.getLength(position + i);
         }
         columnarArray.getElementsBlock().appendRegionTo(startElementBlockOffset, endElementBlockOffset - startElementBlockOffset, values);
+        positionCount += length;
+
+        if (blockBuilderStatus != null) {
+            blockBuilderStatus.addBytes((Integer.BYTES + Byte.BYTES) * length);
+        }
+        */
+
+        AbstractArrayBlock arrayBlock = (AbstractArrayBlock) block;
+        ensureCapacity(positionCount + length);
+
+        int startValueOffset = arrayBlock.getOffset(position);
+        int currentOffset = startValueOffset;
+
+        for (int i = 0; i < length; i++) {
+            valueIsNull[positionCount + i] = arrayBlock.isNull(position + i);
+            int nextOffset = arrayBlock.getOffset(position + i + 1);
+            offsets[positionCount + i + 1] = offsets[positionCount + i] + nextOffset - currentOffset;
+            currentOffset = nextOffset;
+        }
+
+        if (currentOffset > startValueOffset) {
+            arrayBlock.getValues().appendRegionTo(startValueOffset, currentOffset - startValueOffset, values);
+        }
+
         positionCount += length;
 
         if (blockBuilderStatus != null) {
@@ -236,20 +260,18 @@ public class ArrayBlockBuilder
 
     private void ensureCapacity(int capacity)
     {
-        int newSize;
-        if (initialized) {
-            newSize = valueIsNull.length;
-            while (newSize < capacity) {
-                newSize = BlockUtil.calculateNewArraySize(newSize);
-            }
+        if (valueIsNull.length >= capacity) {
+            return;
         }
-        else {
-            newSize = capacity;
-            initialized = true;
+
+        int newSize = initialized ? valueIsNull.length : initialEntryCount;
+        while (newSize < capacity) {
+            newSize = BlockUtil.calculateNewArraySize(newSize);
         }
 
         valueIsNull = Arrays.copyOf(valueIsNull, newSize);
         offsets = Arrays.copyOf(offsets, newSize + 1);
+        initialized = true;
         updateDataSize();
     }
 
