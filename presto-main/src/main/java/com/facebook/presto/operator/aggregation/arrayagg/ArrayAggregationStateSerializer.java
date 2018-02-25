@@ -53,6 +53,7 @@ public class ArrayAggregationStateSerializer
     @Override
     public void deserialize(Block block, int index, ArrayAggregationState state)
     {
+        state.reset();
         Block stateBlock = (Block) arrayType.getObject(block, index);
         for (int i = 0; i < stateBlock.getPositionCount(); i++) {
             state.add(stateBlock, i);

@@ -25,6 +25,8 @@ public interface ArrayAggregationState
 
     boolean isEmpty();
 
+    void reset();
+
     default void merge(ArrayAggregationState otherState)
     {
         otherState.forEach((block, position) -> add(block, position));

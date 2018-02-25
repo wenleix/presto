@@ -68,4 +68,10 @@ public class SingleArrayAggregationState
     {
         return blockBuilder == null || blockBuilder.getPositionCount() == 0;
     }
+
+    @Override
+    public void reset()
+    {
+        blockBuilder = null;
+    }
 }

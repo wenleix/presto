@@ -76,4 +76,10 @@ public class LegacyArrayAggregationGroupState
         BlockBuilder blockBuilder = blockBuilders.get(getGroupId());
         return blockBuilder == null || blockBuilder.getPositionCount() == 0;
     }
+
+    @Override
+    public void reset()
+    {
+        blockBuilders.set(getGroupId(), null);
+    }
 }

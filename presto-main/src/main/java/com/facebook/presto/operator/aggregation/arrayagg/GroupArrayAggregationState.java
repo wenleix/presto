@@ -35,27 +35,30 @@ public class GroupArrayAggregationState
 
     private final Type type;
 
-    private final LongBigArray headPointers;
-    private final LongBigArray tailPointers;
-    private final LongBigArray nextPointers;
+    private LongBigArray headPointers;
+    private LongBigArray tailPointers;
+    private LongBigArray nextDeltaPointers;   // TODO: Try to use int
 
     //  A single block can be too huge and cause "Cannot allocate slice larger than 2147483639 bytes"
-    private final List<Block> segmentedValues;
-    private final PageBuilder pageBuilder;
+    private List<Block> segmentedValues;
+    private PageBuilder pageBuilder;
 
     private long totalPositions;
+    private long capacity;
 
     public GroupArrayAggregationState(Type type)
     {
         this.type = type;
         this.headPointers = new LongBigArray(NULL);
         this.tailPointers = new LongBigArray(NULL);
-        this.nextPointers = new LongBigArray(NULL);
+        this.nextDeltaPointers = new LongBigArray(NULL);
         this.segmentedValues = new ArrayList<>();
         this.pageBuilder = new PageBuilder(ImmutableList.of(type));
 
         this.segmentedValues.add(pageBuilder.getBlockBuilder(0));
         totalPositions = 0;
+        capacity = 1024;
+        nextDeltaPointers.ensureCapacity(capacity);
     }
 
     @Override
@@ -76,14 +79,19 @@ public class GroupArrayAggregationState
     {
         long currentGroupId = getGroupId();
 
-        nextPointers.ensureCapacity(totalPositions + 1);
+        if (totalPositions == capacity) {
+            capacity *= 1.5;
+            nextDeltaPointers.ensureCapacity(capacity);
+        }
+
         if (headPointers.get(currentGroupId) == NULL) {
             // new linked list, set up the header pointer
             headPointers.set(currentGroupId, totalPositions);
         }
         else {
             // existing linked list, link the new entry to the tail
-            nextPointers.set(tailPointers.get(currentGroupId), totalPositions);
+            long tailPosition = tailPointers.get(currentGroupId);
+            nextDeltaPointers.set(tailPosition, totalPositions - tailPosition);
         }
         tailPointers.set(currentGroupId, totalPositions);
 
@@ -93,27 +101,36 @@ public class GroupArrayAggregationState
         totalPositions++;
 
         if (pageBuilder.isFull()) {
-            segmentedValues.add(blockBuilder);
             pageBuilder.reset();
+            segmentedValues.add(pageBuilder.getBlockBuilder(0));
         }
     }
 
     @Override
     public void forEach(ArrayAggregationStateConsumer consumer)
     {
-        long currentPosition = headPointers.get(getGroupId());
-        while (currentPosition != NULL) {
-            // Get block and position in block
-            // TODO: Need faster way to do this...
-            int blockIndex = 0;
-            long positionSum = 0;
-            while (segmentedValues.get(blockIndex).getPositionCount() <= currentPosition - positionSum) {
-                positionSum += segmentedValues.get(blockIndex).getPositionCount();
-                blockIndex++;
-            }
+        long currentGlobalPosition = headPointers.get(getGroupId());
+        int segmentId = 0;
+        long localPosition = currentGlobalPosition;
 
-            consumer.accept(segmentedValues.get(blockIndex), (int) (currentPosition - positionSum));
-            currentPosition = nextPointers.get(currentPosition);
+        while (true) {
+            // Get block and position in segments
+            while (true) {
+                int currentSegmentPositionCount = segmentedValues.get(segmentId).getPositionCount();
+                if (currentSegmentPositionCount > localPosition) {
+                    break;
+                }
+                localPosition -= currentSegmentPositionCount;
+                segmentId++;
+            }
+            consumer.accept(segmentedValues.get(segmentId), (int) (localPosition));
+
+            long delta = nextDeltaPointers.get(currentGlobalPosition);
+            if (delta == NULL) {
+                break;
+            }
+            currentGlobalPosition += delta;
+            localPosition += delta;
         }
     }
 
@@ -121,5 +138,21 @@ public class GroupArrayAggregationState
     public boolean isEmpty()
     {
         return headPointers.get(getGroupId()) == NULL;
+    }
+
+    @Override
+    public void reset()
+    {
+        // TODO: only reset this..
+        headPointers = new LongBigArray(NULL);
+        tailPointers = new LongBigArray(NULL);
+        nextDeltaPointers = new LongBigArray(NULL);
+        segmentedValues = new ArrayList<>();
+        pageBuilder = new PageBuilder(ImmutableList.of(type));
+
+        segmentedValues.add(pageBuilder.getBlockBuilder(0));
+        totalPositions = 0;
+        capacity = 1024;
+        nextDeltaPointers.ensureCapacity(capacity);
     }
 }
