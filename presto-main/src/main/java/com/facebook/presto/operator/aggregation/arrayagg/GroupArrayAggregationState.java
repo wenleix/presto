@@ -13,11 +13,16 @@
  */
 package com.facebook.presto.operator.aggregation.arrayagg;
 
-import com.facebook.presto.array.IntBigArray;
+import com.facebook.presto.array.LongBigArray;
 import com.facebook.presto.operator.aggregation.state.AbstractGroupedAccumulatorState;
+import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Type;
+import com.google.common.collect.ImmutableList;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * state object that uses a single BlockBuilder for all groups.
@@ -26,23 +31,31 @@ public class GroupArrayAggregationState
         extends AbstractGroupedAccumulatorState
         implements ArrayAggregationState
 {
-    private static final int NULL = -1;
-    private static final int EXPECTED_VALUE_SIZE = 100;
+    private static final long NULL = -1;
 
     private final Type type;
 
-    private final IntBigArray headPointers;
-    private final IntBigArray tailPointers;
-    private final IntBigArray nextPointers;
-    private final BlockBuilder values;
+    private final LongBigArray headPointers;
+    private final LongBigArray tailPointers;
+    private final LongBigArray nextPointers;
+
+    //  A single block can be too huge and cause "Cannot allocate slice larger than 2147483639 bytes"
+    private final List<Block> segmentedValues;
+    private final PageBuilder pageBuilder;
+
+    private long totalPositions;
 
     public GroupArrayAggregationState(Type type)
     {
         this.type = type;
-        this.headPointers = new IntBigArray(NULL);
-        this.tailPointers = new IntBigArray(NULL);
-        this.nextPointers = new IntBigArray(NULL);
-        this.values = type.createBlockBuilder(null, EXPECTED_VALUE_SIZE);
+        this.headPointers = new LongBigArray(NULL);
+        this.tailPointers = new LongBigArray(NULL);
+        this.nextPointers = new LongBigArray(NULL);
+        this.segmentedValues = new ArrayList<>();
+        this.pageBuilder = new PageBuilder(ImmutableList.of(type));
+
+        this.segmentedValues.add(pageBuilder.getBlockBuilder(0));
+        totalPositions = 0;
     }
 
     @Override
@@ -62,28 +75,44 @@ public class GroupArrayAggregationState
     public void add(Block block, int position)
     {
         long currentGroupId = getGroupId();
-        int newPosition = values.getPositionCount();
 
-        nextPointers.ensureCapacity(newPosition + 1);
+        nextPointers.ensureCapacity(totalPositions + 1);
         if (headPointers.get(currentGroupId) == NULL) {
             // new linked list, set up the header pointer
-            headPointers.set(currentGroupId, newPosition);
+            headPointers.set(currentGroupId, totalPositions);
         }
         else {
             // existing linked list, link the new entry to the tail
-            nextPointers.set(tailPointers.get(currentGroupId), newPosition);
+            nextPointers.set(tailPointers.get(currentGroupId), totalPositions);
         }
-        tailPointers.set(currentGroupId, newPosition);
+        tailPointers.set(currentGroupId, totalPositions);
 
-        type.appendTo(block, position, values);
+        BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(0);
+        type.appendTo(block, position, blockBuilder);
+        pageBuilder.declarePosition();
+        totalPositions++;
+
+        if (pageBuilder.isFull()) {
+            segmentedValues.add(blockBuilder);
+            pageBuilder.reset();
+        }
     }
 
     @Override
     public void forEach(ArrayAggregationStateConsumer consumer)
     {
-        int currentPosition = headPointers.get(getGroupId());
+        long currentPosition = headPointers.get(getGroupId());
         while (currentPosition != NULL) {
-            consumer.accept(values, currentPosition);
+            // Get block and position in block
+            // TODO: Need faster way to do this...
+            int blockIndex = 0;
+            long positionSum = 0;
+            while (segmentedValues.get(blockIndex).getPositionCount() <= currentPosition - positionSum) {
+                positionSum += segmentedValues.get(blockIndex).getPositionCount();
+                blockIndex++;
+            }
+
+            consumer.accept(segmentedValues.get(blockIndex), (int) (currentPosition - positionSum));
             currentPosition = nextPointers.get(currentPosition);
         }
     }
