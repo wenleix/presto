@@ -21,6 +21,8 @@ import com.facebook.presto.operator.aggregation.AggregationMetadata;
 import com.facebook.presto.operator.aggregation.GenericAccumulatorFactoryBinder;
 import com.facebook.presto.operator.aggregation.InternalAggregationFunction;
 import com.facebook.presto.operator.aggregation.state.LongAndDoubleState;
+import com.facebook.presto.operator.aggregation.state.NullableDoubleState;
+import com.facebook.presto.operator.aggregation.state.NullableLongState;
 import com.facebook.presto.operator.aggregation.state.StateCompiler;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.function.AccumulatorState;
@@ -50,9 +52,9 @@ public class AvgXAggregationFunction
     public static final AvgXAggregationFunction AVERAGEX_AGGREGATION = new AvgXAggregationFunction();
     private static final String NAME = "avgx";
 
-    private static final MethodHandle INPUT_FUNCTION = methodHandle(AvgXAggregationFunction.class, "input", LongAndDoubleState.class, double.class);
-    private static final MethodHandle COMBINE_FUNCTION = methodHandle(AvgXAggregationFunction.class, "combine", LongAndDoubleState.class, LongAndDoubleState.class);
-    private static final MethodHandle OUTPUT_FUNCTION = methodHandle(AvgXAggregationFunction.class, "output", LongAndDoubleState.class, BlockBuilder.class);
+    private static final MethodHandle INPUT_FUNCTION = methodHandle(AvgXAggregationFunction.class, "input", NullableLongState.class, NullableDoubleState.class, double.class);
+    private static final MethodHandle COMBINE_FUNCTION = methodHandle(AvgXAggregationFunction.class, "combine", NullableLongState.class, NullableDoubleState.class, NullableLongState.class, NullableDoubleState.class);
+    private static final MethodHandle OUTPUT_FUNCTION = methodHandle(AvgXAggregationFunction.class, "output", NullableLongState.class, NullableDoubleState.class, BlockBuilder.class);
 
     protected AvgXAggregationFunction()
     {
@@ -73,26 +75,31 @@ public class AvgXAggregationFunction
     public InternalAggregationFunction specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
     {
         DynamicClassLoader classLoader = new DynamicClassLoader(AvgXAggregationFunction.class.getClassLoader());
-        Class<? extends AccumulatorState> stateInterface = LongAndDoubleState.class;
-        AccumulatorStateSerializer<?> stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
+        Class<? extends AccumulatorState> longStateInterface = NullableLongState.class;
+        Class<? extends AccumulatorState> doubleStateInterface = NullableDoubleState.class;
+        AccumulatorStateSerializer<?> longStateSerializer = StateCompiler.generateStateSerializer(longStateInterface, classLoader);
+        AccumulatorStateSerializer<?> doubleStateSerializer = StateCompiler.generateStateSerializer(doubleStateInterface, classLoader);
 
-        Type intermediateType = stateSerializer.getSerializedType();
         AggregationMetadata metadata = new AggregationMetadata(
                 generateAggregationName(NAME, parseTypeSignature(StandardTypes.DOUBLE), ImmutableList.of(parseTypeSignature(StandardTypes.DOUBLE))),
-                ImmutableList.of(new ParameterMetadata(STATE), new ParameterMetadata(INPUT_CHANNEL, DOUBLE)),
+                ImmutableList.of(new ParameterMetadata(STATE), new ParameterMetadata(STATE), new ParameterMetadata(INPUT_CHANNEL, DOUBLE)),
                 INPUT_FUNCTION,
                 COMBINE_FUNCTION,
                 OUTPUT_FUNCTION,
-                stateInterface,
-                stateSerializer,
-                StateCompiler.generateStateFactory(stateInterface, classLoader),
+                ImmutableList.of(longStateInterface, doubleStateInterface),
+                ImmutableList.of(longStateSerializer, doubleStateSerializer),
+                ImmutableList.of(
+                        StateCompiler.generateStateFactory(longStateInterface, classLoader),
+                        StateCompiler.generateStateFactory(doubleStateInterface, classLoader)),
                 DOUBLE);
 
         GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);
         return new InternalAggregationFunction(
                 NAME,
                 ImmutableList.of(DOUBLE),
-                stateSerializer.getSerializedType(),
+                ImmutableList.of(
+                        longStateSerializer.getSerializedType(),
+                        doubleStateSerializer.getSerializedType()),
                 DOUBLE,
                 true,
                 false,
@@ -104,27 +111,40 @@ public class AvgXAggregationFunction
         return ImmutableList.of(new ParameterMetadata(STATE), new ParameterMetadata(BLOCK_INPUT_CHANNEL, value), new ParameterMetadata(BLOCK_INDEX));
     }
 
-    public static void input(LongAndDoubleState state, double value)
+    public static void input(NullableLongState count, NullableDoubleState sum, double value)
     {
-        state.setLong(state.getLong() + 1);
-        state.setDouble(state.getDouble() + value);
+        if (count.isNull()) {
+            count.setNull(false);
+            count.setLong(1);
+            sum.setNull(false);
+            sum.setDouble(value);
+            return;
+        }
+
+        count.setLong(count.getLong() + 1);
+        sum.setDouble(sum.getDouble() + value);
     }
 
-    public static void combine(LongAndDoubleState state, LongAndDoubleState otherState)
+    public static void combine(NullableLongState count, NullableDoubleState sum, NullableLongState otherCount, NullableDoubleState otherSum)
     {
-        state.setLong(state.getLong() + otherState.getLong());
-        state.setDouble(state.getDouble() + otherState.getDouble());
+        if (count.isNull()) {
+            count.setNull(false);
+            count.setLong(otherCount.getLong());
+            sum.setDouble(otherSum.getDouble());
+            return;
+        }
+
+        count.setLong(count.getLong() + otherCount.getLong());
+        sum.setDouble(sum.getDouble() + otherSum.getDouble());
     }
 
-    public static void output(LongAndDoubleState state, BlockBuilder out)
+    public static void output(NullableLongState count, NullableDoubleState sum, BlockBuilder out)
     {
-        long count = state.getLong();
-        if (count == 0) {
+        if (count.isNull()) {
             out.appendNull();
         }
         else {
-            double value = state.getDouble();
-            DOUBLE.writeDouble(out, value / count);
+            DOUBLE.writeDouble(out, sum.getDouble() / count.getLong());
         }
     }
 }
