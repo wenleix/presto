@@ -45,8 +45,8 @@ public class AggregationMetadata
     private final MethodHandle inputFunction;
     private final MethodHandle combineFunction;
     private final MethodHandle outputFunction;
-    private final AccumulatorStateSerializer<?> stateSerializer;
-    private final AccumulatorStateFactory<?> stateFactory;
+    private final List<AccumulatorStateSerializer<?>> stateSerializer;
+    private final List<AccumulatorStateFactory<?>> stateFactory;
     private final Type outputType;
 
     public AggregationMetadata(
@@ -66,6 +66,31 @@ public class AggregationMetadata
         this.inputFunction = requireNonNull(inputFunction, "inputFunction is null");
         this.combineFunction = requireNonNull(combineFunction, "combineFunction is null");
         this.outputFunction = requireNonNull(outputFunction, "outputFunction is null");
+        this.stateSerializer = ImmutableList.of(requireNonNull(stateSerializer, "stateSerializer is null"));
+        this.stateFactory = ImmutableList.of(requireNonNull(stateFactory, "stateFactory is null"));
+
+        verifyInputFunctionSignature(inputFunction, inputMetadata, ImmutableList.of(stateInterface));
+        verifyCombineFunction(combineFunction, ImmutableList.of(stateInterface));
+        verifyExactOutputFunction(outputFunction, ImmutableList.of(stateInterface));
+    }
+
+    public AggregationMetadata(
+            String name,
+            List<ParameterMetadata> inputMetadata,
+            MethodHandle inputFunction,
+            MethodHandle combineFunction,
+            MethodHandle outputFunction,
+            List<Class<?>> stateInterface,
+            List<AccumulatorStateSerializer<?>> stateSerializer,
+            List<AccumulatorStateFactory<?>> stateFactory,
+            Type outputType)
+    {
+        this.outputType = requireNonNull(outputType);
+        this.inputMetadata = ImmutableList.copyOf(requireNonNull(inputMetadata, "inputMetadata is null"));
+        this.name = requireNonNull(name, "name is null");
+        this.inputFunction = requireNonNull(inputFunction, "inputFunction is null");
+        this.combineFunction = requireNonNull(combineFunction, "combineFunction is null");
+        this.outputFunction = requireNonNull(outputFunction, "outputFunction is null");
         this.stateSerializer = requireNonNull(stateSerializer, "stateSerializer is null");
         this.stateFactory = requireNonNull(stateFactory, "stateFactory is null");
 
@@ -73,6 +98,7 @@ public class AggregationMetadata
         verifyCombineFunction(combineFunction, stateInterface);
         verifyExactOutputFunction(outputFunction, stateInterface);
     }
+
 
     public Type getOutputType()
     {
@@ -104,27 +130,30 @@ public class AggregationMetadata
         return outputFunction;
     }
 
-    public AccumulatorStateSerializer<?> getStateSerializer()
+    public List<AccumulatorStateSerializer<?>> getStateSerializer()
     {
         return stateSerializer;
     }
 
-    public AccumulatorStateFactory<?> getStateFactory()
+    public List<AccumulatorStateFactory<?>> getStateFactory()
     {
         return stateFactory;
     }
 
-    private static void verifyInputFunctionSignature(MethodHandle method, List<ParameterMetadata> parameterMetadatas, Class<?> stateInterface)
+    private static void verifyInputFunctionSignature(MethodHandle method, List<ParameterMetadata> parameterMetadatas, List<Class<?>> stateInterface)
     {
         Class<?>[] parameters = method.type().parameterArray();
         checkArgument(parameters.length > 0, "Aggregation input function must have at least one parameter");
-        checkArgument(parameterMetadatas.stream().filter(m -> m.getParameterType() == STATE).count() == 1, "There must be exactly one state parameter in input function");
+        checkArgument(parameterMetadatas.stream().filter(m -> m.getParameterType() == STATE).count() == stateInterface.size(), "Number of state parameter in input function must be the same as size of stateInterface");
         checkArgument(parameterMetadatas.get(0).getParameterType() == STATE, "First parameter must be state");
+
+        int stateIndex = 0;
         for (int i = 0; i < parameters.length; i++) {
             ParameterMetadata metadata = parameterMetadatas.get(i);
             switch (metadata.getParameterType()) {
                 case STATE:
-                    checkArgument(stateInterface == parameters[i], String.format("State argument must be of type %s", stateInterface));
+                    checkArgument(stateInterface.get(stateIndex) == parameters[i], String.format("State argument must be of type %s", stateInterface.get(stateIndex)));
+                    stateIndex++;
                     break;
                 case BLOCK_INPUT_CHANNEL:
                 case NULLABLE_BLOCK_INPUT_CHANNEL:
@@ -146,23 +175,28 @@ public class AggregationMetadata
                     throw new IllegalArgumentException("Unsupported parameter: " + metadata.getParameterType());
             }
         }
+        checkArgument(stateIndex == stateInterface.size(), String.format("Input function only has %d states, expected: %d.", stateIndex, stateInterface.size()));
     }
 
-    private static void verifyCombineFunction(MethodHandle method, Class<?> stateInterface)
+    private static void verifyCombineFunction(MethodHandle method, List<Class<?>> stateInterface)
     {
         Class<?>[] parameterTypes = method.type().parameterArray();
-        checkArgument(parameterTypes.length == 2, "Combine function must take exactly 2 arguments.");
-        checkArgument(Arrays.stream(parameterTypes).filter(type -> type.equals(stateInterface)).count() == 2, "Combine function must take exactly two arguments of type %s annotated as @AggregationState", stateInterface.getSimpleName());
+        checkArgument(parameterTypes.length == stateInterface.size() * 2, "Number of arguments for combine function must be 2 times the size of states.");
+        for (int i = 0; i < stateInterface.size() * 2; i++) {
+            checkArgument(parameterTypes[i].equals(stateInterface.get(i % stateInterface.size())), String.format("Type for Parameter index %d is unexpected", i));
+        }
     }
 
-    private static void verifyExactOutputFunction(MethodHandle method, Class<?> stateInterface)
+    private static void verifyExactOutputFunction(MethodHandle method, List<Class<?>> stateInterface)
     {
         if (method == null) {
             return;
         }
         Class<?>[] parameterTypes = method.type().parameterArray();
-        checkArgument(parameterTypes.length == 2, "Output function must take at exactly 2 arguments.");
-        checkArgument(Arrays.stream(parameterTypes).filter(type -> type.equals(stateInterface)).count() == 1, "Output function must take exactly one @AggregationState of type %s", stateInterface.getSimpleName());
+        checkArgument(parameterTypes.length == stateInterface.size() + 1, "Number of arguments for combine function must be one more than number of states.");
+        for (int i = 0; i < stateInterface.size(); i++) {
+            checkArgument(parameterTypes[i].equals(stateInterface.get(i)), String.format("Type for Parameter index %d is unexpected", i));
+        }
         checkArgument(Arrays.stream(parameterTypes).filter(type -> type.equals(BlockBuilder.class)).count() == 1, "Output function must take exactly one BlockBuilder parameter");
     }
 

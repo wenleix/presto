@@ -31,14 +31,14 @@ import static java.util.Objects.requireNonNull;
 public class GenericAccumulatorFactoryBinder
         implements AccumulatorFactoryBinder
 {
-    private final AccumulatorStateSerializer<?> stateSerializer;
-    private final AccumulatorStateFactory<?> stateFactory;
+    private final List<AccumulatorStateSerializer<?>> stateSerializer;
+    private final List<AccumulatorStateFactory<?>> stateFactory;
     private final Constructor<? extends Accumulator> accumulatorConstructor;
     private final Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor;
 
     public GenericAccumulatorFactoryBinder(
-            AccumulatorStateSerializer<?> stateSerializer,
-            AccumulatorStateFactory<?> stateFactory,
+            List<AccumulatorStateSerializer<?>> stateSerializer,
+            List<AccumulatorStateFactory<?>> stateFactory,
             Class<? extends Accumulator> accumulatorClass,
             Class<? extends GroupedAccumulator> groupedAccumulatorClass)
     {
@@ -46,17 +46,39 @@ public class GenericAccumulatorFactoryBinder
         this.stateFactory = requireNonNull(stateFactory, "stateFactory is null");
 
         try {
-            accumulatorConstructor = accumulatorClass.getConstructor(
-                    AccumulatorStateSerializer.class,
-                    AccumulatorStateFactory.class,
-                    List.class,
-                    Optional.class);
+            if (stateSerializer.size() == 1) {
+                accumulatorConstructor = accumulatorClass.getConstructor(
+                        AccumulatorStateSerializer.class,
+                        AccumulatorStateFactory.class,
+                        List.class,
+                        Optional.class);
 
-            groupedAccumulatorConstructor = groupedAccumulatorClass.getConstructor(
-                    AccumulatorStateSerializer.class,
-                    AccumulatorStateFactory.class,
-                    List.class,
-                    Optional.class);
+                groupedAccumulatorConstructor = groupedAccumulatorClass.getConstructor(
+                        AccumulatorStateSerializer.class,
+                        AccumulatorStateFactory.class,
+                        List.class,
+                        Optional.class);
+            }
+            else if (stateSerializer.size() == 2) {
+                accumulatorConstructor = accumulatorClass.getConstructor(
+                        AccumulatorStateSerializer.class,
+                        AccumulatorStateSerializer.class,
+                        AccumulatorStateFactory.class,
+                        AccumulatorStateFactory.class,
+                        List.class,
+                        Optional.class);
+
+                groupedAccumulatorConstructor = groupedAccumulatorClass.getConstructor(
+                        AccumulatorStateSerializer.class,
+                        AccumulatorStateSerializer.class,
+                        AccumulatorStateFactory.class,
+                        AccumulatorStateFactory.class,
+                        List.class,
+                        Optional.class);
+            }
+            else {
+                throw new UnsupportedOperationException();
+            }
         }
         catch (NoSuchMethodException e) {
             throw new RuntimeException(e);
@@ -70,7 +92,7 @@ public class GenericAccumulatorFactoryBinder
     }
 
     @VisibleForTesting
-    public AccumulatorStateSerializer<?> getStateSerializer()
+    public List<AccumulatorStateSerializer<?>> getStateSerializer()
     {
         return stateSerializer;
     }
