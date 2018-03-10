@@ -23,7 +23,6 @@ import com.facebook.presto.operator.aggregation.ApproximateRealPercentileAggrega
 import com.facebook.presto.operator.aggregation.ApproximateRealPercentileArrayAggregations;
 import com.facebook.presto.operator.aggregation.ApproximateSetAggregation;
 import com.facebook.presto.operator.aggregation.ArrayAggregationFunction;
-import com.facebook.presto.operator.aggregation.AverageAggregations;
 import com.facebook.presto.operator.aggregation.BitwiseAndAggregation;
 import com.facebook.presto.operator.aggregation.BitwiseOrAggregation;
 import com.facebook.presto.operator.aggregation.BooleanAndAggregation;
@@ -206,6 +205,7 @@ import static com.facebook.presto.metadata.FunctionKind.WINDOW;
 import static com.facebook.presto.metadata.Signature.internalOperator;
 import static com.facebook.presto.metadata.SignatureBinder.applyBoundVariables;
 import static com.facebook.presto.operator.aggregation.ArbitraryAggregationFunction.ARBITRARY_AGGREGATION;
+import static com.facebook.presto.operator.aggregation.AverageAggregations.AVERAGE_AGGREGATION;
 import static com.facebook.presto.operator.aggregation.ChecksumAggregationFunction.CHECKSUM_AGGREGATION;
 import static com.facebook.presto.operator.aggregation.CountColumn.COUNT_COLUMN;
 import static com.facebook.presto.operator.aggregation.DecimalAverageAggregation.DECIMAL_AVERAGE_AGGREGATION;
@@ -422,7 +422,6 @@ public class FunctionRegistry
                 .aggregates(LongSumAggregation.class)
                 .aggregates(IntervalDayToSecondSumAggregation.class)
                 .aggregates(IntervalYearToMonthSumAggregation.class)
-                .aggregates(AverageAggregations.class)
                 .aggregates(RealAverageAggregation.class)
                 .aggregates(IntervalDayToSecondAverageAggregation.class)
                 .aggregates(IntervalYearToMonthAverageAggregation.class)
@@ -565,7 +564,7 @@ public class FunctionRegistry
                 .function(CHECKSUM_AGGREGATION)
                 .function(IDENTITY_CAST)
                 .function(ARBITRARY_AGGREGATION)
-                .function(AVERAGEX_AGGREGATION)
+                .function(AVERAGE_AGGREGATION)
                 .functions(GREATEST, LEAST)
                 .functions(MAX_BY, MIN_BY, MAX_BY_N_AGGREGATION, MIN_BY_N_AGGREGATION)
                 .functions(MAX_N_AGGREGATION, MIN_N_AGGREGATION)

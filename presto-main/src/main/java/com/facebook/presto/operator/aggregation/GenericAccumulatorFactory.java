@@ -98,7 +98,13 @@ public class GenericAccumulatorFactory
             }
             else if (stateSerializer.size() == 2) {
                 accumulator = accumulatorConstructor.newInstance(
-                        stateSerializer.get(0),
+                        ImmutableList.of(
+                                new StateAndSerializer(stateSerializer.get(0), stateFactory.get(0))),
+                                new StateAndSerializer(stateSerializer.get(1), stateFactory.get(1))))
+                        inputChannels,
+                        maskChannel));
+
+                stateSerializer.get(0),
                         stateSerializer.get(1),
                         stateFactory.get(0),
                         stateFactory.get(1),
