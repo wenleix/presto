@@ -15,7 +15,7 @@
 package com.facebook.presto.spi.block;
 
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.MapType;
 import io.airlift.slice.Slice;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -38,20 +38,20 @@ public class SingleMapBlock
     private final Block keyBlock;
     private final Block valueBlock;
     private final int[] hashTable;
-    private final Type keyType;
+    private final MapType mapType;
     private final MethodHandle keyNativeHashCode;
     private final MethodHandle keyBlockNativeEquals;
 
-    SingleMapBlock(int offset, int positionCount, Block keyBlock, Block valueBlock, int[] hashTable, Type keyType, MethodHandle keyNativeHashCode, MethodHandle keyBlockNativeEquals)
+    SingleMapBlock(int offset, int positionCount, Block keyBlock, Block valueBlock, int[] hashTable, MapType mapType)
     {
         this.offset = offset;
         this.positionCount = positionCount;
         this.keyBlock = keyBlock;
         this.valueBlock = valueBlock;
         this.hashTable = hashTable;
-        this.keyType = keyType;
-        this.keyNativeHashCode = keyNativeHashCode;
-        this.keyBlockNativeEquals = keyBlockNativeEquals;
+        this.mapType = mapType;
+        this.keyNativeHashCode = mapType.keyNativeHashCode;
+        this.keyBlockNativeEquals = mapType.keyBlockNativeEquals;
     }
 
     @Override
@@ -86,7 +86,7 @@ public class SingleMapBlock
     @Override
     public BlockEncoding getEncoding()
     {
-        return new SingleMapBlockEncoding(keyType, keyNativeHashCode, keyBlockNativeEquals, keyBlock.getEncoding(), valueBlock.getEncoding());
+        return new SingleMapBlockEncoding(mapType, keyBlock.getEncoding(), valueBlock.getEncoding());
     }
 
     @Override

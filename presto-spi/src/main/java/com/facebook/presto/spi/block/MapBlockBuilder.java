@@ -14,7 +14,7 @@
 
 package com.facebook.presto.spi.block;
 
-import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.MapType;
 import org.openjdk.jol.info.ClassLayout;
 
 import javax.annotation.Nullable;
@@ -35,8 +35,6 @@ public class MapBlockBuilder
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(MapBlockBuilder.class).instanceSize();
 
-    private final MethodHandle keyBlockHashCode;
-
     @Nullable
     private final BlockBuilderStatus blockBuilderStatus;
 
@@ -50,32 +48,22 @@ public class MapBlockBuilder
     private boolean currentEntryOpened;
 
     public MapBlockBuilder(
-            Type keyType,
-            Type valueType,
-            MethodHandle keyBlockNativeEquals,
-            MethodHandle keyNativeHashCode,
-            MethodHandle keyBlockHashCode,
+            MapType mapType,
             BlockBuilderStatus blockBuilderStatus,
             int expectedEntries)
     {
         this(
-                keyType,
-                keyBlockNativeEquals,
-                keyNativeHashCode,
-                keyBlockHashCode,
+                mapType,
                 blockBuilderStatus,
-                keyType.createBlockBuilder(blockBuilderStatus, expectedEntries),
-                valueType.createBlockBuilder(blockBuilderStatus, expectedEntries),
+                mapType.getKeyType().createBlockBuilder(blockBuilderStatus, expectedEntries),
+                mapType.getValueType().createBlockBuilder(blockBuilderStatus, expectedEntries),
                 new int[expectedEntries + 1],
                 new boolean[expectedEntries],
                 newNegativeOneFilledArray(expectedEntries * HASH_MULTIPLIER));
     }
 
     private MapBlockBuilder(
-            Type keyType,
-            MethodHandle keyBlockNativeEquals,
-            MethodHandle keyNativeHashCode,
-            MethodHandle keyBlockHashCode,
+            MapType mapType,
             @Nullable BlockBuilderStatus blockBuilderStatus,
             BlockBuilder keyBlockBuilder,
             BlockBuilder valueBlockBuilder,
@@ -83,10 +71,8 @@ public class MapBlockBuilder
             boolean[] mapIsNull,
             int[] hashTables)
     {
-        super(keyType, keyNativeHashCode, keyBlockNativeEquals);
+        super(mapType);
 
-        requireNonNull(keyBlockHashCode, "keyBlockHashCode is null");
-        this.keyBlockHashCode = keyBlockHashCode;
         this.blockBuilderStatus = blockBuilderStatus;
 
         this.positionCount = 0;
@@ -197,7 +183,7 @@ public class MapBlockBuilder
             hashTables = Arrays.copyOf(hashTables, newSize);
             Arrays.fill(hashTables, oldSize, hashTables.length, -1);
         }
-        buildHashTable(keyBlockBuilder, previousAggregatedEntryCount, entryCount, keyBlockHashCode, hashTables, previousAggregatedEntryCount * HASH_MULTIPLIER, entryCount * HASH_MULTIPLIER);
+        buildHashTable(keyBlockBuilder, previousAggregatedEntryCount, entryCount, mapType.keyBlockHashCode, hashTables, previousAggregatedEntryCount * HASH_MULTIPLIER, entryCount * HASH_MULTIPLIER);
         if (blockBuilderStatus != null) {
             blockBuilderStatus.addBytes(entryCount * HASH_MULTIPLIER * Integer.BYTES);
         }
@@ -249,8 +235,7 @@ public class MapBlockBuilder
                 keyBlockBuilder.build(),
                 valueBlockBuilder.build(),
                 Arrays.copyOf(hashTables, offsets[positionCount] * HASH_MULTIPLIER),
-                keyType,
-                keyBlockNativeEquals, keyNativeHashCode);
+                mapType);
     }
 
     @Override
@@ -298,10 +283,7 @@ public class MapBlockBuilder
     {
         int newSize = calculateBlockResetSize(getPositionCount());
         return new MapBlockBuilder(
-                keyType,
-                keyBlockNativeEquals,
-                keyNativeHashCode,
-                keyBlockHashCode,
+                mapType,
                 blockBuilderStatus,
                 keyBlockBuilder.newBlockBuilderLike(blockBuilderStatus),
                 valueBlockBuilder.newBlockBuilderLike(blockBuilderStatus),

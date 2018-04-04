@@ -15,10 +15,8 @@
 package com.facebook.presto.spi.block;
 
 import com.facebook.presto.spi.type.MapType;
-import com.facebook.presto.spi.type.Type;
 import org.openjdk.jol.info.ClassLayout;
 
-import java.lang.invoke.MethodHandle;
 import java.util.Arrays;
 import java.util.function.BiConsumer;
 
@@ -47,22 +45,15 @@ public class MapBlock
     /**
      * Create a map block directly from columnar nulls, keys, values, and offsets into the keys and values.
      * A null map must have no entries.
-     *
-     * @param mapType key type K
-     * @param keyBlockNativeEquals equality between key stack type and a block+position; signature is (K, Block, int)boolean
-     * @param keyNativeHashCode hash of a key stack type; signature is (K)long
      */
     public static MapBlock fromKeyValueBlock(
             boolean[] mapIsNull,
             int[] offsets,
             Block keyBlock,
             Block valueBlock,
-            MapType mapType,
-            MethodHandle keyBlockNativeEquals,
-            MethodHandle keyNativeHashCode,
-            MethodHandle keyBlockHashCode)
+            MapType mapType)
     {
-        validateConstructorArguments(0, mapIsNull.length, mapIsNull, offsets, keyBlock, valueBlock, mapType.getKeyType(), keyBlockNativeEquals, keyNativeHashCode);
+        validateConstructorArguments(0, mapIsNull.length, mapIsNull, offsets, keyBlock, valueBlock, mapType);
 
         int mapCount = mapIsNull.length;
         int elementCount = keyBlock.getPositionCount();
@@ -77,7 +68,7 @@ public class MapBlock
             if (mapIsNull[i] && keyCount != 0) {
                 throw new IllegalArgumentException("A null map must have zero entries");
             }
-            buildHashTable(keyBlock, keyOffset, keyCount, keyBlockHashCode, hashTables, keyOffset * HASH_MULTIPLIER, keyCount * HASH_MULTIPLIER);
+            buildHashTable(keyBlock, keyOffset, keyCount, mapType.keyBlockHashCode, hashTables, keyOffset * HASH_MULTIPLIER, keyCount * HASH_MULTIPLIER);
         }
 
         return createMapBlockInternal(
@@ -88,17 +79,12 @@ public class MapBlock
                 keyBlock,
                 valueBlock,
                 hashTables,
-                mapType.getKeyType(),
-                keyBlockNativeEquals,
-                keyNativeHashCode);
+                mapType);
     }
 
     /**
      * Create a map block directly without per element validations.
      *
-     * @param keyType key type K
-     * @param keyBlockNativeEquals equality between key stack type and a block+position; signature is (K, Block, int)boolean
-     * @param keyNativeHashCode hash of a key stack type; signature is (K)long
      */
     static MapBlock createMapBlockInternal(
             int startOffset,
@@ -108,12 +94,10 @@ public class MapBlock
             Block keyBlock,
             Block valueBlock,
             int[] hashTables,
-            Type keyType,
-            MethodHandle keyBlockNativeEquals,
-            MethodHandle keyNativeHashCode)
+            MapType mapType)
     {
-        validateConstructorArguments(startOffset, positionCount, mapIsNull, offsets, keyBlock, valueBlock, keyType, keyBlockNativeEquals, keyNativeHashCode);
-        return new MapBlock(startOffset, positionCount, mapIsNull, offsets, keyBlock, valueBlock, hashTables, keyType, keyBlockNativeEquals, keyNativeHashCode);
+        validateConstructorArguments(startOffset, positionCount, mapIsNull, offsets, keyBlock, valueBlock, mapType);
+        return new MapBlock(startOffset, positionCount, mapIsNull, offsets, keyBlock, valueBlock, hashTables, mapType);
     }
 
     private static void validateConstructorArguments(
@@ -123,9 +107,7 @@ public class MapBlock
             int[] offsets,
             Block keyBlock,
             Block valueBlock,
-            Type keyType,
-            MethodHandle keyBlockNativeEquals,
-            MethodHandle keyNativeHashCode)
+            MapType mapType)
     {
         if (startOffset < 0) {
             throw new IllegalArgumentException("startOffset is negative");
@@ -151,9 +133,7 @@ public class MapBlock
             throw new IllegalArgumentException(format("keyBlock and valueBlock has different size: %s %s", keyBlock.getPositionCount(), valueBlock.getPositionCount()));
         }
 
-        requireNonNull(keyType, "keyType is null");
-        requireNonNull(keyBlockNativeEquals, "keyBlockNativeEquals is null");
-        requireNonNull(keyNativeHashCode, "keyNativeHashCode is null");
+        requireNonNull(mapType, "mapType is null");
     }
 
     /**
@@ -168,11 +148,9 @@ public class MapBlock
             Block keyBlock,
             Block valueBlock,
             int[] hashTables,
-            Type keyType,
-            MethodHandle keyBlockNativeEquals,
-            MethodHandle keyNativeHashCode)
+            MapType mapType)
     {
-        super(keyType, keyNativeHashCode, keyBlockNativeEquals);
+        super(mapType);
 
         requireNonNull(hashTables, "hashTables is null");
         if (hashTables.length < keyBlock.getPositionCount() * HASH_MULTIPLIER) {

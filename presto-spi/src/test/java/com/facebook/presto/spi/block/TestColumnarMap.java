@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.spi.block;
 
+import com.facebook.presto.spi.type.MapType;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.testng.annotations.Test;
@@ -153,11 +154,12 @@ public class TestColumnarMap
     private static BlockBuilder createMapBuilder(int expectedEntries)
     {
         return new MapBlockBuilder(
-                VARCHAR,
-                VARCHAR,
-                MethodHandleUtil.methodHandle(Slice.class, "equals", Object.class).asType(MethodType.methodType(boolean.class, Slice.class, Slice.class)),
-                MethodHandleUtil.methodHandle(Slice.class, "hashCode").asType(MethodType.methodType(long.class, Slice.class)),
-                MethodHandleUtil.methodHandle(TestColumnarMap.class, "blockVarcharHashCode", Block.class, int.class),
+                new MapType(
+                        VARCHAR,
+                        VARCHAR,
+                        MethodHandleUtil.methodHandle(Slice.class, "equals", Object.class).asType(MethodType.methodType(boolean.class, Slice.class, Slice.class)),
+                        MethodHandleUtil.methodHandle(Slice.class, "hashCode").asType(MethodType.methodType(long.class, Slice.class)),
+                        MethodHandleUtil.methodHandle(TestColumnarMap.class, "blockVarcharHashCode", Block.class, int.class)),
                 null,
                 expectedEntries);
     }

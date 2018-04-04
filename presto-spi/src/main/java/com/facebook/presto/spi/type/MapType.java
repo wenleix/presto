@@ -41,9 +41,9 @@ public class MapType
     private static final String MAP_NULL_ELEMENT_MSG = "MAP comparison not supported for null value elements";
     private static final int EXPECTED_BYTES_PER_ENTRY = 32;
 
-    private final MethodHandle keyNativeHashCode;
-    private final MethodHandle keyBlockHashCode;
-    private final MethodHandle keyBlockNativeEquals;
+    public final MethodHandle keyNativeHashCode;
+    public final MethodHandle keyBlockHashCode;
+    public final MethodHandle keyBlockNativeEquals;
 
     public MapType(Type keyType, Type valueType, MethodHandle keyBlockNativeEquals, MethodHandle keyNativeHashCode, MethodHandle keyBlockHashCode)
     {
@@ -67,7 +67,7 @@ public class MapType
     @Override
     public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
     {
-        return new MapBlockBuilder(keyType, valueType, keyBlockNativeEquals, keyNativeHashCode, keyBlockHashCode, blockBuilderStatus, expectedEntries);
+        return new MapBlockBuilder(this, blockBuilderStatus, expectedEntries);
     }
 
     @Override
@@ -241,9 +241,6 @@ public class MapType
                 offsets,
                 keyBlock,
                 valueBlock,
-                this,
-                keyBlockNativeEquals,
-                keyNativeHashCode,
-                keyBlockHashCode);
+                this);
     }
 }

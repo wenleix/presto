@@ -31,6 +31,9 @@ import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.type.setdigest.SetDigestType;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
@@ -96,6 +99,7 @@ public final class TypeRegistry
     private final ConcurrentMap<String, ParametricType> parametricTypes = new ConcurrentHashMap<>();
 
     private FunctionRegistry functionRegistry;
+    private final LoadingCache<TypeSignature, Type> parametricTypeCache;
 
     @VisibleForTesting
     public TypeRegistry()
@@ -155,6 +159,10 @@ public final class TypeRegistry
         for (Type type : types) {
             addType(type);
         }
+
+        parametricTypeCache = CacheBuilder.newBuilder()
+                .maximumSize(1000)
+                .build(CacheLoader.from(this::instantiateParametricType));
     }
 
     public void setFunctionRegistry(FunctionRegistry functionRegistry)
@@ -168,7 +176,7 @@ public final class TypeRegistry
     {
         Type type = types.get(signature);
         if (type == null) {
-            return instantiateParametricType(signature);
+            return parametricTypeCache.getUnchecked(signature);
         }
         return type;
     }

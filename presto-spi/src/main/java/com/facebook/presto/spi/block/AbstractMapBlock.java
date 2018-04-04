@@ -14,9 +14,8 @@
 
 package com.facebook.presto.spi.block;
 
-import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.MapType;
 
-import java.lang.invoke.MethodHandle;
 import java.util.Arrays;
 
 import static com.facebook.presto.spi.block.BlockUtil.checkArrayRange;
@@ -32,17 +31,11 @@ public abstract class AbstractMapBlock
     // inverse of hash fill ratio, must be integer
     static final int HASH_MULTIPLIER = 2;
 
-    protected final Type keyType;
-    protected final MethodHandle keyNativeHashCode;
-    protected final MethodHandle keyBlockNativeEquals;
+    protected final MapType mapType;
 
-    public AbstractMapBlock(Type keyType, MethodHandle keyNativeHashCode, MethodHandle keyBlockNativeEquals)
+    public AbstractMapBlock(MapType mapType)
     {
-        this.keyType = requireNonNull(keyType, "keyType is null");
-        // keyNativeHashCode can only be null due to map block kill switch. deprecated.new-map-block
-        this.keyNativeHashCode = keyNativeHashCode;
-        // keyBlockNativeEquals can only be null due to map block kill switch. deprecated.new-map-block
-        this.keyBlockNativeEquals = keyBlockNativeEquals;
+        this.mapType = requireNonNull(mapType, "mapType is null");
     }
 
     protected abstract Block getKeys();
@@ -73,7 +66,7 @@ public abstract class AbstractMapBlock
     @Override
     public BlockEncoding getEncoding()
     {
-        return new MapBlockEncoding(keyType, keyBlockNativeEquals, keyNativeHashCode, getKeys().getEncoding(), getValues().getEncoding());
+        return new MapBlockEncoding(mapType, getKeys().getEncoding(), getValues().getEncoding());
     }
 
     @Override
@@ -121,7 +114,7 @@ public abstract class AbstractMapBlock
 
         Block newKeys = getKeys().copyPositions(entriesPositions.elements(), 0, entriesPositions.size());
         Block newValues = getValues().copyPositions(entriesPositions.elements(), 0, entriesPositions.size());
-        return createMapBlockInternal(0, length, newMapIsNull, newOffsets, newKeys, newValues, newHashTable, keyType, keyBlockNativeEquals, keyNativeHashCode);
+        return createMapBlockInternal(0, length, newMapIsNull, newOffsets, newKeys, newValues, newHashTable, mapType);
     }
 
     @Override
@@ -138,9 +131,7 @@ public abstract class AbstractMapBlock
                 getKeys(),
                 getValues(),
                 getHashTables(),
-                keyType,
-                keyBlockNativeEquals,
-                keyNativeHashCode);
+                mapType);
     }
 
     @Override
@@ -185,9 +176,7 @@ public abstract class AbstractMapBlock
                 newKeys,
                 newValues,
                 newHashTable,
-                keyType,
-                keyBlockNativeEquals,
-                keyNativeHashCode);
+                mapType);
     }
 
     @Override
@@ -206,9 +195,7 @@ public abstract class AbstractMapBlock
                 getKeys(),
                 getValues(),
                 getHashTables(),
-                keyType,
-                keyNativeHashCode,
-                keyBlockNativeEquals));
+                mapType));
     }
 
     @Override
@@ -256,9 +243,7 @@ public abstract class AbstractMapBlock
                 newKeys,
                 newValues,
                 newHashTable,
-                keyType,
-                keyBlockNativeEquals,
-                keyNativeHashCode);
+                mapType);
     }
 
     @Override
