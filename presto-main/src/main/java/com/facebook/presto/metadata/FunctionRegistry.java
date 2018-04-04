@@ -345,10 +345,12 @@ public class FunctionRegistry
     private static final Set<Class<?>> SUPPORTED_LITERAL_TYPES = ImmutableSet.of(long.class, double.class, Slice.class, boolean.class);
 
     private final TypeManager typeManager;
+    private final LoadingCache<FunctionKey, Signature> functionSignatureCache;
     private final LoadingCache<Signature, SpecializedFunctionKey> specializedFunctionKeyCache;
     private final LoadingCache<SpecializedFunctionKey, ScalarFunctionImplementation> specializedScalarCache;
     private final LoadingCache<SpecializedFunctionKey, InternalAggregationFunction> specializedAggregationCache;
     private final LoadingCache<SpecializedFunctionKey, WindowFunctionSupplier> specializedWindowCache;
+
     private final MagicLiteralFunction magicLiteralFunction;
     private volatile FunctionMap functions = new FunctionMap();
 
@@ -357,6 +359,9 @@ public class FunctionRegistry
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.magicLiteralFunction = new MagicLiteralFunction(blockEncodingSerde);
 
+        functionSignatureCache = CacheBuilder.newBuilder()
+                .maximumSize(1000)
+                .build(CacheLoader.from(this::doResolveFunction));
         specializedFunctionKeyCache = CacheBuilder.newBuilder()
                 .maximumSize(1000)
                 .build(CacheLoader.from(this::doGetSpecializedFunctionKey));
@@ -627,12 +632,17 @@ public class FunctionRegistry
 
     public Signature resolveFunction(QualifiedName name, List<TypeSignatureProvider> parameterTypes)
     {
-        Collection<SqlFunction> allCandidates = functions.get(name);
+        return functionSignatureCache.getUnchecked(new FunctionKey(name, parameterTypes));
+    }
+
+    private Signature doResolveFunction(FunctionKey functionKey)
+    {
+        Collection<SqlFunction> allCandidates = functions.get(functionKey.getName());
         List<SqlFunction> exactCandidates = allCandidates.stream()
                 .filter(function -> function.getSignature().getTypeVariableConstraints().isEmpty())
                 .collect(Collectors.toList());
 
-        Optional<Signature> match = matchFunctionExact(exactCandidates, parameterTypes);
+        Optional<Signature> match = matchFunctionExact(exactCandidates, functionKey.getParameterTypes());
         if (match.isPresent()) {
             return match.get();
         }
@@ -641,12 +651,12 @@ public class FunctionRegistry
                 .filter(function -> !function.getSignature().getTypeVariableConstraints().isEmpty())
                 .collect(Collectors.toList());
 
-        match = matchFunctionExact(genericCandidates, parameterTypes);
+        match = matchFunctionExact(genericCandidates, functionKey.getParameterTypes());
         if (match.isPresent()) {
             return match.get();
         }
 
-        match = matchFunctionWithCoercion(allCandidates, parameterTypes);
+        match = matchFunctionWithCoercion(allCandidates, functionKey.getParameterTypes());
         if (match.isPresent()) {
             return match.get();
         }
@@ -654,29 +664,29 @@ public class FunctionRegistry
         List<String> expectedParameters = new ArrayList<>();
         for (SqlFunction function : allCandidates) {
             expectedParameters.add(format("%s(%s) %s",
-                    name,
+                    functionKey.getName(),
                     Joiner.on(", ").join(function.getSignature().getArgumentTypes()),
                     Joiner.on(", ").join(function.getSignature().getTypeVariableConstraints())));
         }
-        String parameters = Joiner.on(", ").join(parameterTypes);
-        String message = format("Function %s not registered", name);
+        String parameters = Joiner.on(", ").join(functionKey.getParameterTypes());
+        String message = format("Function %s not registered", functionKey.getName());
         if (!expectedParameters.isEmpty()) {
             String expected = Joiner.on(", ").join(expectedParameters);
-            message = format("Unexpected parameters (%s) for function %s. Expected: %s", parameters, name, expected);
+            message = format("Unexpected parameters (%s) for function %s. Expected: %s", parameters, functionKey.getName(), expected);
         }
 
-        if (name.getSuffix().startsWith(MAGIC_LITERAL_FUNCTION_PREFIX)) {
+        if (functionKey.getName().getSuffix().startsWith(MAGIC_LITERAL_FUNCTION_PREFIX)) {
             // extract type from function name
-            String typeName = name.getSuffix().substring(MAGIC_LITERAL_FUNCTION_PREFIX.length());
+            String typeName = functionKey.getName().getSuffix().substring(MAGIC_LITERAL_FUNCTION_PREFIX.length());
 
             // lookup the type
             Type type = typeManager.getType(parseTypeSignature(typeName));
             requireNonNull(type, format("Type %s not registered", typeName));
 
             // verify we have one parameter of the proper type
-            checkArgument(parameterTypes.size() == 1, "Expected one argument to literal function, but got %s", parameterTypes);
-            Type parameterType = typeManager.getType(parameterTypes.get(0).getTypeSignature());
-            requireNonNull(parameterType, format("Type %s not found", parameterTypes.get(0)));
+            checkArgument(functionKey.getParameterTypes().size() == 1, "Expected one argument to literal function, but got %s", functionKey.getParameterTypes());
+            Type parameterType = typeManager.getType(functionKey.getParameterTypes().get(0).getTypeSignature());
+            requireNonNull(parameterType, format("Type %s not found", functionKey.getParameterTypes().get(0)));
 
             return getMagicLiteralFunctionSignature(type);
         }
