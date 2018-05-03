@@ -32,6 +32,7 @@ public final class HiveSessionProperties
 {
     private static final String BUCKET_EXECUTION_ENABLED = "bucket_execution_enabled";
     private static final String FORCE_LOCAL_SCHEDULING = "force_local_scheduling";
+    private static final String INSERT_OVERWRITE_EXISTING_PARTITIONS = "insert_ovewrite_existing_partitions";
     private static final String ORC_BLOOM_FILTERS_ENABLED = "orc_bloom_filters_enabled";
     private static final String ORC_MAX_MERGE_DISTANCE = "orc_max_merge_distance";
     private static final String ORC_MAX_BUFFER_SIZE = "orc_max_buffer_size";
@@ -67,6 +68,11 @@ public final class HiveSessionProperties
                         FORCE_LOCAL_SCHEDULING,
                         "Only schedule splits on workers colocated with data node",
                         hiveClientConfig.isForceLocalScheduling(),
+                        false),
+                booleanSessionProperty(
+                        INSERT_OVERWRITE_EXISTING_PARTITIONS,
+                        "Insert query overwrites existing partitions",
+                        hiveClientConfig.isOverwriteExistingPartitionsEnabled(),
                         false),
                 booleanSessionProperty(
                         ORC_BLOOM_FILTERS_ENABLED,
@@ -178,6 +184,11 @@ public final class HiveSessionProperties
     public static boolean isForceLocalScheduling(ConnectorSession session)
     {
         return session.getProperty(FORCE_LOCAL_SCHEDULING, Boolean.class);
+    }
+
+    public static boolean isInsertOverwriteExistingPartitionsEnabled(ConnectorSession session)
+    {
+        return session.getProperty(INSERT_OVERWRITE_EXISTING_PARTITIONS, Boolean.class);
     }
 
     public static boolean isParquetOptimizedReaderEnabled(ConnectorSession session)

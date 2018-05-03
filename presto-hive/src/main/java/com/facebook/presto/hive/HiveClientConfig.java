@@ -85,6 +85,7 @@ public class HiveClientConfig
     private HiveCompressionCodec hiveCompressionCodec = HiveCompressionCodec.GZIP;
     private boolean respectTableFormat = true;
     private boolean immutablePartitions;
+    private boolean overwriteExistingPartitions;
     private int maxPartitionsPerWriter = 100;
     private int writeValidationThreads = 16;
 
@@ -556,6 +557,19 @@ public class HiveClientConfig
     public HiveClientConfig setImmutablePartitions(boolean immutablePartitions)
     {
         this.immutablePartitions = immutablePartitions;
+        return this;
+    }
+
+    public boolean isOverwriteExistingPartitionsEnabled()
+    {
+        return overwriteExistingPartitions;
+    }
+
+    @Config("hive.overwrite-existing-partitions-enabled")
+    @ConfigDescription("To be added")
+    public HiveClientConfig setOverwriteExistingPartitionsEnabled(boolean overwriteExistingPartitions)
+    {
+        this.overwriteExistingPartitions = overwriteExistingPartitions;
         return this;
     }
 

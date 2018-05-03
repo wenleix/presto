@@ -15,6 +15,7 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.hive.HdfsEnvironment.HdfsContext;
 import com.facebook.presto.hive.RecordFileWriter.ExtendedRecordWriter;
+import com.facebook.presto.hive.metastore.Column;
 import com.facebook.presto.hive.metastore.Database;
 import com.facebook.presto.hive.metastore.Partition;
 import com.facebook.presto.hive.metastore.SemiTransactionalHiveMetastore;
@@ -105,6 +106,7 @@ import java.util.concurrent.TimeUnit;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_DATABASE_LOCATION_ERROR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_FILESYSTEM_ERROR;
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_PARTITION_SCHEMA_MISMATCH;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_SERDE_NOT_FOUND;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITER_DATA_ERROR;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
@@ -117,6 +119,7 @@ import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.type.Chars.isCharType;
 import static com.google.common.base.Strings.padEnd;
 import static java.lang.Float.intBitsToFloat;
+import static java.lang.Math.min;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -442,6 +445,28 @@ public final class HiveWriteUtils
         // verify skew info
         if (storage.isSkewed()) {
             throw new PrestoException(NOT_SUPPORTED, format("Inserting into bucketed tables with skew is not supported. %s", tablePartitionDescription));
+        }
+    }
+
+    public static void checkTableAndPartitionSchemaMatch(Table table, String tableName, Partition partition, String partitionName)
+    {
+        List<Column> tableColumns = table.getDataColumns();
+        List<Column> existingPartitionColumns = partition.getColumns();
+        for (int i = 0; i < min(existingPartitionColumns.size(), tableColumns.size()); i++) {
+            HiveType tableType = tableColumns.get(i).getType();
+            HiveType partitionType = existingPartitionColumns.get(i).getType();
+            if (!tableType.equals(partitionType)) {
+                throw new PrestoException(HIVE_PARTITION_SCHEMA_MISMATCH, format("" +
+                                "There is a mismatch between the table and partition schemas. " +
+                                "The column '%s' in table '%s' is declared as type '%s', " +
+                                "but partition '%s' declared column '%s' as type '%s'.",
+                        tableColumns.get(i).getName(),
+                        tableName,
+                        tableType,
+                        partitionName,
+                        existingPartitionColumns.get(i).getName(),
+                        partitionType));
+            }
         }
     }
 

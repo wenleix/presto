@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.PartitionUpdate.PartitionUpdateMode;
 import com.facebook.presto.spi.Page;
 import com.google.common.collect.ImmutableList;
 
@@ -25,7 +26,7 @@ public class HiveWriter
 {
     private final HiveFileWriter fileWriter;
     private final Optional<String> partitionName;
-    private final boolean isNew;
+    private final PartitionUpdateMode partitionUpdateMode;
     private final String fileName;
     private final String writePath;
     private final String targetPath;
@@ -36,16 +37,17 @@ public class HiveWriter
 
     public HiveWriter(HiveFileWriter fileWriter,
             Optional<String> partitionName,
-            boolean isNew,
+            PartitionUpdateMode partitionUpdateMode,
             String fileName,
             String writePath,
             String targetPath,
             Consumer<HiveWriter> onCommit,
             HiveWriterStats hiveWriterStats)
     {
+        // TODO: Add requireNonNull
         this.fileWriter = fileWriter;
         this.partitionName = partitionName;
-        this.isNew = isNew;
+        this.partitionUpdateMode = partitionUpdateMode;
         this.fileName = fileName;
         this.writePath = writePath;
         this.targetPath = targetPath;
@@ -96,7 +98,7 @@ public class HiveWriter
     {
         return new PartitionUpdate(
                 partitionName.orElse(""),
-                isNew,
+                partitionUpdateMode,
                 writePath,
                 targetPath,
                 ImmutableList.of(fileName));

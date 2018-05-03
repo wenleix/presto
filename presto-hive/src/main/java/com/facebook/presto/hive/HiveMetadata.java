@@ -142,6 +142,10 @@ import static com.facebook.presto.hive.HiveUtil.toPartitionValues;
 import static com.facebook.presto.hive.HiveWriteUtils.checkTableIsWritable;
 import static com.facebook.presto.hive.HiveWriteUtils.initializeSerializer;
 import static com.facebook.presto.hive.HiveWriteUtils.isWritableType;
+import static com.facebook.presto.hive.PartitionUpdate.PartitionUpdateMode.APPEND_PARTITION;
+import static com.facebook.presto.hive.PartitionUpdate.PartitionUpdateMode.NEW_PARTITION;
+import static com.facebook.presto.hive.PartitionUpdate.PartitionUpdateMode.OVERWRITE_PARTITION;
+import static com.facebook.presto.hive.PartitionUpdate.PartitionUpdateMode.UNPARTITIONED_TABLE;
 import static com.facebook.presto.hive.metastore.HivePrivilegeInfo.toHivePrivilege;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.getHiveSchema;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.getProtectMode;
@@ -160,6 +164,7 @@ import static com.facebook.presto.spi.StandardErrorCode.SCHEMA_NOT_EMPTY;
 import static com.facebook.presto.spi.predicate.TupleDomain.withColumnDomains;
 import static com.facebook.presto.spi.statistics.TableStatistics.EMPTY_STATISTICS;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
@@ -925,7 +930,7 @@ public class HiveMetadata
                     partitionUpdate);
             partitionUpdatesForMissingBucketsBuilder.add(new PartitionUpdate(
                     partitionUpdate.getName(),
-                    partitionUpdate.isNew(),
+                    partitionUpdate.getPartitionUpdateMode(),
                     partitionUpdate.getWritePath(),
                     partitionUpdate.getTargetPath(),
                     fileNamesForMissingBuckets));
@@ -1080,8 +1085,9 @@ public class HiveMetadata
         }
 
         for (PartitionUpdate partitionUpdate : partitionUpdates) {
-            if (partitionUpdate.getName().isEmpty()) {
+            if (partitionUpdate.getPartitionUpdateMode() == UNPARTITIONED_TABLE) {
                 // insert into unpartitioned table
+                checkState(partitionUpdate.getName().isEmpty());
                 metastore.finishInsertIntoExistingTable(
                         session,
                         handle.getSchemaName(),
@@ -1089,7 +1095,7 @@ public class HiveMetadata
                         partitionUpdate.getWritePath(),
                         partitionUpdate.getFileNames());
             }
-            else if (!partitionUpdate.isNew()) {
+            else if (partitionUpdate.getPartitionUpdateMode() == APPEND_PARTITION) {
                 // insert into existing partition
                 metastore.finishInsertIntoExistingPartition(
                         session,
@@ -1099,13 +1105,26 @@ public class HiveMetadata
                         partitionUpdate.getWritePath(),
                         partitionUpdate.getFileNames());
             }
-            else {
+            else if (partitionUpdate.getPartitionUpdateMode() == NEW_PARTITION) {
                 // insert into new partition
                 Partition partition = buildPartitionObject(session, table.get(), partitionUpdate);
                 if (!partition.getStorage().getStorageFormat().getInputFormat().equals(handle.getPartitionStorageFormat().getInputFormat()) && isRespectTableFormat(session)) {
                     throw new PrestoException(HIVE_CONCURRENT_MODIFICATION_DETECTED, "Partition format changed during insert");
                 }
                 metastore.addPartition(session, handle.getSchemaName(), handle.getTableName(), partition, partitionUpdate.getWritePath());
+            }
+            else if (partitionUpdate.getPartitionUpdateMode() == OVERWRITE_PARTITION) {
+                // overwrite partition
+                Partition partition = buildPartitionObject(session, table.get(), partitionUpdate);
+                if (!partition.getStorage().getStorageFormat().getInputFormat().equals(handle.getPartitionStorageFormat().getInputFormat()) && isRespectTableFormat(session)) {
+                    throw new PrestoException(HIVE_CONCURRENT_MODIFICATION_DETECTED, "Partition format changed during insert");
+                }
+
+                metastore.dropPartition(session, handle.getSchemaName(), handle.getTableName(), partition.getValues());
+                metastore.addPartition(session, handle.getSchemaName(), handle.getTableName(), partition, partitionUpdate.getWritePath());
+            }
+            else {
+                throw new IllegalStateException();
             }
         }
 
