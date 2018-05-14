@@ -24,6 +24,8 @@ import javax.inject.Inject;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static com.facebook.presto.hive.HiveSessionProperties.InsertExistingPartitionsBehavior.APPEND;
+import static com.facebook.presto.hive.HiveSessionProperties.InsertExistingPartitionsBehavior.ERROR;
 import static com.facebook.presto.spi.session.PropertyMetadata.booleanSessionProperty;
 import static com.facebook.presto.spi.session.PropertyMetadata.stringSessionProperty;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
@@ -33,6 +35,7 @@ public final class HiveSessionProperties
 {
     private static final String BUCKET_EXECUTION_ENABLED = "bucket_execution_enabled";
     private static final String FORCE_LOCAL_SCHEDULING = "force_local_scheduling";
+    private static final String INSERT_EXISTING_PARTITIONS_BEHAVIOR = "insert_existing_partitions_behavior";
     private static final String ORC_BLOOM_FILTERS_ENABLED = "orc_bloom_filters_enabled";
     private static final String ORC_MAX_MERGE_DISTANCE = "orc_max_merge_distance";
     private static final String ORC_MAX_BUFFER_SIZE = "orc_max_buffer_size";
@@ -59,6 +62,13 @@ public final class HiveSessionProperties
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
+    public enum InsertExistingPartitionsBehavior
+    {
+        ERROR,
+        APPEND,
+        OVERWRITE,
+    }
+
     @Inject
     public HiveSessionProperties(HiveClientConfig hiveClientConfig, OrcFileWriterConfig orcFileWriterConfig)
     {
@@ -72,6 +82,11 @@ public final class HiveSessionProperties
                         FORCE_LOCAL_SCHEDULING,
                         "Only schedule splits on workers colocated with data node",
                         hiveClientConfig.isForceLocalScheduling(),
+                        false),
+                stringSessionProperty(
+                        INSERT_EXISTING_PARTITIONS_BEHAVIOR,
+                        "Behavior on insert existing partitions",
+                        hiveClientConfig.isImmutablePartitions() ? ERROR.toString() : APPEND.toString(),
                         false),
                 booleanSessionProperty(
                         ORC_BLOOM_FILTERS_ENABLED,
@@ -203,6 +218,11 @@ public final class HiveSessionProperties
     public static boolean isForceLocalScheduling(ConnectorSession session)
     {
         return session.getProperty(FORCE_LOCAL_SCHEDULING, Boolean.class);
+    }
+
+    public static InsertExistingPartitionsBehavior getInsertExistingPartitionsBehavior(ConnectorSession session)
+    {
+        return InsertExistingPartitionsBehavior.valueOf(session.getProperty(INSERT_EXISTING_PARTITIONS_BEHAVIOR, String.class).toUpperCase(ENGLISH));
     }
 
     public static boolean isParquetOptimizedReaderEnabled(ConnectorSession session)
