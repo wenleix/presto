@@ -52,8 +52,12 @@ public final class HiveQueryRunner
 
     public static final String HIVE_CATALOG = "hive";
     public static final String HIVE_BUCKETED_CATALOG = "hive_bucketed";
+    public static final String HIVE_IMMUTABLE_PARTITION_CATALOG = "hive_immutable_partition";
+
     public static final String TPCH_SCHEMA = "tpch";
     private static final String TPCH_BUCKETED_SCHEMA = "tpch_bucketed";
+    public static final String TPCH_IMMUTABLE_PARTITION_SCHEMA = "tpch_immutable_partition";
+
     private static final DateTimeZone TIME_ZONE = DateTimeZone.forID("Asia/Kathmandu");
 
     public static DistributedQueryRunner createQueryRunner(TpchTable<?>... tables)
@@ -94,6 +98,7 @@ public final class HiveQueryRunner
             FileHiveMetastore metastore = new FileHiveMetastore(hdfsEnvironment, baseDir.toURI().toString(), "test");
             metastore.createDatabase(createDatabaseMetastoreObject(TPCH_SCHEMA));
             metastore.createDatabase(createDatabaseMetastoreObject(TPCH_BUCKETED_SCHEMA));
+            metastore.createDatabase(createDatabaseMetastoreObject(TPCH_IMMUTABLE_PARTITION_SCHEMA));
             queryRunner.installPlugin(new HivePlugin(HIVE_CATALOG, metastore));
 
             Map<String, String> hiveProperties = ImmutableMap.<String, String>builder()
@@ -103,6 +108,7 @@ public final class HiveQueryRunner
                     .put("hive.max-partitions-per-scan", "1000")
                     .put("hive.assume-canonical-partition-keys", "true")
                     .build();
+
             Map<String, String> hiveBucketedProperties = ImmutableMap.<String, String>builder()
                     .putAll(hiveProperties)
                     .put("hive.max-initial-split-size", "10kB") // so that each bucket has multiple splits
@@ -110,11 +116,19 @@ public final class HiveQueryRunner
                     .put("hive.storage-format", "TEXTFILE") // so that there's no minimum split size for the file
                     .put("hive.compression-codec", "NONE") // so that the file is splittable
                     .build();
+
+            Map<String, String> hiveImmutablePartitionProperties = ImmutableMap.<String, String>builder()
+                    .putAll(hiveProperties)
+                    .put("hive.immutable-partitions", "true")
+                    .build();
+
             queryRunner.createCatalog(HIVE_CATALOG, HIVE_CATALOG, hiveProperties);
             queryRunner.createCatalog(HIVE_BUCKETED_CATALOG, HIVE_CATALOG, hiveBucketedProperties);
+            queryRunner.createCatalog(HIVE_IMMUTABLE_PARTITION_CATALOG, HIVE_CATALOG, hiveImmutablePartitionProperties);
 
             copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createSession(), tables);
             copyTpchTablesBucketed(queryRunner, "tpch", TINY_SCHEMA_NAME, createBucketedSession(), tables);
+            copyTpchTables(queryRunner, "tpch", TINY_SCHEMA_NAME, createImmutablePartitionSession(), tables);
 
             return queryRunner;
         }
@@ -146,6 +160,14 @@ public final class HiveQueryRunner
         return testSessionBuilder()
                 .setCatalog(HIVE_BUCKETED_CATALOG)
                 .setSchema(TPCH_BUCKETED_SCHEMA)
+                .build();
+    }
+
+    public static Session createImmutablePartitionSession()
+    {
+        return testSessionBuilder()
+                .setCatalog(HIVE_IMMUTABLE_PARTITION_CATALOG)
+                .setSchema(TPCH_IMMUTABLE_PARTITION_SCHEMA)
                 .build();
     }
 

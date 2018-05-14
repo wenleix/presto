@@ -54,8 +54,10 @@ import static com.facebook.presto.SystemSessionProperties.GROUPED_EXECUTION_FOR_
 import static com.facebook.presto.hive.HiveColumnHandle.BUCKET_COLUMN_NAME;
 import static com.facebook.presto.hive.HiveColumnHandle.PATH_COLUMN_NAME;
 import static com.facebook.presto.hive.HiveQueryRunner.HIVE_CATALOG;
+import static com.facebook.presto.hive.HiveQueryRunner.TPCH_IMMUTABLE_PARTITION_SCHEMA;
 import static com.facebook.presto.hive.HiveQueryRunner.TPCH_SCHEMA;
 import static com.facebook.presto.hive.HiveQueryRunner.createBucketedSession;
+import static com.facebook.presto.hive.HiveQueryRunner.createImmutablePartitionSession;
 import static com.facebook.presto.hive.HiveQueryRunner.createQueryRunner;
 import static com.facebook.presto.hive.HiveSessionProperties.RCFILE_OPTIMIZED_WRITER_ENABLED;
 import static com.facebook.presto.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
@@ -102,19 +104,21 @@ public class TestHiveIntegrationSmokeTest
 {
     private final String catalog;
     private final Session bucketedSession;
+    private final Session immutablePartitionSession;
     private final TypeTranslator typeTranslator;
 
     @SuppressWarnings("unused")
     public TestHiveIntegrationSmokeTest()
     {
-        this(() -> createQueryRunner(ORDERS, CUSTOMER), createBucketedSession(), HIVE_CATALOG, new HiveTypeTranslator());
+        this(() -> createQueryRunner(ORDERS, CUSTOMER), createBucketedSession(), createImmutablePartitionSession(), HIVE_CATALOG, new HiveTypeTranslator());
     }
 
-    protected TestHiveIntegrationSmokeTest(QueryRunnerSupplier queryRunnerSupplier, Session bucketedSession, String catalog, TypeTranslator typeTranslator)
+    protected TestHiveIntegrationSmokeTest(QueryRunnerSupplier queryRunnerSupplier, Session bucketedSession, Session immutablePartitionSession, String catalog, TypeTranslator typeTranslator)
     {
         super(queryRunnerSupplier);
         this.catalog = requireNonNull(catalog, "catalog is null");
         this.bucketedSession = requireNonNull(bucketedSession, "bucketSession is null");
+        this.immutablePartitionSession = requireNonNull(immutablePartitionSession, "immutablePartitionSession is null");
         this.typeTranslator = requireNonNull(typeTranslator, "typeTranslator is null");
     }
 
@@ -179,7 +183,7 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void createPartitionedTable()
     {
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             if (insertOperationsSupported(storageFormat.getFormat())) {
                 createPartitionedTable(storageFormat.getSession(), storageFormat.getFormat());
             }
@@ -427,7 +431,7 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void createTableAs()
     {
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             if (insertOperationsSupported(storageFormat.getFormat())) {
                 createTableAs(storageFormat.getSession(), storageFormat.getFormat());
             }
@@ -477,7 +481,7 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void createPartitionedTableAs()
     {
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             createPartitionedTableAs(storageFormat.getSession(), storageFormat.getFormat());
         }
     }
@@ -558,7 +562,7 @@ public class TestHiveIntegrationSmokeTest
     public void testCreatePartitionedBucketedTableAsFewRows()
     {
         // go through all storage formats to make sure the empty buckets are correctly created
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             testCreatePartitionedBucketedTableAsFewRows(storageFormat.getSession(), storageFormat.getFormat());
         }
     }
@@ -597,7 +601,7 @@ public class TestHiveIntegrationSmokeTest
             fail("expected failure");
         }
         catch (Exception e) {
-            assertEquals(e.getMessage(), "Cannot insert into existing partition of bucketed Hive table: partition_key=c");
+            assertEquals(e.getMessage(), "Cannot append into existing partition of bucketed Hive table: partition_key=c");
         }
 
         assertUpdate(session, "DROP TABLE " + tableName);
@@ -702,7 +706,7 @@ public class TestHiveIntegrationSmokeTest
             fail("expected failure");
         }
         catch (Exception e) {
-            assertEquals(e.getMessage(), "Cannot insert into existing partition of bucketed Hive table: orderstatus=O");
+            assertEquals(e.getMessage(), "Cannot append into existing partition of bucketed Hive table: orderstatus=O");
         }
     }
 
@@ -759,7 +763,7 @@ public class TestHiveIntegrationSmokeTest
     public void testInsertPartitionedBucketedTableFewRows()
     {
         // go through all storage formats to make sure the empty buckets are correctly created
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             testInsertPartitionedBucketedTableFewRows(storageFormat.getSession(), storageFormat.getFormat());
         }
     }
@@ -796,7 +800,7 @@ public class TestHiveIntegrationSmokeTest
             fail("expected failure");
         }
         catch (Exception e) {
-            assertEquals(e.getMessage(), "Cannot insert into existing partition of bucketed Hive table: partition_key=c");
+            assertEquals(e.getMessage(), "Cannot append into existing partition of bucketed Hive table: partition_key=c");
         }
 
         assertUpdate(session, "DROP TABLE test_insert_partitioned_bucketed_table_few_rows");
@@ -940,7 +944,7 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void insertTable()
     {
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             if (insertOperationsSupported(storageFormat.getFormat())) {
                 insertTable(storageFormat.getSession(), storageFormat.getFormat());
             }
@@ -1026,7 +1030,7 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void insertPartitionedTable()
     {
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             insertPartitionedTable(storageFormat.getSession(), storageFormat.getFormat());
         }
     }
@@ -1099,7 +1103,7 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void testInsertPartitionedTableExistingPartition()
     {
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             testInsertPartitionedTableExistingPartition(storageFormat.getSession(), storageFormat.getFormat());
         }
     }
@@ -1150,6 +1154,61 @@ public class TestHiveIntegrationSmokeTest
         assertUpdate(session, "DROP TABLE " + tableName);
 
         assertFalse(getQueryRunner().tableExists(session, tableName));
+    }
+
+    @Test
+    public void testInsertPartitionedTableOverwriteExistingPartition()
+    {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(immutablePartitionSession)) {
+            testInsertPartitionedTableOverwriteExistingPartition(
+                    Session.builder(storageFormat.getSession())
+                            .setCatalogSessionProperty(immutablePartitionSession.getCatalog().get(), "insert_overwrite_existing_partitions", "true")
+                            .build(),
+                    storageFormat.getFormat());
+        }
+    }
+
+    private void testInsertPartitionedTableOverwriteExistingPartition(Session session, HiveStorageFormat storageFormat)
+    {
+        String tableName = "test_insert_partitioned_table_existing_partition";
+
+        @Language("SQL") String createTable = "" +
+                "CREATE TABLE " + tableName + " " +
+                "(" +
+                "  order_key BIGINT," +
+                "  comment VARCHAR," +
+                "  order_status VARCHAR" +
+                ") " +
+                "WITH (" +
+                "format = '" + storageFormat + "', " +
+                "partitioned_by = ARRAY[ 'order_status' ]" +
+                ") ";
+
+        assertUpdate(session, createTable);
+
+        TableMetadata tableMetadata = getTableMetadata(session.getCatalog().get(), TPCH_IMMUTABLE_PARTITION_SCHEMA, tableName);
+        assertEquals(tableMetadata.getMetadata().getProperties().get(STORAGE_FORMAT_PROPERTY), storageFormat);
+        assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), ImmutableList.of("order_status"));
+
+        for (int i = 0; i < 3; i++) {
+            assertUpdate(
+                    session,
+                    format(
+                            "INSERT INTO " + tableName + " " +
+                                    "SELECT orderkey, comment, orderstatus " +
+                                    "FROM tpch.tiny.orders " +
+                                    "WHERE orderkey %% 3 = %d",
+                            i),
+                    format("SELECT count(*) from orders where orderkey %% 3 = %d", i));
+
+            // verify the partitions
+            assertQuery(session, "SELECT count(*) from \"" + tableName + "$partitions\"", "SELECT 3");
+            assertQuery(
+                    session,
+                    "SELECT * from " + tableName,
+                    format("SELECT orderkey, comment, orderstatus FROM orders where orderkey %% 3 = %d", i));
+        }
+        assertUpdate(session, "DROP TABLE " + tableName);
     }
 
     @Test
@@ -1330,7 +1389,7 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void testInsertUnpartitionedTable()
     {
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             testInsertUnpartitionedTable(storageFormat.getSession(), storageFormat.getFormat());
         }
     }
@@ -1766,7 +1825,7 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void testPathHiddenColumn()
     {
-        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat(getSession())) {
             doTestPathHiddenColumn(storageFormat.getSession(), storageFormat.getFormat());
         }
     }
@@ -2463,9 +2522,8 @@ public class TestHiveIntegrationSmokeTest
     {
     }
 
-    private List<TestingHiveStorageFormat> getAllTestingHiveStorageFormat()
+    private List<TestingHiveStorageFormat> getAllTestingHiveStorageFormat(Session session)
     {
-        Session session = getSession();
         ImmutableList.Builder<TestingHiveStorageFormat> formats = ImmutableList.builder();
         for (HiveStorageFormat hiveStorageFormat : HiveStorageFormat.values()) {
             formats.add(new TestingHiveStorageFormat(session, hiveStorageFormat));
