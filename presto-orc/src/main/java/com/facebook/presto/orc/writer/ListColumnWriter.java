@@ -225,6 +225,12 @@ public class ListColumnWriter
     }
 
     @Override
+    public long estimateOutputDataSize()
+    {
+        return lengthStream.estimateOutputDataSize() + presentStream.estimateOutputSize() + elementWriter.estimateOutputDataSize();
+    }
+
+    @Override
     public long getRetainedBytes()
     {
         // NOTE: we do not include stats because they should be small and it would be annoying to calculate the size

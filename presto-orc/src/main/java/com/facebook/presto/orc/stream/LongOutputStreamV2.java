@@ -749,6 +749,7 @@ public class LongOutputStreamV2
     @Override
     public StreamDataOutput getStreamDataOutput(int column)
     {
+        checkState(numLiterals == 0);
         return new StreamDataOutput(buffer::writeDataTo, new Stream(column, streamKind, toIntExact(buffer.getOutputDataSize()), true));
     }
 
@@ -756,6 +757,12 @@ public class LongOutputStreamV2
     public long getBufferedBytes()
     {
         return buffer.size() + (Long.BYTES * numLiterals);
+    }
+
+    @Override
+    public long estimateOutputDataSize()
+    {
+        return buffer.estimateOutputDataSize() + (Long.BYTES * numLiterals);
     }
 
     @Override

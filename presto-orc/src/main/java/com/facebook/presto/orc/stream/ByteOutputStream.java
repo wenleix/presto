@@ -149,6 +149,7 @@ public class ByteOutputStream
     @Override
     public StreamDataOutput getStreamDataOutput(int column)
     {
+        checkState(size == 0);
         return new StreamDataOutput(buffer::writeDataTo, new Stream(column, DATA, toIntExact(buffer.getOutputDataSize()), false));
     }
 
@@ -156,6 +157,12 @@ public class ByteOutputStream
     public long getBufferedBytes()
     {
         return buffer.size() + size;
+    }
+
+    @Override
+    public long estimateOutputDataSize()
+    {
+        return buffer.estimateOutputDataSize() + size;
     }
 
     @Override

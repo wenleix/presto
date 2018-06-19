@@ -237,6 +237,12 @@ public class MapColumnWriter
     }
 
     @Override
+    public long estimateOutputDataSize()
+    {
+        return lengthStream.estimateOutputDataSize() + presentStream.estimateOutputSize() + keyWriter.estimateOutputDataSize() + valueWriter.estimateOutputDataSize();
+    }
+
+    @Override
     public long getRetainedBytes()
     {
         // NOTE: we do not include stats because they should be small and it would be annoying to calculate the size

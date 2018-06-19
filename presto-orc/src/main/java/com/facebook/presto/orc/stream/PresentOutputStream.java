@@ -126,6 +126,14 @@ public class PresentOutputStream
         return booleanOutputStream.getBufferedBytes();
     }
 
+    public long estimateOutputSize()
+    {
+        if (booleanOutputStream == null) {
+            return 0;
+        }
+        return booleanOutputStream.estimateOutputDataSize();
+    }
+
     public long getRetainedBytes()
     {
         // NOTE: we do not include checkpoints because they should be small and it would be annoying to calculate the size

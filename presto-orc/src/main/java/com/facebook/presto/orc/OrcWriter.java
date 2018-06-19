@@ -280,18 +280,23 @@ public class OrcWriter
         }
 
         // convert dictionary encoded columns to direct if dictionary memory usage exceeded
-        dictionaryCompressionOptimizer.optimize(bufferedBytes, stripeRowCount);
+        int estimatedOutputSize = toIntExact(columnWriters.stream().mapToLong(ColumnWriter::estimateOutputDataSize).sum());
+        dictionaryCompressionOptimizer.optimize(estimatedOutputSize, stripeRowCount);
 
+        estimatedOutputSize = toIntExact(columnWriters.stream().mapToLong(ColumnWriter::estimateOutputDataSize).sum());
         // flush stripe if necessary
-        bufferedBytes = toIntExact(columnWriters.stream().mapToLong(ColumnWriter::getBufferedBytes).sum());
         if (stripeRowCount == stripeMaxRowCount) {
             flushStripe(MAX_ROWS);
         }
-        else if (bufferedBytes + dictionaryCompressionOptimizer.getDictionaryMemoryBytes() > stripeMaxBytes) {
+        else if (estimatedOutputSize + dictionaryCompressionOptimizer.getDictionaryMemoryBytes() > stripeMaxBytes) {
             flushStripe(MAX_BYTES);
         }
-        else if (dictionaryCompressionOptimizer.isFull(bufferedBytes)) {
+        else if (dictionaryCompressionOptimizer.isFull(estimatedOutputSize)) {
             flushStripe(DICTIONARY_FULL);
+        }
+        else {
+            // No flush, update bufferedBytes
+            bufferedBytes = toIntExact(columnWriters.stream().mapToLong(ColumnWriter::getBufferedBytes).sum());
         }
 
         columnWritersRetainedBytes = columnWriters.stream().mapToLong(ColumnWriter::getRetainedBytes).sum();

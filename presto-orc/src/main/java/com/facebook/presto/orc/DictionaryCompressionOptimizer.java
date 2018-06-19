@@ -80,11 +80,11 @@ public class DictionaryCompressionOptimizer
         return dictionaryMemoryBytes;
     }
 
-    public boolean isFull(long bufferedBytes)
+    public boolean isFull(long estimateOutputSize)
     {
         // if the strip is big enough to flush, stop before we hit the absolute max, so we are
         // not forced to convert a dictionary to direct to fit in memory
-        if (bufferedBytes > stripeMinBytes) {
+        if (estimateOutputSize > stripeMinBytes) {
             return dictionaryMemoryBytes > dictionaryMemoryMaxBytesLow;
         }
         // strip is small, grow to the high water mark (so at the very least we have more information)
@@ -104,7 +104,7 @@ public class DictionaryCompressionOptimizer
         convertLowCompressionStreams();
     }
 
-    public void optimize(int bufferedBytes, int stripeRowCount)
+    public void optimize(int estimatedDataOutputSize, int stripeRowCount)
     {
         // recompute the dictionary memory usage
         dictionaryMemoryBytes = dictionaryWriters.stream()
@@ -126,32 +126,32 @@ public class DictionaryCompressionOptimizer
         }
 
         // calculate size of non-dictionary columns by removing the buffered size of dictionary columns
-        int nonDictionaryBufferedBytes = bufferedBytes;
+        int estimatedNonDictionaryOutputSize = estimatedDataOutputSize;
         for (DictionaryColumnManager dictionaryWriter : dictionaryWriters) {
-            nonDictionaryBufferedBytes -= dictionaryWriter.getBufferedBytes();
+            estimatedNonDictionaryOutputSize -= dictionaryWriter.estimateOutputDataSize();
         }
 
         // convert dictionary columns to direct until we are blow the high memory limit
         while (dictionaryMemoryBytes > dictionaryMemoryMaxBytesHigh) {
-            DictionaryCompressionProjection projection = selectDictionaryColumnToConvert(nonDictionaryBufferedBytes, stripeRowCount);
+            DictionaryCompressionProjection projection = selectDictionaryColumnToConvert(estimatedNonDictionaryOutputSize, stripeRowCount);
             if (projection.getColumnToConvert().getCompressionRatio() >= DICTIONARY_ALWAYS_KEEP_COMPRESSION_RATIO) {
                 return;
             }
-            nonDictionaryBufferedBytes += convertToDirect(projection.getColumnToConvert());
+            estimatedNonDictionaryOutputSize += convertToDirect(projection.getColumnToConvert());
         }
 
         // if the stripe is larger then the minimum row count, we are not required to convert any more dictionary columns to direct
-        if (nonDictionaryBufferedBytes + dictionaryMemoryBytes >= stripeMinBytes) {
+        if (estimatedNonDictionaryOutputSize + dictionaryMemoryBytes >= stripeMinBytes) {
             // check if we can get better compression by converting a dictionary column to direct.  This can happen when then there are multiple
             // dictionary columns and one does not compress well, so if we convert it to direct we can continue to use the existing dictionaries
             // for the other columns.
-            double currentCompressionRatio = currentCompressionRatio(nonDictionaryBufferedBytes);
+            double currentCompressionRatio = currentCompressionRatio(estimatedNonDictionaryOutputSize);
             while (!dictionaryWriters.isEmpty()) {
-                DictionaryCompressionProjection projection = selectDictionaryColumnToConvert(nonDictionaryBufferedBytes, stripeRowCount);
+                DictionaryCompressionProjection projection = selectDictionaryColumnToConvert(estimatedNonDictionaryOutputSize, stripeRowCount);
                 if (projection.getPredictedFileCompressionRatio() < currentCompressionRatio) {
                     return;
                 }
-                nonDictionaryBufferedBytes += convertToDirect(projection.getColumnToConvert());
+                estimatedNonDictionaryOutputSize += convertToDirect(projection.getColumnToConvert());
             }
         }
     }
@@ -164,6 +164,9 @@ public class DictionaryCompressionOptimizer
                 .forEach(this::convertToDirect);
     }
 
+    /**
+     * Returns the estimate output data size of converted stream, which takes compression into account.
+     */
     private long convertToDirect(DictionaryColumnManager dictionaryWriter)
     {
         dictionaryMemoryBytes -= dictionaryWriter.getDictionaryBytes();
@@ -284,6 +287,9 @@ public class DictionaryCompressionOptimizer
 
         int getDictionaryBytes();
 
+        /**
+         * Returns the estimated output data size of converted stream, which takes compression into account.
+         */
         long convertToDirect();
     }
 
@@ -305,6 +311,9 @@ public class DictionaryCompressionOptimizer
             this.dictionaryColumn = dictionaryColumn;
         }
 
+        /**
+         * Returns the estimate output data size of converted stream, which takes compression into account.
+         */
         long convertToDirect()
         {
             directEncoded = true;
@@ -399,7 +408,7 @@ public class DictionaryCompressionOptimizer
             return 1.0 * getRawBytes() / getCompressedBytes();
         }
 
-        public long getBufferedBytes()
+        public long estimateOutputDataSize()
         {
             return getIndexBytes() + getDictionaryBytes();
         }

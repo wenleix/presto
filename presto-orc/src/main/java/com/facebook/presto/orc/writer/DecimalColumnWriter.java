@@ -237,6 +237,12 @@ public class DecimalColumnWriter
     }
 
     @Override
+    public long estimateOutputDataSize()
+    {
+        return dataStream.estimateOutputDataSize() + scaleStream.estimateOutputDataSize() + presentStream.estimateOutputSize();
+    }
+
+    @Override
     public long getRetainedBytes()
     {
         // NOTE: we do not include stats because they should be small and it would be annoying to calculate the size

@@ -191,7 +191,7 @@ public class SliceDictionaryColumnWriter
 
         directEncoded = true;
 
-        return directColumnWriter.getBufferedBytes();
+        return directColumnWriter.estimateOutputDataSize();
     }
 
     private void writeDictionaryRowGroup(Block dictionary, int valueCount, IntBigArray dictionaryIndexes)
@@ -462,6 +462,18 @@ public class SliceDictionaryColumnWriter
         checkState(!closed);
         if (directEncoded) {
             return directColumnWriter.getBufferedBytes();
+        }
+        // for dictionary columns we report the data we expect to write to the output stream
+        int indexBytes = estimateIndexBytesPerValue(dictionary.getEntryCount()) * getNonNullValueCount();
+        return indexBytes + getDictionaryBytes();
+    }
+
+    @Override
+    public long estimateOutputDataSize()
+    {
+        checkState(!closed);
+        if (directEncoded) {
+            return directColumnWriter.estimateOutputDataSize();
         }
         // for dictionary columns we report the data we expect to write to the output stream
         int indexBytes = estimateIndexBytesPerValue(dictionary.getEntryCount()) * getNonNullValueCount();

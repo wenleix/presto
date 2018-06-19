@@ -168,6 +168,12 @@ public class BooleanOutputStream
     }
 
     @Override
+    public long estimateOutputDataSize()
+    {
+        return byteOutputStream.estimateOutputDataSize();
+    }
+
+    @Override
     public long getRetainedBytes()
     {
         // NOTE: we do not include checkpoints because they should be small and it would be annoying to calculate the size

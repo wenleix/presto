@@ -29,6 +29,8 @@ public interface ValueOutputStream<C extends StreamCheckpoint>
 
     long getBufferedBytes();
 
+    long estimateOutputDataSize();
+
     long getRetainedBytes();
 
     void reset();

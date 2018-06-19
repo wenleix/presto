@@ -81,6 +81,12 @@ public class FloatOutputStream
     }
 
     @Override
+    public long estimateOutputDataSize()
+    {
+        return buffer.estimateOutputDataSize();
+    }
+
+    @Override
     public long getRetainedBytes()
     {
         // NOTE: we do not include checkpoints because they should be small and it would be annoying to calculate the size

@@ -228,6 +228,16 @@ public class StructColumnWriter
     }
 
     @Override
+    public long estimateOutputDataSize()
+    {
+        long estimatedOutputSize = presentStream.estimateOutputSize();
+        for (ColumnWriter structField : structFields) {
+            estimatedOutputSize += structField.estimateOutputDataSize();
+        }
+        return estimatedOutputSize;
+    }
+
+    @Override
     public long getRetainedBytes()
     {
         // NOTE: we do not include stats because they should be small and it would be annoying to calculate the size

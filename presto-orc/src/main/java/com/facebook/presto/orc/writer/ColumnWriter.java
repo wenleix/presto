@@ -58,6 +58,11 @@ public interface ColumnWriter
 
     long getBufferedBytes();
 
+    /**
+     * Estimated output data size takes compression into account.
+     */
+    long estimateOutputDataSize();
+
     long getRetainedBytes();
 
     void reset();
