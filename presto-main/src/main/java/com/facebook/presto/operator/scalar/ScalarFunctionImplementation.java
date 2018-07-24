@@ -31,6 +31,7 @@ import static java.util.Objects.requireNonNull;
 public final class ScalarFunctionImplementation
 {
     private final List<ScalarImplementationChoice> choices;
+    private final List<ArgumentType> argumentTypes;
     private final boolean deterministic;
 
     public ScalarFunctionImplementation(
@@ -66,6 +67,14 @@ public final class ScalarFunctionImplementation
     public ScalarFunctionImplementation(List<ScalarImplementationChoice> choices, boolean deterministic)
     {
         checkArgument(!choices.isEmpty(), "choices is an empty list");
+        for (ScalarImplementationChoice choice : choices) {
+            checkArgument(choice.getInstanceFactory().equals(choices.get(0).getInstanceFactory()), "ScalarImplementationChoice with different instance factories is not supported");
+            checkArgument(choice.getArgumentCount() == choices.get(0).getArgumentCount(), "ScalarImplementationChoice has different number of arguments");
+            for (int i = 0; i < choice.getArgumentCount(); i++) {
+                checkArgument(choice.getArgumentProperty(i).getLambdaInterface().equals(choices.get(0).getArgumentProperty(i).getLambdaInterface()), "ScalarImplementationChoice with different lambda interface is not supported");
+            }
+        }
+
         this.choices = ImmutableList.copyOf(choices);
         this.deterministic = deterministic;
     }
@@ -85,11 +94,6 @@ public final class ScalarFunctionImplementation
         return choices.get(0).methodHandle;
     }
 
-    public Optional<MethodHandle> getInstanceFactory()
-    {
-        return choices.get(0).instanceFactory;
-    }
-
     public List<ScalarImplementationChoice> getAllChoices()
     {
         return choices;
@@ -98,6 +102,17 @@ public final class ScalarFunctionImplementation
     public boolean isDeterministic()
     {
         return deterministic;
+    }
+
+    // While in principle the following two methods
+    public Optional<MethodHandle> getInstanceFactory()
+    {
+        return choices.get(0).instanceFactory;
+    }
+
+    public Class<?> getLambdaInterface(int argumentIndex)
+    {
+        return choices.get(0).argumentProperties.get(argumentIndex).getLambdaInterface();
     }
 
     public static class ScalarImplementationChoice
@@ -141,6 +156,11 @@ public final class ScalarFunctionImplementation
             return nullable;
         }
 
+        public int getArgumentCount()
+        {
+            return argumentProperties.size();
+        }
+
         public ArgumentProperty getArgumentProperty(int argumentIndex)
         {
             return argumentProperties.get(argumentIndex);
@@ -162,19 +182,19 @@ public final class ScalarFunctionImplementation
         // TODO: Alternatively, we can store com.facebook.presto.spi.type.Type
         private final ArgumentType argumentType;
         private final Optional<NullConvention> nullConvention;
-        private final Optional<Class> lambdaInterface;
+        private final Optional<Class<?>> lambdaInterface;
 
         public static ArgumentProperty valueTypeArgumentProperty(NullConvention nullConvention)
         {
             return new ArgumentProperty(VALUE_TYPE, Optional.of(nullConvention), Optional.empty());
         }
 
-        public static ArgumentProperty functionTypeArgumentProperty(Class lambdaInterface)
+        public static ArgumentProperty functionTypeArgumentProperty(Class<?> lambdaInterface)
         {
             return new ArgumentProperty(FUNCTION_TYPE, Optional.empty(), Optional.of(lambdaInterface));
         }
 
-        private ArgumentProperty(ArgumentType argumentType, Optional<NullConvention> nullConvention, Optional<Class> lambdaInterface)
+        private ArgumentProperty(ArgumentType argumentType, Optional<NullConvention> nullConvention, Optional<Class<?>> lambdaInterface)
         {
             switch (argumentType) {
                 case VALUE_TYPE:
@@ -206,7 +226,7 @@ public final class ScalarFunctionImplementation
             return nullConvention.get();
         }
 
-        public Class getLambdaInterface()
+        public Class<?> getLambdaInterface()
         {
             checkState(getArgumentType() == FUNCTION_TYPE, "lambdaInterface only applies to function type argument");
             return lambdaInterface.get();

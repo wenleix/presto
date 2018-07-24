@@ -44,7 +44,7 @@ public class FunctionCallCodeGenerator
                 argumentsBytecode.add(context.generate(argument));
             }
             else {
-                argumentsBytecode.add(context.generate(argument, Optional.of(argumentProperty.getLambdaInterface())));
+                argumentsBytecode.add(context.generate(argument, Optional.of(function.getLambdaInterface(i))));
             }
         }
 
