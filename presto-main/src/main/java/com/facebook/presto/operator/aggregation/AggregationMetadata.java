@@ -99,7 +99,6 @@ public class AggregationMetadata
         verifyExactOutputFunction(outputFunction, stateInterface);
     }
 
-
     public Type getOutputType()
     {
         return outputType;
