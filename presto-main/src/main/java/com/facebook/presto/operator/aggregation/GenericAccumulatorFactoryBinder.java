@@ -15,6 +15,7 @@ package com.facebook.presto.operator.aggregation;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.operator.PagesIndex;
+import com.facebook.presto.operator.aggregation.AggregationMetadata.AccumulatorStateInfo;
 import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.spi.function.AccumulatorStateFactory;
 import com.facebook.presto.spi.function.AccumulatorStateSerializer;
@@ -31,69 +32,41 @@ import static java.util.Objects.requireNonNull;
 public class GenericAccumulatorFactoryBinder
         implements AccumulatorFactoryBinder
 {
-    private final List<AccumulatorStateSerializer<?>> stateSerializer;
-    private final List<AccumulatorStateFactory<?>> stateFactory;
+    private final List<AccumulatorStateInfo> stateInfos;
     private final Constructor<? extends Accumulator> accumulatorConstructor;
     private final Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor;
 
     public GenericAccumulatorFactoryBinder(
-            List<AccumulatorStateSerializer<?>> stateSerializer,
-            List<AccumulatorStateFactory<?>> stateFactory,
+            List<AccumulatorStateInfo> stateInfos,
             Class<? extends Accumulator> accumulatorClass,
             Class<? extends GroupedAccumulator> groupedAccumulatorClass)
     {
-        this.stateSerializer = requireNonNull(stateSerializer, "stateSerializer is null");
-        this.stateFactory = requireNonNull(stateFactory, "stateFactory is null");
+        this.stateInfos = requireNonNull(stateInfos, "stateInfos is null");
 
         try {
-            if (stateSerializer.size() == 1) {
-                accumulatorConstructor = accumulatorClass.getConstructor(
-                        AccumulatorStateSerializer.class,
-                        AccumulatorStateFactory.class,
-                        List.class,
-                        Optional.class);
+            accumulatorConstructor = accumulatorClass.getConstructor(
+                    List.class, /* List<AccumulatorStateInfo> stateInfos */
+                    List.class, /* List<Integer> inputChannel */
+                    Optional.class);
 
-                groupedAccumulatorConstructor = groupedAccumulatorClass.getConstructor(
-                        AccumulatorStateSerializer.class,
-                        AccumulatorStateFactory.class,
-                        List.class,
-                        Optional.class);
-            }
-            else if (stateSerializer.size() == 2) {
-                accumulatorConstructor = accumulatorClass.getConstructor(
-                        AccumulatorStateSerializer.class,
-                        AccumulatorStateSerializer.class,
-                        AccumulatorStateFactory.class,
-                        AccumulatorStateFactory.class,
-                        List.class,
-                        Optional.class);
-
-                groupedAccumulatorConstructor = groupedAccumulatorClass.getConstructor(
-                        AccumulatorStateSerializer.class,
-                        AccumulatorStateSerializer.class,
-                        AccumulatorStateFactory.class,
-                        AccumulatorStateFactory.class,
-                        List.class,
-                        Optional.class);
-            }
-            else {
-                throw new UnsupportedOperationException();
-            }
+            groupedAccumulatorConstructor = groupedAccumulatorClass.getConstructor(
+                    List.class, /* List<AccumulatorStateInfo> stateInfos */
+                    List.class, /* List<Integer> inputChannel */
+                    Optional.class);
         }
         catch (NoSuchMethodException e) {
             throw new RuntimeException(e);
-        }
-    }
+        }    }
 
     @Override
     public AccumulatorFactory bind(List<Integer> argumentChannels, Optional<Integer> maskChannel, List<Type> sourceTypes, List<Integer> orderByChannels, List<SortOrder> orderings, PagesIndex.Factory pagesIndexFactory, boolean distinct, JoinCompiler joinCompiler, Session session)
     {
-        return new GenericAccumulatorFactory(stateSerializer, stateFactory, accumulatorConstructor, groupedAccumulatorConstructor, argumentChannels, maskChannel, sourceTypes, orderByChannels, orderings, pagesIndexFactory, joinCompiler, session, distinct);
+        return new GenericAccumulatorFactory(stateInfos, accumulatorConstructor, groupedAccumulatorConstructor, argumentChannels, maskChannel, sourceTypes, orderByChannels, orderings, pagesIndexFactory, joinCompiler, session, distinct);
     }
 
     @VisibleForTesting
-    public List<AccumulatorStateSerializer<?>> getStateSerializer()
+    public List<AccumulatorStateInfo> getStateInfos()
     {
-        return stateSerializer;
+        return stateInfos;
     }
 }

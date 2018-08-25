@@ -84,11 +84,15 @@ public class RealAverageAggregation
                 INPUT_FUNCTION,
                 COMBINE_FUNCTION,
                 OUTPUT_FUNCTION,
-                ImmutableList.of(longStateInterface, doubleStateInterface),
-                ImmutableList.of(longStateSerializer, doubleStateSerializer),
                 ImmutableList.of(
-                        StateCompiler.generateStateFactory(longStateInterface, classLoader),
-                        StateCompiler.generateStateFactory(doubleStateInterface, classLoader)),
+                    new AggregationMetadata.AccumulatorStateInfo(
+                            longStateInterface,
+                            longStateSerializer,
+                            StateCompiler.generateStateFactory(longStateInterface, classLoader)),
+                    new AggregationMetadata.AccumulatorStateInfo(
+                            doubleStateInterface,
+                            doubleStateSerializer,
+                            StateCompiler.generateStateFactory(doubleStateInterface, classLoader))),
                 REAL);
 
         GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);

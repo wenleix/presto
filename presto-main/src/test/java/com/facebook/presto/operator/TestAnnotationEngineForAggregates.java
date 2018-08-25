@@ -261,7 +261,7 @@ public class TestAnnotationEngineForAggregates
 
         InternalAggregationFunction specialized = aggregation.specialize(BoundVariables.builder().build(), 1, new TypeRegistry(), null);
         AccumulatorStateSerializer<?> createdSerializer = getOnlyElement(((LazyAccumulatorFactoryBinder) specialized.getAccumulatorFactoryBinder())
-                .getGenericAccumulatorFactoryBinder().getStateSerializer());
+                .getGenericAccumulatorFactoryBinder().getStateInfos()).getSerializer();
         Class<?> serializerFactory = implementation.getStateSerializerFactory().get().type().returnType();
         assertTrue(serializerFactory.isInstance(createdSerializer));
     }

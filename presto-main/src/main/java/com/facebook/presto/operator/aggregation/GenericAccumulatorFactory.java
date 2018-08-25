@@ -19,6 +19,7 @@ import com.facebook.presto.operator.MarkDistinctHash;
 import com.facebook.presto.operator.PagesIndex;
 import com.facebook.presto.operator.UpdateMemory;
 import com.facebook.presto.operator.Work;
+import com.facebook.presto.operator.aggregation.AggregationMetadata.AccumulatorStateInfo;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -53,8 +54,7 @@ import static java.util.Objects.requireNonNull;
 public class GenericAccumulatorFactory
         implements AccumulatorFactory
 {
-    private final List<AccumulatorStateSerializer<?>> stateSerializer;
-    private final List<AccumulatorStateFactory<?>> stateFactory;
+    private final List<AccumulatorStateInfo> stateInfos;
     private final Constructor<? extends Accumulator> accumulatorConstructor;
     private final Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor;
     private final Optional<Integer> maskChannel;
@@ -72,8 +72,7 @@ public class GenericAccumulatorFactory
     private final PagesIndex.Factory pagesIndexFactory;
 
     public GenericAccumulatorFactory(
-            List<AccumulatorStateSerializer<?>> stateSerializer,
-            List<AccumulatorStateFactory<?>> stateFactory,
+            List<AccumulatorStateInfo> stateInfos,
             Constructor<? extends Accumulator> accumulatorConstructor,
             Constructor<? extends GroupedAccumulator> groupedAccumulatorConstructor,
             List<Integer> inputChannels,
@@ -86,8 +85,7 @@ public class GenericAccumulatorFactory
             Session session,
             boolean distinct)
     {
-        this.stateSerializer = requireNonNull(stateSerializer, "stateSerializer is null");
-        this.stateFactory = requireNonNull(stateFactory, "stateFactory is null");
+        this.stateInfos = requireNonNull(stateInfos, "stateInfos is null");
         this.accumulatorConstructor = requireNonNull(accumulatorConstructor, "accumulatorConstructor is null");
         this.groupedAccumulatorConstructor = requireNonNull(groupedAccumulatorConstructor, "groupedAccumulatorConstructor is null");
         this.maskChannel = requireNonNull(maskChannel, "maskChannel is null");
@@ -144,25 +142,7 @@ public class GenericAccumulatorFactory
     public Accumulator createIntermediateAccumulator()
     {
         try {
-            if (stateSerializer.size() == 1) {
-                return accumulatorConstructor.newInstance(
-                        getOnlyElement(stateSerializer),
-                        getOnlyElement(stateFactory),
-                        ImmutableList.of(),
-                        Optional.empty());
-            }
-            else if (stateSerializer.size() == 2) {
-                return accumulatorConstructor.newInstance(
-                        stateSerializer.get(0),
-                        stateSerializer.get(1),
-                        stateFactory.get(0),
-                        stateFactory.get(1),
-                        ImmutableList.of(),
-                        Optional.empty());
-            }
-            else {
-                throw new UnsupportedOperationException("More than two state is not yet supported.");
-            }
+            return accumulatorConstructor.newInstance(stateInfos, ImmutableList.of(), Optional.empty());
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
@@ -204,25 +184,7 @@ public class GenericAccumulatorFactory
     public GroupedAccumulator createGroupedIntermediateAccumulator()
     {
         try {
-            if (stateSerializer.size() == 1) {
-                return groupedAccumulatorConstructor.newInstance(
-                        getOnlyElement(stateSerializer),
-                        getOnlyElement(stateFactory),
-                        ImmutableList.of(),
-                        Optional.empty());
-            }
-            else if (stateSerializer.size() == 2) {
-                return groupedAccumulatorConstructor.newInstance(
-                        stateSerializer.get(0),
-                        stateSerializer.get(1),
-                        stateFactory.get(0),
-                        stateFactory.get(1),
-                        ImmutableList.of(),
-                        Optional.empty());
-            }
-            else {
-                throw new UnsupportedOperationException("More than two state is not yet supported.");
-            }
+            return groupedAccumulatorConstructor.newInstance(stateInfos, ImmutableList.of(), Optional.empty());
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
@@ -244,25 +206,7 @@ public class GenericAccumulatorFactory
     private Accumulator instantiateAccumulator(List<Integer> inputs, Optional<Integer> mask)
     {
         try {
-            if (stateSerializer.size() == 1) {
-                return accumulatorConstructor.newInstance(
-                        getOnlyElement(stateSerializer),
-                        getOnlyElement(stateFactory),
-                        inputs,
-                        mask);
-            }
-            else if (stateSerializer.size() == 2) {
-                return accumulatorConstructor.newInstance(
-                        stateSerializer.get(0),
-                        stateSerializer.get(1),
-                        stateFactory.get(0),
-                        stateFactory.get(1),
-                        inputs,
-                        mask);
-            }
-            else {
-                throw new UnsupportedOperationException("More than two state is not yet supported.");
-            }
+            return accumulatorConstructor.newInstance(stateInfos, inputs, mask);
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
@@ -272,25 +216,7 @@ public class GenericAccumulatorFactory
     private GroupedAccumulator instantiateGroupedAccumulator(List<Integer> inputs, Optional<Integer> mask)
     {
         try {
-            if (stateSerializer.size() == 1) {
-                return groupedAccumulatorConstructor.newInstance(
-                        getOnlyElement(stateSerializer),
-                        getOnlyElement(stateFactory),
-                        inputs,
-                        mask);
-            }
-            else if (stateSerializer.size() == 2) {
-                return groupedAccumulatorConstructor.newInstance(
-                        stateSerializer.get(0),
-                        stateSerializer.get(1),
-                        stateFactory.get(0),
-                        stateFactory.get(1),
-                        inputs,
-                        mask);
-            }
-            else {
-                throw new UnsupportedOperationException("More than two state is not yet supported.");
-            }
+            return groupedAccumulatorConstructor.newInstance(stateInfos, inputs, mask);
         }
         catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
