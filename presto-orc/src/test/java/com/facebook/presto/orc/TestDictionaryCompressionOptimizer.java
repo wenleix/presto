@@ -455,10 +455,10 @@ public class TestDictionaryCompressionOptimizer
 
         public int getBufferedBytes()
         {
-            return (rowCount * otherColumnsBytesPerRow) +
-                    dictionaryColumns.stream()
-                            .mapToInt(TestDictionaryColumn::getBufferedBytes)
-                            .sum();
+            return toIntExact((rowCount * otherColumnsBytesPerRow) +
+                              dictionaryColumns.stream()
+                                      .mapToLong(TestDictionaryColumn::getBufferedBytes)
+                                      .sum());
         }
 
         public int getRowCount()
@@ -526,10 +526,10 @@ public class TestDictionaryCompressionOptimizer
             this.rowCount = rowCount;
         }
 
-        public int getBufferedBytes()
+        public long getBufferedBytes()
         {
             if (direct) {
-                return (int) (rowCount * valuesPerRow * bytesPerEntry);
+                return (long) (rowCount * valuesPerRow * bytesPerEntry);
             }
             int dictionaryEntries = getDictionaryEntries();
             int bytesPerValue = estimateIndexBytesPerValue(dictionaryEntries);
