@@ -921,6 +921,26 @@ public class TestHiveIntegrationSmokeTest
     }
 
     @Test
+    public void testCreateEmptyPartition()
+    {
+        String tableName = "empty_partition_table";
+        assertUpdate(format("" +
+                "CREATE TABLE %s " +
+                "WITH ( " +
+                " FORMAT = 'ORC', " +
+                "   partitioned_by = ARRAY['p_varchar'] " +
+                ") " +
+                "AS " +
+                "SELECT c_bigint, p_varchar " +
+                "FROM ( " +
+                "  VALUES " +
+                "    (BIGINT '7', 'longlonglong')" +
+                ") AS x (c_bigint, p_varchar)", tableName), 1);
+        assertUpdate(format("CALL system.create_empty_partition('%s', '%s', ARRAY['p_varchar'], ARRAY['%s'])", TPCH_SCHEMA, tableName, "empty"));
+        assertQuery(format("SELECT count(*) FROM \"%s$partitions\"", tableName), "SELECT 2");
+    }
+
+    @Test
     public void testCreateEmptyBucketedPartition()
     {
         for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {

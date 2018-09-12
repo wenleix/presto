@@ -1198,6 +1198,15 @@ public class HiveMetadata
             throw new PrestoException(HIVE_CONCURRENT_MODIFICATION_DETECTED, "Table format changed during insert");
         }
 
+        for (PartitionUpdate partitionUpdate : partitionUpdates) {
+            if (partitionUpdate.getFileNames().size() == 0) {
+                HiveWriteUtils.createDirectory(
+                        new HdfsContext(session, table.get().getDatabaseName(), table.get().getTableName()),
+                        hdfsEnvironment,
+                        partitionUpdate.getWritePath());
+            }
+        }
+
         if (handle.getBucketProperty().isPresent()) {
             ImmutableList<PartitionUpdate> partitionUpdatesForMissingBuckets = computePartitionUpdatesForMissingBuckets(session, handle, table.get(), partitionUpdates);
             // replace partitionUpdates before creating the empty files so that those files will be cleaned up if we end up rollback
