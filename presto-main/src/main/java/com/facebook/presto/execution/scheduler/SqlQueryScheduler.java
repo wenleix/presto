@@ -291,6 +291,7 @@ public class SqlQueryScheduler
 
             Map<PlanNodeId, SplitSource> splitSources = plan.getSplitSources();
             if (!splitSources.isEmpty()) {
+                // contains local source
                 List<PlanNodeId> schedulingOrder = plan.getFragment().getPartitionedSources();
                 List<ConnectorPartitionHandle> connectorPartitionHandles;
                 if (plan.getFragment().getStageExecutionStrategy().isAnyScanGroupedExecution()) {
@@ -301,12 +302,22 @@ public class SqlQueryScheduler
                 else {
                     connectorPartitionHandles = ImmutableList.of(NOT_PARTITIONED);
                 }
+
+                int nodeCount = nodePartitionMap.getPartitionToNode().size();
+                ImmutableList.Builder<Node> stageNodeListBuilder = ImmutableList.builderWithExpectedSize(nodeCount);
+                for (int i = 0; i < nodeCount; i++) {
+                    Node node = nodePartitionMap.getPartitionToNode().get(i);
+                    checkState(node != null);
+                    stageNodeListBuilder.add(node);
+                }
+
                 stageSchedulers.put(stageId, new FixedSourcePartitionedScheduler(
                         stage,
                         splitSources,
                         plan.getFragment().getStageExecutionStrategy(),
                         schedulingOrder,
-                        nodePartitionMap,
+                        stageNodeListBuilder.build(),
+                        nodePartitionMap.asBucketNodeMap(),
                         splitBatchSize,
                         getConcurrentLifespansPerNode(session),
                         nodeScheduler.createNodeSelector(null),
@@ -314,6 +325,7 @@ public class SqlQueryScheduler
                 bucketToPartition = Optional.of(nodePartitionMap.getBucketToPartition());
             }
             else {
+                // all sources are remote
                 Map<Integer, Node> partitionToNode = nodePartitionMap.getPartitionToNode();
                 // todo this should asynchronously wait a standard timeout period before failing
                 checkCondition(!partitionToNode.isEmpty(), NO_NODES_AVAILABLE, "No worker nodes available");
