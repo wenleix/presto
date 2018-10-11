@@ -29,6 +29,7 @@ import javax.inject.Inject;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.function.ToIntFunction;
 
 import static com.facebook.presto.spi.StandardErrorCode.NO_NODES_AVAILABLE;
@@ -47,7 +48,18 @@ public class RaptorNodePartitioningProvider
     }
 
     @Override
-    public Map<Integer, Node> getBucketToNode(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorPartitioningHandle partitioning)
+    public int getBucketCount(ConnectorPartitioningHandle partitioningHandle)
+    {
+        RaptorPartitioningHandle handle = (RaptorPartitioningHandle) partitioningHandle;
+
+        return handle.getBucketToNode().keySet().stream()
+                .mapToInt(Integer::intValue)
+                .max()
+                .getAsInt() + 1;
+    }
+
+    @Override
+    public Optional<Map<Integer, Node>> getBucketToNode(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorPartitioningHandle partitioning)
     {
         RaptorPartitioningHandle handle = (RaptorPartitioningHandle) partitioning;
 
@@ -61,7 +73,7 @@ public class RaptorNodePartitioningProvider
             }
             bucketToNode.put(entry.getKey(), node);
         }
-        return bucketToNode.build();
+        return Optional.of(bucketToNode.build());
     }
 
     @Override

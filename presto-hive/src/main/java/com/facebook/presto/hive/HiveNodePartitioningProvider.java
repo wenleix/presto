@@ -16,22 +16,16 @@ package com.facebook.presto.hive;
 import com.facebook.presto.spi.BucketFunction;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplit;
-import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 import com.facebook.presto.spi.connector.ConnectorPartitioningHandle;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.type.Type;
-import com.google.common.collect.ImmutableMap;
 
 import javax.inject.Inject;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.function.ToIntFunction;
 import java.util.stream.IntStream;
 
@@ -63,18 +57,10 @@ public class HiveNodePartitioningProvider
     }
 
     @Override
-    public Map<Integer, Node> getBucketToNode(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
+    public int getBucketCount(ConnectorPartitioningHandle partitioningHandle)
     {
         HivePartitioningHandle handle = (HivePartitioningHandle) partitioningHandle;
-
-        List<Node> nodes = shuffle(nodeManager.getRequiredWorkerNodes());
-
-        int bucketCount = handle.getBucketCount();
-        ImmutableMap.Builder<Integer, Node> distribution = ImmutableMap.builder();
-        for (int i = 0; i < bucketCount; i++) {
-            distribution.put(i, nodes.get(i % nodes.size()));
-        }
-        return distribution.build();
+        return handle.getBucketCount();
     }
 
     @Override
@@ -92,12 +78,5 @@ public class HiveNodePartitioningProvider
         HivePartitioningHandle handle = (HivePartitioningHandle) partitioningHandle;
         int bucketCount = handle.getBucketCount();
         return IntStream.range(0, bucketCount).mapToObj(HivePartitionHandle::new).collect(toImmutableList());
-    }
-
-    private static <T> List<T> shuffle(Collection<T> items)
-    {
-        List<T> list = new ArrayList<>(items);
-        Collections.shuffle(list);
-        return list;
     }
 }
