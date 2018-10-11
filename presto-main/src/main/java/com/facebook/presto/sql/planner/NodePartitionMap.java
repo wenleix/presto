@@ -13,11 +13,13 @@
  */
 package com.facebook.presto.sql.planner;
 
+import com.facebook.presto.execution.scheduler.BucketNodeMap;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.Node;
 import com.google.common.collect.ImmutableMap;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.ToIntFunction;
 import java.util.stream.IntStream;
 
@@ -59,5 +61,45 @@ public class NodePartitionMap
         int bucket = splitToBucket.applyAsInt(split);
         int partition = bucketToPartition[bucket];
         return requireNonNull(partitionToNode.get(partition));
+    }
+
+    public BucketNodeMap asBucketNodeMap()
+    {
+        Node[] bucketToNode = new Node[bucketToPartition.length];
+        for (int i = 0; i < bucketToPartition.length; i++) {
+            bucketToNode[i] = partitionToNode.get(bucketToPartition[i]);
+        }
+        return new FixedBucketNodeMap(splitToBucket, bucketToNode);
+    }
+
+    // the bucket to node mapping is fixed and pre-assigned
+    private static class FixedBucketNodeMap
+            extends BucketNodeMap
+    {
+        private final Node[] bucketToNode;
+
+        public FixedBucketNodeMap(ToIntFunction<Split> splitToBucket, Node[] bucketToNode)
+        {
+            super(splitToBucket);
+            this.bucketToNode = bucketToNode;
+        }
+
+        @Override
+        public Optional<Node> getAssignedNode(int bucketedId)
+        {
+            return Optional.of(bucketToNode[bucketedId]);
+        }
+
+        @Override
+        public int getBucketCount()
+        {
+            return bucketToNode.length;
+        }
+
+        @Override
+        public void assignOrChangeBucketToNode(int bucketedId, Node node)
+        {
+            throw new UnsupportedOperationException();
+        }
     }
 }
