@@ -26,6 +26,7 @@ import com.facebook.presto.spi.type.Type;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.ToIntFunction;
 
 import static java.util.Objects.requireNonNull;
@@ -64,7 +65,15 @@ public final class ClassLoaderSafeNodePartitioningProvider
     }
 
     @Override
-    public Map<Integer, Node> getBucketToNode(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
+    public int getBucketCount(ConnectorPartitioningHandle partitioningHandle)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.getBucketCount(partitioningHandle);
+        }
+    }
+
+    @Override
+    public Optional<Map<Integer, Node>> getBucketToNode(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.getBucketToNode(transactionHandle, session, partitioningHandle);

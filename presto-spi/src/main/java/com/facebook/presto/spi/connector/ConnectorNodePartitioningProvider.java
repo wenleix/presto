@@ -21,6 +21,7 @@ import com.facebook.presto.spi.type.Type;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.ToIntFunction;
 
 import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
@@ -42,7 +43,12 @@ public interface ConnectorNodePartitioningProvider
         return singletonList(NOT_PARTITIONED);
     }
 
-    Map<Integer, Node> getBucketToNode(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle);
+    int getBucketCount(ConnectorPartitioningHandle partitioningHandle);
+
+    default Optional<Map<Integer, Node>> getBucketToNode(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
+    {
+        return Optional.empty();
+    }
 
     ToIntFunction<ConnectorSplit> getSplitBucketFunction(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle);
 

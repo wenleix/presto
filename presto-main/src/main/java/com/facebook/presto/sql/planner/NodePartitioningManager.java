@@ -27,9 +27,12 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.split.EmptySplit;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
+import com.google.common.collect.ImmutableMap;
 
 import javax.inject.Inject;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -122,20 +125,23 @@ public class NodePartitioningManager
         ConnectorNodePartitioningProvider partitioningProvider = partitioningProviders.get(partitioningHandle.getConnectorId().get());
         checkArgument(partitioningProvider != null, "No partitioning provider for connector %s", partitioningHandle.getConnectorId().get());
 
-        Map<Integer, Node> bucketToNode = partitioningProvider.getBucketToNode(
-                partitioningHandle.getTransactionHandle().orElse(null),
-                session.toConnectorSession(),
-                partitioningHandle.getConnectorHandle());
+        // safety check for crazy partitioning
+        int bucketCount = partitioningProvider.getBucketCount(partitioningHandle.getConnectorHandle());
+        checkArgument(bucketCount < 1_000_000, "Too many buckets in partitioning: %s", bucketCount);
+
+        Map<Integer, Node> bucketToNode = getBucketToNode(session, partitioningHandle)
+                .orElseGet(() -> {
+                    List<Node> nodes = new ArrayList<>(nodeScheduler.createNodeSelector(partitioningHandle.getConnectorId().get()).allNodes());
+                    Collections.shuffle(nodes);
+
+                    ImmutableMap.Builder<Integer, Node> distribution = ImmutableMap.builder();
+                    for (int i = 0; i < bucketCount; i++) {
+                        distribution.put(i, nodes.get(i % nodes.size()));
+                    }
+                    return distribution.build();
+                });
         checkArgument(bucketToNode != null, "No partition map %s", partitioningHandle);
         checkArgument(!bucketToNode.isEmpty(), "Partition map %s is empty", partitioningHandle);
-
-        int bucketCount = bucketToNode.keySet().stream()
-                .mapToInt(Integer::intValue)
-                .max()
-                .getAsInt() + 1;
-
-        // safety check for crazy partitioning
-        checkArgument(bucketCount < 1_000_000, "Too many buckets in partitioning: %s", bucketCount);
 
         int[] bucketToPartition = new int[bucketCount];
         BiMap<Node, Integer> nodeToPartition = HashBiMap.create();
@@ -168,5 +174,18 @@ public class NodePartitioningManager
             }
             return bucket;
         });
+    }
+
+    private Optional<Map<Integer, Node>> getBucketToNode(Session session, PartitioningHandle partitioningHandle)
+    {
+        checkArgument(!(partitioningHandle.getConnectorHandle() instanceof SystemPartitioningHandle));
+
+        ConnectorNodePartitioningProvider partitioningProvider = partitioningProviders.get(partitioningHandle.getConnectorId().get());
+        checkArgument(partitioningProvider != null, "No partitioning provider for connector %s", partitioningHandle.getConnectorId().get());
+
+        return partitioningProvider.getBucketToNode(
+                partitioningHandle.getTransactionHandle().orElse(null),
+                session.toConnectorSession(),
+                partitioningHandle.getConnectorHandle());
     }
 }
