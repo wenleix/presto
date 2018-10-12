@@ -34,6 +34,8 @@ public abstract class BucketNodeMap
 
     public abstract void assignOrChangeBucketToNode(int bucketedId, Node node);
 
+    public abstract boolean isDynamic();
+
     public final Optional<Node> getAssignedNode(Split split)
     {
         return getAssignedNode(splitToBucket.applyAsInt(split));

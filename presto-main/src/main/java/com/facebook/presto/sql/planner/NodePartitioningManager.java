@@ -16,6 +16,8 @@ package com.facebook.presto.sql.planner;
 import com.facebook.presto.Session;
 import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.execution.scheduler.NodeScheduler;
+import com.facebook.presto.execution.scheduler.group.DynamicBucketNodeMap;
+import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.BucketPartitionFunction;
 import com.facebook.presto.operator.PartitionFunction;
 import com.facebook.presto.spi.BucketFunction;
@@ -149,28 +151,21 @@ public class NodePartitioningManager
             bucketToPartition[entry.getKey()] = partitionId;
         }
 
-        ToIntFunction<ConnectorSplit> splitBucketFunction = partitioningProvider.getSplitBucketFunction(
-                partitioningHandle.getTransactionHandle().orElse(null),
-                session.toConnectorSession(),
-                partitioningHandle.getConnectorHandle());
-        checkArgument(splitBucketFunction != null, "No partitioning %s", partitioningHandle);
-
-        return new NodePartitionMap(nodeToPartition.inverse(), bucketToPartition, split -> {
-            int bucket;
-            if (split.getConnectorSplit() instanceof EmptySplit) {
-                bucket = split.getLifespan().isTaskWide() ? 0 : split.getLifespan().getId();
-            }
-            else {
-                bucket = splitBucketFunction.applyAsInt(split.getConnectorSplit());
-            }
-            if (!split.getLifespan().isTaskWide()) {
-                checkArgument(split.getLifespan().getId() == bucket);
-            }
-            return bucket;
-        });
+        return new NodePartitionMap(nodeToPartition.inverse(), bucketToPartition, getSplitToBucket(session, partitioningHandle));
     }
 
-    private Optional<Map<Integer, Node>> getBucketToNode(Session session, PartitioningHandle partitioningHandle)
+    public DynamicBucketNodeMap getDynamicBucketNodeMap(Session session, PartitioningHandle partitioningHandle)
+    {
+        checkArgument(!getBucketToNode(session, partitioningHandle).isPresent());
+
+        ConnectorNodePartitioningProvider partitioningProvider = partitioningProviders.get(partitioningHandle.getConnectorId().get());
+        checkArgument(partitioningProvider != null, "No partitioning provider for connector %s", partitioningHandle.getConnectorId().get());
+
+        int bucketCount = partitioningProvider.getBucketCount(partitioningHandle.getConnectorHandle());
+        return new DynamicBucketNodeMap(getSplitToBucket(session, partitioningHandle), bucketCount);
+    }
+
+    public Optional<Map<Integer, Node>> getBucketToNode(Session session, PartitioningHandle partitioningHandle)
     {
         checkArgument(!(partitioningHandle.getConnectorHandle() instanceof SystemPartitioningHandle));
 
@@ -186,6 +181,32 @@ public class NodePartitioningManager
         bucketToNode.ifPresent(map -> checkArgument(!map.isEmpty(), "Partition map %s is empty", partitioningHandle));
 
         return bucketToNode;
+    }
+
+    private ToIntFunction<Split> getSplitToBucket(Session session, PartitioningHandle partitioningHandle)
+    {
+        ConnectorNodePartitioningProvider partitioningProvider = partitioningProviders.get(partitioningHandle.getConnectorId().get());
+        checkArgument(partitioningProvider != null, "No partitioning provider for connector %s", partitioningHandle.getConnectorId().get());
+
+        ToIntFunction<ConnectorSplit> splitBucketFunction = partitioningProvider.getSplitBucketFunction(
+                partitioningHandle.getTransactionHandle().orElse(null),
+                session.toConnectorSession(),
+                partitioningHandle.getConnectorHandle());
+        checkArgument(splitBucketFunction != null, "No partitioning %s", partitioningHandle);
+
+        return split -> {
+            int bucket;
+            if (split.getConnectorSplit() instanceof EmptySplit) {
+                bucket = split.getLifespan().isTaskWide() ? 0 : split.getLifespan().getId();
+            }
+            else {
+                bucket = splitBucketFunction.applyAsInt(split.getConnectorSplit());
+            }
+            if (!split.getLifespan().isTaskWide()) {
+                checkArgument(split.getLifespan().getId() == bucket);
+            }
+            return bucket;
+        };
     }
 
     private Map<Integer, Node> createArbitraryBucketToNode(List<Node> nodes, int bucketCount)

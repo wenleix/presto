@@ -54,6 +54,7 @@ import io.airlift.units.Duration;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -286,46 +287,73 @@ public class SqlQueryScheduler
             bucketToPartition = Optional.of(new int[1]);
         }
         else {
-            // nodes are pre determined by the nodePartitionMap
-            NodePartitionMap nodePartitionMap = partitioningCache.apply(plan.getFragment().getPartitioning());
-
             Map<PlanNodeId, SplitSource> splitSources = plan.getSplitSources();
             if (!splitSources.isEmpty()) {
-                // contains local source
+                // contains local source, bucket processing
                 List<PlanNodeId> schedulingOrder = plan.getFragment().getPartitionedSources();
                 List<ConnectorPartitionHandle> connectorPartitionHandles;
-                if (plan.getFragment().getStageExecutionStrategy().isAnyScanGroupedExecution()) {
+                boolean groupedExecutionForStage = plan.getFragment().getStageExecutionStrategy().isAnyScanGroupedExecution();
+                if (groupedExecutionForStage) {
                     connectorPartitionHandles = nodePartitioningManager.listPartitionHandles(session, partitioningHandle);
-                    checkState(connectorPartitionHandles.size() == nodePartitionMap.getBucketToPartition().length);
                     checkState(!ImmutableList.of(NOT_PARTITIONED).equals(connectorPartitionHandles));
                 }
                 else {
                     connectorPartitionHandles = ImmutableList.of(NOT_PARTITIONED);
                 }
 
-                int nodeCount = nodePartitionMap.getPartitionToNode().size();
-                ImmutableList.Builder<Node> stageNodeListBuilder = ImmutableList.builderWithExpectedSize(nodeCount);
-                for (int i = 0; i < nodeCount; i++) {
-                    Node node = nodePartitionMap.getPartitionToNode().get(i);
-                    checkState(node != null);
-                    stageNodeListBuilder.add(node);
-                }
+                if (plan.getSubStages().isEmpty() // no remote source
+                        && groupedExecutionForStage
+                        // connector has no bucket to node map
+                        && !nodePartitioningManager.getBucketToNode(session, partitioningHandle).isPresent()) {
+                    // dynamic bucket schedule
+                    List<Node> stageNodeList = new ArrayList<>(nodeScheduler.createNodeSelector(null).allNodes());
+                    Collections.shuffle(stageNodeList);
 
-                stageSchedulers.put(stageId, new FixedSourcePartitionedScheduler(
-                        stage,
-                        splitSources,
-                        plan.getFragment().getStageExecutionStrategy(),
-                        schedulingOrder,
-                        stageNodeListBuilder.build(),
-                        nodePartitionMap.asBucketNodeMap(),
-                        splitBatchSize,
-                        getConcurrentLifespansPerNode(session),
-                        nodeScheduler.createNodeSelector(null),
-                        connectorPartitionHandles));
-                bucketToPartition = Optional.of(nodePartitionMap.getBucketToPartition());
+                    stageSchedulers.put(stageId, new FixedSourcePartitionedScheduler(
+                            stage,
+                            splitSources,
+                            plan.getFragment().getStageExecutionStrategy(),
+                            schedulingOrder,
+                            stageNodeList,
+                            nodePartitioningManager.getDynamicBucketNodeMap(session, partitioningHandle),
+                            splitBatchSize,
+                            getConcurrentLifespansPerNode(session),
+                            nodeScheduler.createNodeSelector(null),
+                            connectorPartitionHandles));
+                    bucketToPartition = Optional.empty();
+                }
+                else {
+                    // nodes are pre determined by the nodePartitionMap
+                    NodePartitionMap nodePartitionMap = partitioningCache.apply(plan.getFragment().getPartitioning());
+                    if (groupedExecutionForStage) {
+                        checkState(connectorPartitionHandles.size() == nodePartitionMap.getBucketToPartition().length);
+                    }
+
+                    int nodeCount = nodePartitionMap.getPartitionToNode().size();
+                    ImmutableList.Builder<Node> stageNodeListBuilder = ImmutableList.builderWithExpectedSize(nodeCount);
+                    for (int i = 0; i < nodeCount; i++) {
+                        Node node = nodePartitionMap.getPartitionToNode().get(i);
+                        checkState(node != null);
+                        stageNodeListBuilder.add(node);
+                    }
+
+                    stageSchedulers.put(stageId, new FixedSourcePartitionedScheduler(
+                            stage,
+                            splitSources,
+                            plan.getFragment().getStageExecutionStrategy(),
+                            schedulingOrder,
+                            stageNodeListBuilder.build(),
+                            nodePartitionMap.asBucketNodeMap(),
+                            splitBatchSize,
+                            getConcurrentLifespansPerNode(session),
+                            nodeScheduler.createNodeSelector(null),
+                            connectorPartitionHandles));
+                    bucketToPartition = Optional.of(nodePartitionMap.getBucketToPartition());
+                }
             }
             else {
                 // all sources are remote
+                NodePartitionMap nodePartitionMap = partitioningCache.apply(plan.getFragment().getPartitioning());
                 Map<Integer, Node> partitionToNode = nodePartitionMap.getPartitionToNode();
                 // todo this should asynchronously wait a standard timeout period before failing
                 checkCondition(!partitionToNode.isEmpty(), NO_NODES_AVAILABLE, "No worker nodes available");
