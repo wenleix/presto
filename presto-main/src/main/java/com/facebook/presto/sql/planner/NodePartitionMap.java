@@ -104,5 +104,17 @@ public class NodePartitionMap
         {
             return bucketToNode.length;
         }
+
+        @Override
+        public void assignBucketToNode(int bucketedId, Node node)
+        {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public boolean isDynamic()
+        {
+            return false;
+        }
     }
 }
