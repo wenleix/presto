@@ -17,6 +17,8 @@ import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.RemoteTask;
 import com.facebook.presto.execution.SqlStageExecution;
 import com.facebook.presto.execution.scheduler.ScheduleResult.BlockedReason;
+import com.facebook.presto.execution.scheduler.group.DynamicLifespanScheduler;
+import com.facebook.presto.execution.scheduler.group.LifespanScheduler;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.StageExecutionStrategy;
 import com.facebook.presto.spi.Node;
@@ -128,7 +130,15 @@ public class FixedSourcePartitionedScheduler
                     sourceScheduler.noMoreLifespans();
                 }
                 else {
-                    LifespanScheduler lifespanScheduler = new LifespanScheduler(bucketNodeMap, partitionHandles, concurrentLifespansPerTask);
+                    LifespanScheduler lifespanScheduler;
+                    if (!bucketNodeMap.isDynamic()) {
+                        lifespanScheduler = new FixedLifespanScheduler(bucketNodeMap, partitionHandles, concurrentLifespansPerTask);
+                    }
+                    else {
+                        checkArgument(stageExecutionStrategy.isAnyScanGroupedExecution(), "Dynamic bucket schedule is only eligible for grouped execution");
+                        lifespanScheduler = new DynamicLifespanScheduler(bucketNodeMap, stageNodeList, partitionHandles, concurrentLifespansPerTask);
+                    }
+
                     // Schedule the first few lifespans
                     lifespanScheduler.scheduleInitial(sourceScheduler);
                     // Schedule new lifespans for finished ones
@@ -281,7 +291,8 @@ public class FixedSourcePartitionedScheduler
         }
     }
 
-    private static class LifespanScheduler
+    private static class FixedLifespanScheduler
+            implements LifespanScheduler
     {
         // Thread Safety:
         // * Invocation of onLifespanFinished can be parallel and in any thread.
@@ -300,7 +311,7 @@ public class FixedSourcePartitionedScheduler
         private final List<Lifespan> recentlyCompletedDriverGroups = new ArrayList<>();
         private int totalDriverGroupsScheduled;
 
-        public LifespanScheduler(BucketNodeMap bucketNodeMap, List<ConnectorPartitionHandle> partitionHandles, OptionalInt concurrentLifespansPerTask)
+        public FixedLifespanScheduler(BucketNodeMap bucketNodeMap, List<ConnectorPartitionHandle> partitionHandles, OptionalInt concurrentLifespansPerTask)
         {
             checkArgument(!partitionHandles.equals(ImmutableList.of(NOT_PARTITIONED)));
             checkArgument(partitionHandles.size() == bucketNodeMap.getBucketCount());

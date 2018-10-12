@@ -101,5 +101,11 @@ public class NodePartitionMap
         {
             throw new UnsupportedOperationException();
         }
+
+        @Override
+        public boolean isDynamic()
+        {
+            return false;
+        }
     }
 }

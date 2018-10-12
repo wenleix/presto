@@ -11,26 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-package com.facebook.presto.execution.scheduler;
+package com.facebook.presto.execution.scheduler.group;
 
 import com.facebook.presto.execution.Lifespan;
-import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
-import com.facebook.presto.sql.planner.plan.PlanNodeId;
+import com.facebook.presto.execution.scheduler.SourceScheduler;
+import com.google.common.util.concurrent.SettableFuture;
 
-import java.util.List;
-
-public interface SourceScheduler
+public interface LifespanScheduler
 {
-    ScheduleResult schedule();
+    void scheduleInitial(SourceScheduler scheduler);
 
-    void close();
+    void onLifespanFinished(Iterable<Lifespan> newlyCompletedDriverGroups);
 
-    PlanNodeId getPlanNodeId();
-
-    void startLifespan(Lifespan lifespan, ConnectorPartitionHandle partitionHandle);
-
-    void noMoreLifespans();
-
-    List<Lifespan> drainCompletedLifespans();
+    SettableFuture schedule(SourceScheduler scheduler);
 }
