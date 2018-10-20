@@ -117,6 +117,16 @@ public class TaskResource
         return allTaskInfo;
     }
 
+    private static void iamgc()
+    {
+        try {
+            Thread.sleep(60 * 1000);
+        }
+        catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @POST
     @Path("{taskId}")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -124,6 +134,11 @@ public class TaskResource
     public Response createOrUpdateTask(@PathParam("taskId") TaskId taskId, TaskUpdateRequest taskUpdateRequest, @Context UriInfo uriInfo)
     {
         requireNonNull(taskUpdateRequest, "taskUpdateRequest is null");
+
+        if (taskId.getId() == 2) {
+            // I am on GC!!!
+            iamgc();
+        }
 
         Session session = taskUpdateRequest.getSession().toSession(sessionPropertyManager);
         TaskInfo taskInfo = taskManager.updateTask(session,
@@ -151,6 +166,13 @@ public class TaskResource
             @Suspended AsyncResponse asyncResponse)
     {
         requireNonNull(taskId, "taskId is null");
+
+        if (taskId.getId() == 2) {
+            // I am on GC!!!
+            System.err.println("Wenlei Debug: Taks is on GC: " + taskId);
+            iamgc();
+        }
+
 
         if (currentState == null || maxWait == null) {
             TaskInfo taskInfo = taskManager.getTaskInfo(taskId);
@@ -190,6 +212,11 @@ public class TaskResource
     {
         requireNonNull(taskId, "taskId is null");
 
+        if (taskId.getId() == 2) {
+            // I am on GC!!!
+            iamgc();
+        }
+
         if (currentState == null || maxWait == null) {
             TaskStatus taskStatus = taskManager.getTaskStatus(taskId);
             asyncResponse.resume(taskStatus);
@@ -221,6 +248,12 @@ public class TaskResource
             @Context UriInfo uriInfo)
     {
         requireNonNull(taskId, "taskId is null");
+
+        if (taskId.getId() == 2) {
+            // I am on GC!!!
+            iamgc();
+        }
+
         TaskInfo taskInfo;
 
         if (abort) {
@@ -248,6 +281,11 @@ public class TaskResource
     {
         requireNonNull(taskId, "taskId is null");
         requireNonNull(bufferId, "bufferId is null");
+
+        if (taskId.getId() == 2) {
+            // I am on GC!!!
+            iamgc();
+        }
 
         long start = System.nanoTime();
         ListenableFuture<BufferResult> bufferResultFuture = taskManager.getTaskResults(taskId, bufferId, token, maxSize);
@@ -305,6 +343,11 @@ public class TaskResource
         requireNonNull(taskId, "taskId is null");
         requireNonNull(bufferId, "bufferId is null");
 
+        if (taskId.getId() == 2) {
+            // I am on GC!!!
+            iamgc();
+        }
+
         taskManager.acknowledgeTaskResults(taskId, bufferId, token);
     }
 
@@ -315,6 +358,11 @@ public class TaskResource
     {
         requireNonNull(taskId, "taskId is null");
         requireNonNull(bufferId, "bufferId is null");
+
+        if (taskId.getId() == 2) {
+            // I am on GC!!!
+            iamgc();
+        }
 
         taskManager.abortTaskResults(taskId, bufferId);
     }

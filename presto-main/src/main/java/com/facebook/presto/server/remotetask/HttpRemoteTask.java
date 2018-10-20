@@ -725,12 +725,10 @@ public final class HttpRemoteTask
 
     private static Backoff createCleanupBackoff()
     {
-        return new Backoff(10, new Duration(10, TimeUnit.MINUTES), Ticker.systemTicker(), ImmutableList.<Duration>builder()
+        return new Backoff(3, new Duration(2, TimeUnit.SECONDS), Ticker.systemTicker(), ImmutableList.<Duration>builder()
                     .add(new Duration(0, MILLISECONDS))
                     .add(new Duration(100, MILLISECONDS))
                     .add(new Duration(500, MILLISECONDS))
-                    .add(new Duration(1, SECONDS))
-                    .add(new Duration(10, SECONDS))
                     .build());
     }
 
