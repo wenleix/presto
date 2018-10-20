@@ -49,7 +49,7 @@ public class QueryManagerConfig
 
     private int queryManagerExecutorPoolSize = 5;
 
-    private Duration remoteTaskMaxErrorDuration = new Duration(5, TimeUnit.MINUTES);
+    private Duration remoteTaskMaxErrorDuration = new Duration(2, TimeUnit.SECONDS);
     private int remoteTaskMaxCallbackThreads = 1000;
 
     private String queryExecutionPolicy = "all-at-once";
