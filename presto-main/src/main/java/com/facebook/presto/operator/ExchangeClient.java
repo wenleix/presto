@@ -13,11 +13,14 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.SerializedPage;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.operator.HttpPageBufferClient.ClientCallback;
 import com.facebook.presto.operator.WorkProcessor.ProcessorState;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -72,6 +75,9 @@ public class ExchangeClient
     private boolean noMoreLocations;
 
     private final ConcurrentMap<URI, HttpPageBufferClient> allClients = new ConcurrentHashMap<>();
+
+    @GuardedBy("this")
+    private final Multimap<TaskId, URI> taskIdToURI = ArrayListMultimap.create();
 
     @GuardedBy("this")
     private final Deque<HttpPageBufferClient> queuedClients = new LinkedList<>();
@@ -158,6 +164,9 @@ public class ExchangeClient
 
         checkState(!noMoreLocations, "No more locations already set");
 
+        // !!!!!!Hack!!!!! TODO: Add task Id into RemoteSplit, and this method should also contains TaskId as input
+        TaskId srcTaskId = new TaskId(location.getPath().split("/")[3]);     // wenlei_!@#$%^&*
+
         HttpPageBufferClient client = new HttpPageBufferClient(
                 httpClient,
                 maxResponseSize,
@@ -167,10 +176,32 @@ public class ExchangeClient
                 new ExchangeClientCallback(),
                 scheduler,
                 pageBufferClientCallbackExecutor);
+
+
         allClients.put(location, client);
+        taskIdToURI.put(srcTaskId, location);
         queuedClients.add(client);
 
         scheduleRequestIfNecessary();
+    }
+
+    public synchronized void removeLocation(TaskId srcTaskId)
+    {
+        requireNonNull(srcTaskId, "srcTaskId is null");
+
+        // Ignore remove location after close
+        if (closed.get()) {
+            return;
+        }
+
+        for (URI location : taskIdToURI.get(srcTaskId)) {
+            if (!allClients.containsKey(location)) {
+                return;
+            }
+
+            allClients.get(location).close();
+            completedClients.add(allClients.get(location));
+        }
     }
 
     public synchronized void noMoreLocations()
@@ -312,6 +343,12 @@ public class ExchangeClient
                 // no more clients available
                 return;
             }
+
+            if (completedClients.contains(client)) {
+                // TODO: Add a new set called cancelledClients
+                continue;
+            }
+
             client.scheduleRequest();
         }
     }
@@ -435,6 +472,12 @@ public class ExchangeClient
         {
             requireNonNull(client, "client is null");
             requireNonNull(cause, "cause is null");
+
+            if (completedClients.contains(client)) {
+                // ignore failure
+                return;
+            }
+
             ExchangeClient.this.clientFailed(cause);
         }
     }

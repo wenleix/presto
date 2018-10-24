@@ -21,7 +21,6 @@ import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.cost.StatsAndCosts;
 import com.facebook.presto.event.SplitMonitor;
 import com.facebook.presto.eventlistener.EventListenerManager;
-import com.facebook.presto.execution.TestSqlTaskManager.MockExchangeClientSupplier;
 import com.facebook.presto.execution.scheduler.LegacyNetworkTopology;
 import com.facebook.presto.execution.scheduler.NodeScheduler;
 import com.facebook.presto.execution.scheduler.NodeSchedulerConfig;
@@ -133,7 +132,6 @@ public final class TaskTestUtils
                 new IndexManager(),
                 nodePartitioningManager,
                 new PageSinkManager(),
-                new MockExchangeClientSupplier(),
                 new ExpressionCompiler(metadata, pageFunctionCompiler),
                 pageFunctionCompiler,
                 new JoinFilterFunctionCompiler(metadata),

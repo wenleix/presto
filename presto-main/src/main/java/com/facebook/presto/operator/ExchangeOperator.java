@@ -14,6 +14,7 @@
 package com.facebook.presto.operator;
 
 import com.facebook.presto.connector.ConnectorId;
+import com.facebook.presto.execution.SqlTaskManager.ExchangeClientManager;
 import com.facebook.presto.execution.buffer.PagesSerde;
 import com.facebook.presto.execution.buffer.PagesSerdeFactory;
 import com.facebook.presto.execution.buffer.SerializedPage;
@@ -43,7 +44,7 @@ public class ExchangeOperator
     {
         private final int operatorId;
         private final PlanNodeId sourceId;
-        private final ExchangeClientSupplier exchangeClientSupplier;
+        private final ExchangeClientManager exchangeClientSupplier;
         private final PagesSerdeFactory serdeFactory;
         private ExchangeClient exchangeClient;
         private boolean closed;
@@ -51,7 +52,7 @@ public class ExchangeOperator
         public ExchangeOperatorFactory(
                 int operatorId,
                 PlanNodeId sourceId,
-                ExchangeClientSupplier exchangeClientSupplier,
+                ExchangeClientManager exchangeClientSupplier,
                 PagesSerdeFactory serdeFactory)
         {
             this.operatorId = operatorId;
@@ -72,7 +73,7 @@ public class ExchangeOperator
             checkState(!closed, "Factory is already closed");
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, ExchangeOperator.class.getSimpleName());
             if (exchangeClient == null) {
-                exchangeClient = exchangeClientSupplier.get(driverContext.getPipelineContext().localSystemMemoryContext());
+                exchangeClient = exchangeClientSupplier.createExchangeClient(driverContext.getPipelineContext().localSystemMemoryContext());
             }
 
             return new ExchangeOperator(

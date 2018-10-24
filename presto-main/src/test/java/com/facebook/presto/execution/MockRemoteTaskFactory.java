@@ -29,6 +29,7 @@ import com.facebook.presto.operator.StageExecutionStrategy;
 import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.operator.TaskStats;
 import com.facebook.presto.spi.Node;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.memory.MemoryPoolId;
 import com.facebook.presto.spiller.SpillSpaceTracker;
 import com.facebook.presto.sql.planner.Partitioning;
@@ -69,6 +70,7 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import static com.facebook.presto.OutputBuffers.BufferType.BROADCAST;
@@ -138,6 +140,12 @@ public class MockRemoteTaskFactory
             boolean summarizeTaskInfo)
     {
         return new MockRemoteTask(taskId, fragment, node.getNodeIdentifier(), executor, scheduledExecutor, initialSplits, totalPartitions, partitionedSplitCountTracker);
+    }
+
+    @Override
+    public void destroyExchangeReceiver(TaskId destinationTaskId, URI exchangeReciverUri, Consumer<PrestoException> onFailure)
+    {
+
     }
 
     public static final class MockRemoteTask

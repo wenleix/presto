@@ -16,9 +16,11 @@ package com.facebook.presto.execution;
 import com.facebook.presto.Session;
 import com.facebook.presto.TaskSource;
 import com.facebook.presto.event.SplitMonitor;
+import com.facebook.presto.execution.SqlTaskManager.ExchangeClientManager;
 import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.execution.executor.TaskExecutor;
 import com.facebook.presto.memory.QueryContext;
+import com.facebook.presto.operator.ExchangeClientSupplier;
 import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
@@ -61,7 +63,15 @@ public class SqlTaskExecutionFactory
         this.cpuTimerEnabled = config.isTaskCpuTimerEnabled();
     }
 
-    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions)
+    public SqlTaskExecution create(
+            Session session,
+            QueryContext queryContext,
+            TaskStateMachine taskStateMachine,
+            OutputBuffer outputBuffer,
+            ExchangeClientManager exchangeClientManager,
+            PlanFragment fragment,
+            List<TaskSource> sources,
+            OptionalInt totalPartitions)
     {
         TaskContext taskContext = queryContext.addTaskContext(
                 taskStateMachine,
@@ -80,7 +90,8 @@ public class SqlTaskExecutionFactory
                         fragment.getPartitioningScheme(),
                         fragment.getStageExecutionStrategy(),
                         fragment.getPartitionedSources(),
-                        outputBuffer);
+                        outputBuffer,
+                        exchangeClientManager);
             }
             catch (Throwable e) {
                 // planning failed

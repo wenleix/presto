@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.execution.SqlTaskManager;
+import com.facebook.presto.execution.SqlTaskManager.ExchangeClientManager;
 import com.facebook.presto.execution.buffer.PagesSerdeFactory;
 import com.facebook.presto.execution.buffer.TestingPagesSerdeFactory;
 import com.facebook.presto.metadata.RemoteTransactionHandle;
@@ -247,7 +249,11 @@ public class TestExchangeOperator
 
     private SourceOperator createExchangeOperator()
     {
-        ExchangeOperatorFactory operatorFactory = new ExchangeOperatorFactory(0, new PlanNodeId("test"), exchangeClientSupplier, SERDE_FACTORY);
+        ExchangeOperatorFactory operatorFactory = new ExchangeOperatorFactory(
+                0,
+                new PlanNodeId("test"),
+                new ExchangeClientManager(exchangeClientSupplier),
+                SERDE_FACTORY);
 
         DriverContext driverContext = createTaskContext(scheduler, scheduledExecutor, TEST_SESSION)
                 .addPipelineContext(0, true, true, false)
