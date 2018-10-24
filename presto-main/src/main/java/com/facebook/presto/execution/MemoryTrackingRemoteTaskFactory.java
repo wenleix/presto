@@ -19,11 +19,14 @@ import com.facebook.presto.execution.NodeTaskMap.PartitionedSplitCountTracker;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.Node;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.google.common.collect.Multimap;
 
+import java.net.URI;
 import java.util.OptionalInt;
+import java.util.function.Consumer;
 
 import static java.util.Objects.requireNonNull;
 
@@ -62,6 +65,12 @@ public class MemoryTrackingRemoteTaskFactory
 
         task.addStateChangeListener(new UpdatePeakMemory(stateMachine));
         return task;
+    }
+
+    @Override
+    public void destroyExchangeReceiver(TaskId destinationTaskId, URI exchangeReciverUri, Consumer<PrestoException> onFailure)
+    {
+        remoteTaskFactory.destroyExchangeReceiver(destinationTaskId, exchangeReciverUri, onFailure);
     }
 
     private static final class UpdatePeakMemory

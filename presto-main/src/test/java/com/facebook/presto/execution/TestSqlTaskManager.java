@@ -238,6 +238,7 @@ public class TestSqlTaskManager
     {
         return new SqlTaskManager(
                 createTestingPlanner(),
+                new MockExchangeClientSupplier(),
                 new MockLocationFactory(),
                 taskExecutor,
                 createTestSplitMonitor(),

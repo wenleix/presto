@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.execution.SqlTaskManager.ExchangeClientManager;
 import com.facebook.presto.execution.buffer.PagesSerde;
 import com.facebook.presto.execution.buffer.PagesSerdeFactory;
 import com.facebook.presto.metadata.Split;
@@ -50,7 +51,7 @@ public class MergeOperator
     {
         private final int operatorId;
         private final PlanNodeId sourceId;
-        private final ExchangeClientSupplier exchangeClientSupplier;
+        private final ExchangeClientManager exchangeClientSupplier;
         private final PagesSerdeFactory serdeFactory;
         private final List<Type> types;
         private final List<Integer> outputChannels;
@@ -63,7 +64,7 @@ public class MergeOperator
         public MergeOperatorFactory(
                 int operatorId,
                 PlanNodeId sourceId,
-                ExchangeClientSupplier exchangeClientSupplier,
+                ExchangeClientManager exchangeClientSupplier,
                 PagesSerdeFactory serdeFactory,
                 OrderingCompiler orderingCompiler,
                 List<Type> types,
@@ -114,7 +115,7 @@ public class MergeOperator
 
     private final OperatorContext operatorContext;
     private final PlanNodeId sourceId;
-    private final ExchangeClientSupplier exchangeClientSupplier;
+    private final ExchangeClientManager exchangeClientSupplier;
     private final PagesSerde pagesSerde;
     private final PageWithPositionComparator comparator;
     private final List<Integer> outputChannels;
@@ -131,7 +132,7 @@ public class MergeOperator
     public MergeOperator(
             OperatorContext operatorContext,
             PlanNodeId sourceId,
-            ExchangeClientSupplier exchangeClientSupplier,
+            ExchangeClientManager exchangeClientSupplier,
             PagesSerde pagesSerde,
             PageWithPositionComparator comparator,
             List<Integer> outputChannels,
@@ -160,7 +161,7 @@ public class MergeOperator
         checkState(!blockedOnSplits.isDone(), "noMoreSplits has been called already");
 
         URI location = ((RemoteSplit) split.getConnectorSplit()).getLocation();
-        ExchangeClient exchangeClient = closer.register(exchangeClientSupplier.get(operatorContext.localSystemMemoryContext()));
+        ExchangeClient exchangeClient = closer.register(exchangeClientSupplier.createExchangeClient(operatorContext.localSystemMemoryContext()));
         exchangeClient.addLocation(location);
         exchangeClient.noMoreLocations();
         pageProducers.add(exchangeClient.pages().map(pagesSerde::deserialize));

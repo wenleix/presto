@@ -123,6 +123,8 @@ public interface TaskManager
      */
     TaskInfo abortTaskResults(TaskId taskId, OutputBufferId bufferId);
 
+    void removeRemoteSource(TaskId taskId, TaskId srcTaskId);
+
     /**
      * Adds a state change listener to the specified task.
      */

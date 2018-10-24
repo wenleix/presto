@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.execution.SqlTaskManager;
+import com.facebook.presto.execution.SqlTaskManager.ExchangeClientManager;
 import com.facebook.presto.execution.buffer.PagesSerdeFactory;
 import com.facebook.presto.execution.buffer.TestingPagesSerdeFactory;
 import com.facebook.presto.metadata.RemoteTransactionHandle;
@@ -335,7 +337,7 @@ public class TestMergeOperator
         MergeOperator.MergeOperatorFactory factory = new MergeOperator.MergeOperatorFactory(
                 mergeOperatorId,
                 new PlanNodeId("plan_node_id" + mergeOperatorId),
-                exchangeClientFactory,
+                new ExchangeClientManager(exchangeClientFactory),
                 serdeFactory,
                 orderingCompiler,
                 sourceTypes,
