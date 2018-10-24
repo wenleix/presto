@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.server;
+package com.facebook.presto.server.remotetask;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.execution.LocationFactory;
@@ -26,18 +26,23 @@ import com.facebook.presto.execution.TaskStatus;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.ForScheduler;
-import com.facebook.presto.server.remotetask.HttpRemoteTask;
-import com.facebook.presto.server.remotetask.RemoteTaskStats;
+import com.facebook.presto.server.InternalCommunicationConfig;
+import com.facebook.presto.server.TaskUpdateRequest;
 import com.facebook.presto.server.smile.Codec;
 import com.facebook.presto.server.smile.SmileCodec;
 import com.facebook.presto.spi.Node;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.google.common.collect.Multimap;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.BoundedExecutor;
 import io.airlift.concurrent.ThreadPoolExecutorMBean;
 import io.airlift.http.client.HttpClient;
+import io.airlift.http.client.Request;
+import io.airlift.http.client.ResponseHandler;
 import io.airlift.json.JsonCodec;
+import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
@@ -45,14 +50,23 @@ import org.weakref.jmx.Nested;
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 
+import java.net.URI;
 import java.util.OptionalInt;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.function.Consumer;
 
+import static com.facebook.presto.server.smile.AdaptingJsonResponseHandler.createAdaptingJsonResponseHandler;
+import static com.facebook.presto.server.smile.FullSmileResponseHandler.createFullSmileResponseHandler;
+import static com.facebook.presto.server.smile.JsonCodecWrapper.unwrapJsonCodec;
 import static com.facebook.presto.server.smile.JsonCodecWrapper.wrapJsonCodec;
+import static io.airlift.concurrent.MoreFutures.addExceptionCallback;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
+import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
+import static io.airlift.http.client.Request.Builder.prepareDelete;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
@@ -60,6 +74,8 @@ import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 public class HttpRemoteTaskFactory
         implements RemoteTaskFactory
 {
+    private static final Logger log = Logger.get(HttpRemoteTaskFactory.class);
+
     private final HttpClient httpClient;
     private final LocationFactory locationFactory;
     private final Codec<TaskStatus> taskStatusCodec;
@@ -164,5 +180,63 @@ public class HttpRemoteTaskFactory
                 partitionedSplitCountTracker,
                 stats,
                 isBinaryTransportEnabled);
+    }
+
+    @Override
+    public void removeRemoteSource(TaskId taskId, TaskId remoteSourceTaskId, Consumer<PrestoException> onFailure)
+    {
+        // TODO: Check whether onFailure callback is needed. Because this method is used for recoverable execution,
+        //  and if cleanup fails the query will fail.
+        URI remoteSourceUri = uriBuilderFrom(locationFactory.createLocalTaskLocation(taskId))
+                .appendPath("remote-source")
+                .appendPath(remoteSourceTaskId.toString())
+                .build();
+
+        Request request = prepareDelete()
+                .setUri(remoteSourceUri)
+                .build();
+        RequestErrorTracker errorTracker = new RequestErrorTracker(
+                taskId,
+                remoteSourceUri,
+                maxErrorDuration,
+                errorScheduledExecutor,
+                "Remove exchange remote source");
+
+        executeDestroyExchangeSourceRequest(errorTracker, request, onFailure);
+    }
+
+    private void executeDestroyExchangeSourceRequest(RequestErrorTracker errorTracker, Request request, Consumer<PrestoException> onFailure)
+    {
+        errorTracker.startRequest();
+
+        ResponseHandler responseHandler;
+        if (isBinaryTransportEnabled) {
+            responseHandler = createFullSmileResponseHandler((SmileCodec<TaskInfo>) taskInfoCodec);
+        }
+        else {
+            responseHandler = createAdaptingJsonResponseHandler(unwrapJsonCodec(taskInfoCodec));
+        }
+        addExceptionCallback(httpClient.executeAsync(request, responseHandler), failedReason -> {
+            if (failedReason instanceof RejectedExecutionException && httpClient.isClosed()) {
+                log.error("Unable to destroy exchange source at %s. HTTP client is closed", request.getUri());
+                return;
+            }
+            // record failure
+            try {
+                errorTracker.requestFailed(failedReason);
+            }
+            catch (PrestoException e) {
+                onFailure.accept(e);
+                return;
+            }
+            // if throttled due to error, asynchronously wait for timeout and try again
+            ListenableFuture<?> errorRateLimit = errorTracker.acquireRequestPermit();
+            if (errorRateLimit.isDone()) {
+                executeDestroyExchangeSourceRequest(errorTracker, request, onFailure);
+            }
+            else {
+                errorRateLimit.addListener(() -> executeDestroyExchangeSourceRequest(errorTracker, request, onFailure), errorScheduledExecutor);
+            }
+        });
     }
 }

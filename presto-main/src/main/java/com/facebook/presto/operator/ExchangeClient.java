@@ -70,11 +70,13 @@ public class ExchangeClient
     private boolean noMoreLocations;
 
     private final ConcurrentMap<URI, HttpPageBufferClient> allClients = new ConcurrentHashMap<>();
+    private final ConcurrentMap<TaskId, URI> taskIdToURI = new ConcurrentHashMap<>();
 
     @GuardedBy("this")
     private final Deque<HttpPageBufferClient> queuedClients = new LinkedList<>();
 
     private final Set<HttpPageBufferClient> completedClients = newConcurrentHashSet();
+    private final Set<HttpPageBufferClient> cancelledClients = newConcurrentHashSet();
     private final LinkedBlockingDeque<SerializedPage> pageBuffer = new LinkedBlockingDeque<>();
 
     @GuardedBy("this")
@@ -144,7 +146,7 @@ public class ExchangeClient
         requireNonNull(location, "location is null");
 
         // Ignore new locations after close
-        // NOTE: this MUST happen before checking no more locations is checked
+        // NOTE: this MUST happen before checking no more lremocations is checked
         if (closed.get()) {
             return;
         }
@@ -166,9 +168,34 @@ public class ExchangeClient
                 scheduler,
                 pageBufferClientCallbackExecutor);
         allClients.put(location, client);
+        checkState(taskIdToURI.put(remoteSourceTaskId, location) == null, "Duplicate remoteSourceTaskId: " + remoteSourceTaskId);
         queuedClients.add(client);
 
         scheduleRequestIfNecessary();
+    }
+
+    public synchronized void removeRemoteSource(TaskId sourceTaskId)
+    {
+        requireNonNull(sourceTaskId, "sourceTaskId is null");
+
+        // Ignore removeRemoteSource call if exchange client is already closed
+        if (closed.get()) {
+            return;
+        }
+
+        URI location = taskIdToURI.get(sourceTaskId);
+        if (location == null) {
+            return;
+        }
+
+        HttpPageBufferClient client = allClients.get(location);
+        if (client == null) {
+            return;
+        }
+
+        closeQuietly(client);
+        cancelledClients.add(client);
+        completedClients.add(client);
     }
 
     public synchronized void noMoreLocations()
@@ -310,6 +337,11 @@ public class ExchangeClient
                 // no more clients available
                 return;
             }
+
+            if (cancelledClients.contains(client)) {
+                continue;
+            }
+
             client.scheduleRequest();
         }
     }
@@ -433,6 +465,11 @@ public class ExchangeClient
         {
             requireNonNull(client, "client is null");
             requireNonNull(cause, "cause is null");
+
+            // ignore failure for cancelled clients
+            if (cancelledClients.contains(client)) {
+                return;
+            }
             ExchangeClient.this.clientFailed(cause);
         }
     }

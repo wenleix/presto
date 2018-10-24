@@ -44,9 +44,11 @@ import static com.google.common.util.concurrent.Uninterruptibles.sleepUninterrup
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.testing.Assertions.assertLessThan;
+import static io.airlift.units.DataSize.Unit.BYTE;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -98,7 +100,7 @@ public class TestExchangeClient
                 new DataSize(32, Unit.MEGABYTE),
                 maxResponseSize,
                 1,
-                new Duration(1, TimeUnit.MINUTES),
+                new Duration(1, MINUTES),
                 true,
                 new TestingHttpClient(processor, scheduler),
                 scheduler,
@@ -137,7 +139,7 @@ public class TestExchangeClient
                 new DataSize(32, Unit.MEGABYTE),
                 maxResponseSize,
                 1,
-                new Duration(1, TimeUnit.MINUTES),
+                new Duration(1, MINUTES),
                 true,
                 new TestingHttpClient(processor, newCachedThreadPool(daemonThreadsNamed("test-%s"))),
                 scheduler,
@@ -193,7 +195,7 @@ public class TestExchangeClient
     @Test
     public void testBufferLimit()
     {
-        DataSize maxResponseSize = new DataSize(1, Unit.BYTE);
+        DataSize maxResponseSize = new DataSize(1, BYTE);
         MockExchangeRequestProcessor processor = new MockExchangeRequestProcessor(maxResponseSize);
 
         URI location = URI.create("http://localhost:8080");
@@ -206,10 +208,10 @@ public class TestExchangeClient
 
         @SuppressWarnings("resource")
         ExchangeClient exchangeClient = new ExchangeClient(
-                new DataSize(1, Unit.BYTE),
+                new DataSize(1, BYTE),
                 maxResponseSize,
                 1,
-                new Duration(1, TimeUnit.MINUTES),
+                new Duration(1, MINUTES),
                 true,
                 new TestingHttpClient(processor, newCachedThreadPool(daemonThreadsNamed("test-%s"))),
                 scheduler,
@@ -218,7 +220,7 @@ public class TestExchangeClient
 
         exchangeClient.addLocation(location, TaskId.valueOf("taskid"));
         exchangeClient.noMoreLocations();
-        assertEquals(exchangeClient.isClosed(), false);
+        assertFalse(exchangeClient.isClosed());
 
         long start = System.nanoTime();
 
@@ -278,7 +280,7 @@ public class TestExchangeClient
     public void testClose()
             throws Exception
     {
-        DataSize maxResponseSize = new DataSize(1, Unit.BYTE);
+        DataSize maxResponseSize = new DataSize(1, BYTE);
         MockExchangeRequestProcessor processor = new MockExchangeRequestProcessor(maxResponseSize);
 
         URI location = URI.create("http://localhost:8080");
@@ -288,10 +290,10 @@ public class TestExchangeClient
 
         @SuppressWarnings("resource")
         ExchangeClient exchangeClient = new ExchangeClient(
-                new DataSize(1, Unit.BYTE),
+                new DataSize(1, BYTE),
                 maxResponseSize,
                 1,
-                new Duration(1, TimeUnit.MINUTES),
+                new Duration(1, MINUTES),
                 true,
                 new TestingHttpClient(processor, newCachedThreadPool(daemonThreadsNamed("test-%s"))),
                 scheduler,
@@ -301,7 +303,7 @@ public class TestExchangeClient
         exchangeClient.noMoreLocations();
 
         // fetch a page
-        assertEquals(exchangeClient.isClosed(), false);
+        assertFalse(exchangeClient.isClosed());
         assertPageEquals(getNextPage(exchangeClient), createPage(1));
 
         // close client while pages are still available
@@ -316,9 +318,77 @@ public class TestExchangeClient
 
         // client should have sent only 2 requests: one to get all pages and once to get the done signal
         PageBufferClientStatus clientStatus = exchangeClient.getStatus().getPageBufferClientStatuses().get(0);
-        assertEquals(clientStatus.getUri(), location);
-        assertEquals(clientStatus.getState(), "closed", "status");
-        assertEquals(clientStatus.getHttpRequestState(), "not scheduled", "httpRequestState");
+        assertStatus(clientStatus, location, "closed", "not scheduled");
+    }
+
+    @Test
+    public void testRemoveRemoteSource()
+            throws Exception
+    {
+        DataSize maxResponseSize = new DataSize(1, BYTE);
+        MockExchangeRequestProcessor processor = new MockExchangeRequestProcessor(maxResponseSize);
+
+        URI location1 = URI.create("http://localhost:8081/foo");
+        TaskId taskId1 = TaskId.valueOf("foo");
+        URI location2 = URI.create("http://localhost:8082/bar");
+        TaskId taskId2 = TaskId.valueOf("bar");
+
+        processor.addPage(location1, createPage(1));
+        processor.addPage(location1, createPage(2));
+        processor.addPage(location1, createPage(3));
+
+        ExchangeClient exchangeClient = new ExchangeClient(
+                new DataSize(1, BYTE),
+                maxResponseSize,
+                1,
+                new Duration(1, MINUTES),
+                true,
+                new TestingHttpClient(processor, newCachedThreadPool(daemonThreadsNamed("test-%s"))),
+                scheduler,
+                new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
+                pageBufferClientCallbackExecutor);
+        exchangeClient.addLocation(location1, taskId1);
+        exchangeClient.addLocation(location2, taskId2);
+
+        // fetch a page
+        assertEquals(exchangeClient.isClosed(), false);
+        assertPageEquals(getNextPage(exchangeClient), createPage(1));
+
+        // remove remote source while pages are still available
+        exchangeClient.removeRemoteSource(taskId1);
+
+        // client should not receive any further pages from removed remote source
+        assertNull(exchangeClient.pollPage());
+        assertEquals(exchangeClient.getStatus().getBufferedPages(), 0);
+
+        // add pages to another source
+        processor.addPage(location2, createPage(4));
+        processor.addPage(location2, createPage(5));
+        processor.addPage(location2, createPage(6));
+        processor.setComplete(location2);
+
+        assertEquals(exchangeClient.isClosed(), false);
+        assertPageEquals(getNextPage(exchangeClient), createPage(4));
+        assertEquals(exchangeClient.isClosed(), false);
+        assertPageEquals(getNextPage(exchangeClient), createPage(5));
+        assertEquals(exchangeClient.isClosed(), false);
+        assertPageEquals(getNextPage(exchangeClient), createPage(6));
+
+        assertFalse(tryGetFutureValue(exchangeClient.isBlocked(), 10, MILLISECONDS).isPresent());
+        assertEquals(exchangeClient.isClosed(), false);
+
+        exchangeClient.noMoreLocations();
+        // The transition to closed may happen asynchronously, since it requires that all the HTTP clients
+        // receive a final GONE response, so just spin until it's closed or the test times out.
+        while (!exchangeClient.isClosed()) {
+            Thread.sleep(1);
+        }
+
+        PageBufferClientStatus clientStatus1 = exchangeClient.getStatus().getPageBufferClientStatuses().get(0);
+        assertStatus(clientStatus1, location1, "closed", "not scheduled");
+
+        PageBufferClientStatus clientStatus2 = exchangeClient.getStatus().getPageBufferClientStatuses().get(1);
+        assertStatus(clientStatus2, location2, "closed", "not scheduled");
     }
 
     private static Page createPage(int size)
@@ -339,7 +409,19 @@ public class TestExchangeClient
         assertEquals(PAGES_SERDE.deserialize(actualPage).getChannelCount(), expectedPage.getChannelCount());
     }
 
-    private static void assertStatus(PageBufferClientStatus clientStatus,
+    private static void assertStatus(
+            PageBufferClientStatus clientStatus,
+            URI location,
+            String status,
+            String httpRequestState)
+    {
+        assertEquals(clientStatus.getUri(), location);
+        assertEquals(clientStatus.getState(), status, "status");
+        assertEquals(clientStatus.getHttpRequestState(), httpRequestState, "httpRequestState");
+    }
+
+    private static void assertStatus(
+            PageBufferClientStatus clientStatus,
             URI location,
             String status,
             int pagesReceived,

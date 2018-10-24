@@ -85,6 +85,7 @@ import com.facebook.presto.metadata.ViewDefinition;
 import com.facebook.presto.operator.Driver;
 import com.facebook.presto.operator.DriverContext;
 import com.facebook.presto.operator.DriverFactory;
+import com.facebook.presto.operator.ExchangeClientManager;
 import com.facebook.presto.operator.LookupJoinOperators;
 import com.facebook.presto.operator.OperatorContext;
 import com.facebook.presto.operator.OutputFactory;
@@ -698,7 +699,6 @@ public class LocalQueryRunner
                 indexManager,
                 nodePartitioningManager,
                 pageSinkManager,
-                null,
                 expressionCompiler,
                 pageFunctionCompiler,
                 joinFilterFunctionCompiler,
@@ -722,7 +722,10 @@ public class LocalQueryRunner
                 subplan.getFragment().getPartitioningScheme().getOutputLayout(),
                 plan.getTypes(),
                 subplan.getFragment().getPartitionedSources(),
-                outputFactory);
+                outputFactory,
+                new ExchangeClientManager(ignored -> {
+                    throw new UnsupportedOperationException();
+                }));
 
         // generate sources
         List<TaskSource> sources = new ArrayList<>();
