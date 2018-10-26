@@ -81,6 +81,7 @@ public class AllAtOnceExecutionSchedule
     @Override
     public boolean isFinished()
     {
+//        System.err.println("Wenlei Debug: schedulingStages: " + schedulingStages);
         return schedulingStages.isEmpty();
     }
 

@@ -46,6 +46,7 @@ import static com.facebook.presto.execution.scheduler.ScheduleResult.BlockedReas
 import static com.facebook.presto.execution.scheduler.ScheduleResult.BlockedReason.SPLIT_QUEUES_FULL;
 import static com.facebook.presto.execution.scheduler.ScheduleResult.BlockedReason.WAITING_FOR_SOURCE;
 import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
@@ -206,7 +207,14 @@ public class SourcePartitionedScheduler
     private synchronized void startLifespan(Lifespan lifespan, ConnectorPartitionHandle partitionHandle)
     {
         checkState(state == State.INITIALIZED || state == State.SPLITS_ADDED);
-        scheduleGroups.put(lifespan, new ScheduleGroup(partitionHandle));
+
+        ScheduleGroup scheduleGroup = scheduleGroups.put(lifespan, new ScheduleGroup(partitionHandle));
+        // TODO: should source partitioned scheduler check whether rewind should be done, or it's splitSource's responsibility???
+        splitSource.rewind(partitionHandle);
+
+        if (scheduleGroup != null) {
+            System.err.println("Wenlei Debug: Reschedule lifespan " + lifespan + ", previous schedule group " + scheduleGroup);
+        }
         whenFinishedOrNewLifespanAdded.set(null);
         whenFinishedOrNewLifespanAdded = SettableFuture.create();
     }
@@ -254,6 +262,9 @@ public class SourcePartitionedScheduler
                 if (scheduleGroup.nextSplitBatchFuture.isDone()) {
                     SplitBatch nextSplits = getFutureValue(scheduleGroup.nextSplitBatchFuture);
                     scheduleGroup.nextSplitBatchFuture = null;
+
+                    System.err.println("Wenlei Debug: next split for lifespan " + lifespan + " : " + nextSplits);
+
                     pendingSplits.addAll(nextSplits.getSplits());
                     if (nextSplits.isLastBatch()) {
                         if (scheduleGroup.state == ScheduleGroupState.INITIALIZED && pendingSplits.isEmpty()) {
@@ -344,7 +355,13 @@ public class SourcePartitionedScheduler
         //     which may contain recently published splits. We must not ignore those.
         //   * If any scheduleGroup is still in DISCOVERING_SPLITS state, it means it hasn't realized that there will be no more splits.
         //     Next time it invokes getNextBatch, it will realize that. However, the invocation will fail we tear down splitSource now.
+
+        // This is extremely hacking!!!
+        // This works for failure recovery case, since in failure recovery case, "noMoreScheduleGroups" is a very strong condition as it guaranteed
+        // splitSource is finished
+        // Need to understand why splitSource.isFinished() is false after rewind...
         if ((state == State.NO_MORE_SPLITS || state == State.FINISHED) || (noMoreScheduleGroups && scheduleGroups.isEmpty() && splitSource.isFinished())) {
+//        if ((state == State.NO_MORE_SPLITS || state == State.FINISHED) || noMoreScheduleGroups) {
             switch (state) {
                 case INITIALIZED:
                     // We have not scheduled a single split so far.
@@ -366,6 +383,11 @@ public class SourcePartitionedScheduler
                 default:
                     throw new IllegalStateException("Unknown state");
             }
+        }
+        else if (noMoreScheduleGroups) {
+            // This is a very strong condition under the context of failure recovery
+            System.err.println("Wenlei Debug: scheduleGroups.isEmpty() " + scheduleGroups.isEmpty());
+            System.err.println("Wenlei Debug: splitSource.isFinished() " + splitSource.isFinished());
         }
 
         if (anyNotBlocked) {
@@ -501,6 +523,18 @@ public class SourcePartitionedScheduler
         public ScheduleGroup(ConnectorPartitionHandle partitionHandle)
         {
             this.partitionHandle = requireNonNull(partitionHandle, "partitionHandle is null");
+        }
+
+        @Override
+        public String toString()
+        {
+            return toStringHelper(this)
+                    .add("partitionHandle", partitionHandle)
+                    .add("nextSplitBatchFuture", nextSplitBatchFuture)
+                    .add("placementFuture", placementFuture)
+                    .add("pendingSplits", pendingSplits)
+                    .add("state", state)
+                    .toString();
         }
     }
 

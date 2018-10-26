@@ -16,9 +16,11 @@ package com.facebook.presto.execution.scheduler;
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.RemoteTask;
 import com.facebook.presto.execution.SqlStageExecution;
+import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.scheduler.ScheduleResult.BlockedReason;
 import com.facebook.presto.execution.scheduler.group.DynamicLifespanScheduler;
 import com.facebook.presto.execution.scheduler.group.LifespanScheduler;
+import com.facebook.presto.execution.scheduler.group.StageTaskFailureCallback;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.StageExecutionStrategy;
 import com.facebook.presto.spi.Node;
@@ -136,7 +138,7 @@ public class FixedSourcePartitionedScheduler
                     }
                     else {
                         checkArgument(stageExecutionStrategy.isAnyScanGroupedExecution(), "Dynamic bucket schedule is only eligible for grouped execution");
-                        lifespanScheduler = new DynamicLifespanScheduler(bucketNodeMap, stageNodeList, partitionHandles, concurrentLifespansPerTask);
+                        lifespanScheduler = new DynamicLifespanScheduler(bucketNodeMap, stageNodeList, partitionHandles, concurrentLifespansPerTask, sourceScheduler);
                     }
 
                     // Schedule the first few lifespans
@@ -203,6 +205,8 @@ public class FixedSourcePartitionedScheduler
             }
 
             ScheduleResult schedule = sourceScheduler.schedule();
+            System.err.println("Wenlei Debug: source schedule result " + schedule);
+
             splitsScheduled += schedule.getSplitsScheduled();
             if (schedule.getBlockedReason().isPresent()) {
                 blocked.add(schedule.getBlocked());
@@ -246,6 +250,12 @@ public class FixedSourcePartitionedScheduler
             }
         }
         sourceSchedulers.clear();
+    }
+
+    void recoverTaskFailure(int taskId) {
+        // TODO: Add some check state, or make this returns false when the stage is not suitable for recovery
+        DynamicLifespanScheduler dynamicLifespanScheduler = (DynamicLifespanScheduler) groupedLifespanScheduler.get();
+        dynamicLifespanScheduler.onTaskFailed(taskId);
     }
 
     public static class BucketedSplitPlacementPolicy

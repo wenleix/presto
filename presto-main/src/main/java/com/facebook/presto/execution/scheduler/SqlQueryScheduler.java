@@ -28,7 +28,9 @@ import com.facebook.presto.execution.SqlStageExecution;
 import com.facebook.presto.execution.StageId;
 import com.facebook.presto.execution.StageInfo;
 import com.facebook.presto.execution.StageState;
+import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskStatus;
+import com.facebook.presto.execution.scheduler.group.StageTaskFailureCallback;
 import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.PrestoException;
@@ -66,6 +68,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -231,6 +234,7 @@ public class SqlQueryScheduler
     }
 
     private List<SqlStageExecution> createStages(
+            // TODO: Also add parentStageId (???)
             ExchangeLocationsConsumer parent,
             AtomicInteger nextStageId,
             LocationFactory locationFactory,
@@ -309,7 +313,7 @@ public class SqlQueryScheduler
                     List<Node> stageNodeList = new ArrayList<>(nodeScheduler.createNodeSelector(null).allNodes());
                     Collections.shuffle(stageNodeList);
 
-                    stageSchedulers.put(stageId, new FixedSourcePartitionedScheduler(
+                    FixedSourcePartitionedScheduler stageScheduler = new FixedSourcePartitionedScheduler(
                             stage,
                             splitSources,
                             plan.getFragment().getStageExecutionStrategy(),
@@ -319,8 +323,38 @@ public class SqlQueryScheduler
                             splitBatchSize,
                             getConcurrentLifespansPerNode(session),
                             nodeScheduler.createNodeSelector(null),
-                            connectorPartitionHandles));
+                            connectorPartitionHandles);
+                    stageSchedulers.put(stageId, stageScheduler);
                     bucketToPartition = Optional.empty();
+
+                    // TODO: the failure callback only works when it's writing data, next stage is a TableCommit, blabla...
+                    stage.registerTaskFailureCallback(new StageTaskFailureCallback() {
+                        @Override
+                        public void recoverTaskFailure(TaskId taskId, Consumer<PrestoException> onFailure, Exception originalTaskFailureException)
+                        {
+                            checkState(taskId.getStageId().equals(stage.getStageId()));
+
+                            stageScheduler.recoverTaskFailure(taskId.getId());
+
+                            // Remove the failed task from parent remote source list
+                            // The following code is extremely hacking... wenlei_!@#$%^&*
+                            int parentStageId = stage.getStageId().getId() - 1;  // wxie_!@#$%^&*
+                            TaskId parentTaskId = new TaskId(stage.getStageId().getQueryId().getId(), parentStageId, 0); // wenlei_!@#$%^&* 2.0
+
+                            // This this working because the parent stage is guaranteed to be a coordinator only partition
+                            // An the scheduler is also on coordinator...
+                            // This won't work if, for example, we decided to decopule scheduler placement from special partition (COORDINATOR_ONLY)
+                            URI exchangeReceiverLocation = uriBuilderFrom(locationFactory.createLocalTaskLocation(parentTaskId))   // wenlei_!@#$%^&* 3.0
+                                    .appendPath("removesource")
+                                    .appendPath(taskId.toString())
+                                    .build();
+
+                            remoteTaskFactory.destroyExchangeReceiver(
+                                    parentTaskId,
+                                    exchangeReceiverLocation,
+                                    onFailure);     // TODO: Also need to concat the original failure...
+                        }
+                    });
                 }
                 else {
                     // nodes are pre determined by the nodePartitionMap
@@ -503,6 +537,7 @@ public class SqlQueryScheduler
                     // perform some scheduling work
                     ScheduleResult result = stageSchedulers.get(stage.getStageId())
                             .schedule();
+                    System.err.println("Wenlei Debug stage scheduler result: " + result);
 
                     // modify parent and children based on the results of the scheduling
                     if (result.isFinished()) {
@@ -554,6 +589,8 @@ public class SqlQueryScheduler
                 }
             }
 
+            System.err.println("Wenlei Debug: Go out of the main scheduler loop");
+
             for (SqlStageExecution stage : stages.values()) {
                 StageState state = stage.getState();
                 if (state != SCHEDULED && state != RUNNING && !state.isDone()) {
@@ -566,6 +603,8 @@ public class SqlQueryScheduler
             throw t;
         }
         finally {
+            System.err.println("Wenlei Debug: In finally!!!");
+
             RuntimeException closeError = new RuntimeException();
             for (StageScheduler scheduler : stageSchedulers.values()) {
                 try {

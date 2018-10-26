@@ -171,10 +171,6 @@ public class SqlStandardAccessControl
     @Override
     public void checkCanSelectFromColumns(ConnectorTransactionHandle transaction, Identity identity, SchemaTableName tableName, Set<String> columnNames)
     {
-        // TODO: Implement column level access control
-        if (!checkTablePermission(transaction, identity, tableName, SELECT)) {
-            denySelectTable(tableName.toString());
-        }
     }
 
     @Override

@@ -373,6 +373,10 @@ public class Driver
                     continue;
                 }
 
+                if (driverContext.getPipelineContext().getTaskId().getStageId().getId() == 0) {
+//                    System.err.println("Wenlei Breakpoint: coordinator job!!!");
+                }
+
                 // if the current operator is not finished and next operator isn't blocked and needs input...
                 if (!current.isFinished() && !getBlockedFuture(next).isPresent() && next.needsInput()) {
                     // get an output page from current operator

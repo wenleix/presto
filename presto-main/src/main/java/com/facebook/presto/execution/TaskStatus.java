@@ -221,6 +221,7 @@ public class TaskStatus
         return toStringHelper(this)
                 .add("taskId", taskId)
                 .add("state", state)
+                .add("completedDriverGroups", completedDriverGroups)
                 .toString();
     }
 

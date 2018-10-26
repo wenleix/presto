@@ -23,6 +23,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import java.io.Closeable;
 import java.util.List;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public interface SplitSource
@@ -65,6 +66,15 @@ public interface SplitSource
         public boolean isLastBatch()
         {
             return lastBatch;
+        }
+
+        @Override
+        public String toString()
+        {
+            return toStringHelper(this)
+                    .add("splits", splits)
+                    .add("lastBatch", lastBatch)
+                    .toString();
         }
     }
 }

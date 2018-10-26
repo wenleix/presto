@@ -57,8 +57,8 @@ public class DynamicBucketNodeMap
             bucketToNode.put(bucketedId, node);
         }
         else {
-            // TODO: Support it for partial recovery
-            throw new UnsupportedOperationException();
+            System.err.println("Wenlei Debug: reassign bucket " + bucketedId);
+            bucketToNode.put(bucketedId, node);
         }
     }
 

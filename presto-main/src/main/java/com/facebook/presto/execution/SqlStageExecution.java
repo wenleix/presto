@@ -17,6 +17,7 @@ import com.facebook.presto.OutputBuffers;
 import com.facebook.presto.Session;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.scheduler.SplitSchedulerStats;
+import com.facebook.presto.execution.scheduler.group.StageTaskFailureCallback;
 import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.metadata.RemoteTransactionHandle;
 import com.facebook.presto.metadata.Split;
@@ -76,6 +77,7 @@ public final class SqlStageExecution
     private final boolean summarizeTaskInfo;
     private final Executor executor;
     private final FailureDetector failureDetector;
+    private StageTaskFailureCallback failureCallback;
 
     private final Map<PlanFragmentId, RemoteSourceNode> exchangeSources;
 
@@ -212,6 +214,7 @@ public final class SqlStageExecution
     {
         for (RemoteTask task : getAllTasks()) {
             task.noMoreSplits(partitionedSource);
+//            System.err.println("Wenlei Debug: claim task has no more splits because of schedulingComplete: " + task.getTaskId());
         }
         completeSources.add(partitionedSource);
     }
@@ -315,6 +318,10 @@ public final class SqlStageExecution
                 return;
             }
         }
+    }
+
+    public void registerTaskFailureCallback(StageTaskFailureCallback callback) {
+        this.failureCallback = callback;
     }
 
     // do not synchronize
@@ -471,6 +478,12 @@ public final class SqlStageExecution
                     return;
                 }
 
+                /*
+                if (taskStatus.getTaskId().getStageId().getId() == 1) {
+                    System.err.println("Wenlei Debug: TaskStatus: " + taskStatus);
+                }
+                */
+
                 TaskState taskState = taskStatus.getState();
                 if (taskState == TaskState.FAILED) {
                     RuntimeException failure = taskStatus.getFailures().stream()
@@ -478,7 +491,26 @@ public final class SqlStageExecution
                             .map(this::rewriteTransportFailure)
                             .map(ExecutionFailureInfo::toException)
                             .orElse(new PrestoException(GENERIC_INTERNAL_ERROR, "A task failed for an unknown reason"));
-                    stateMachine.transitionToFailed(failure);
+
+                    boolean recoverableFailure = false;
+                    if (taskStatus.getFailures().stream().allMatch(SqlStageExecution::isRecoverableFailure)) {
+                        // Inform stage scheduler (in fact, only FixedSourcePartitionedScheduler can help with this...)
+                        if (failureCallback != null) {
+                            failureCallback.recoverTaskFailure(taskStatus.getTaskId(), stateMachine::transitionToFailed, failure);
+                            recoverableFailure = true;
+                        }
+
+                        // Inform the next task to remove the task...
+
+                    }
+
+                    if (recoverableFailure) {
+                        finishedTasks.add(taskStatus.getTaskId());  // Hack!!!
+                    }
+                    else {
+                        System.err.println("Wenlei Debug: Not recovered for task " + taskStatus.getTaskId());
+                        stateMachine.transitionToFailed(failure);
+                    }
                 }
                 else if (taskState == TaskState.ABORTED) {
                     // A task should only be in the aborted state if the STAGE is done (ABORTED or FAILED)
@@ -492,7 +524,11 @@ public final class SqlStageExecution
                     if (taskState == TaskState.RUNNING) {
                         stateMachine.transitionToRunning();
                     }
+
+//                    System.err.println("Wenlei Debug: TaskStatus: " + taskStatus);
+//                    System.err.println("Wenlei Debug: finishedTasks: " + finishedTasks + ",  for stage " + getStageId());
                     if (finishedTasks.containsAll(allTasks)) {
+//                        System.err.println("Wenlei Debug: stage is transitioning to finsihed!!!!!!");
                         stateMachine.transitionToFinished();
                     }
                 }
@@ -551,6 +587,17 @@ public final class SqlStageExecution
                 return executionFailureInfo;
             }
         }
+    }
+
+    private static boolean isRecoverableFailure(ExecutionFailureInfo executionFailureInfo)
+    {
+        return true;
+
+        /*
+        return executionFailureInfo.getErrorCode().equals(REMOTE_TASK_ERROR.toErrorCode())
+                || executionFailureInfo.getErrorCode().equals(REMOTE_TASK_MISMATCH.toErrorCode())
+                || executionFailureInfo.getErrorCode().equals(TOO_MANY_REQUESTS_FAILED.toErrorCode());
+        */
     }
 
     private static class ListenerManager<T>
