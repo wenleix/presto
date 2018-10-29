@@ -15,7 +15,6 @@ package com.facebook.presto.raptor;
 
 import com.facebook.presto.spi.BucketFunction;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
@@ -29,7 +28,6 @@ import javax.inject.Inject;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.function.ToIntFunction;
 
 import static com.facebook.presto.spi.StandardErrorCode.NO_NODES_AVAILABLE;
 import static com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider.ConnectorBucketNodeMap.createBucketNodeMap;
@@ -62,13 +60,9 @@ public class RaptorNodePartitioningProvider
             }
             bucketToNode.put(entry.getKey(), node);
         }
-        return createBucketNodeMap(bucketToNode.build());
-    }
-
-    @Override
-    public ToIntFunction<ConnectorSplit> getSplitBucketFunction(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorPartitioningHandle partitioning)
-    {
-        return value -> ((RaptorSplit) value).getBucketNumber().getAsInt();
+        return createBucketNodeMap(
+                bucketToNode.build(),
+                value -> ((RaptorSplit) value).getBucketNumber().getAsInt());
     }
 
     @Override

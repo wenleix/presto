@@ -32,6 +32,7 @@ import com.facebook.presto.execution.TaskStatus;
 import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider.ConnectorBucketNodeMap;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 import com.facebook.presto.split.SplitSource;
 import com.facebook.presto.sql.planner.NodePartitionMap;
@@ -304,16 +305,18 @@ public class SqlQueryScheduler
                     connectorPartitionHandles = ImmutableList.of(NOT_PARTITIONED);
                 }
 
+                ConnectorBucketNodeMap connectorBucketNodeMap = nodePartitioningManager.getConnectorBucketNodeMap(session, partitioningHandle);
+
                 BucketNodeMap bucketNodeMap;
                 List<Node> stageNodeList;
                 if (plan.getSubStages().isEmpty() // no remote source
                         && groupedExecutionForStage
                         // connector has no fixed mapping
-                        && !nodePartitioningManager.getConnectorBucketNodeMap(session, partitioningHandle).hasFixedMapping()) {
+                        && !connectorBucketNodeMap.hasFixedMapping()) {
                     // dynamic bucket schedule
                     stageNodeList = new ArrayList<>(nodeScheduler.createNodeSelector(connectorId).allNodes());
                     Collections.shuffle(stageNodeList);
-                    bucketNodeMap = nodePartitioningManager.getDynamicBucketNodeMap(session, partitioningHandle);
+                    bucketNodeMap = nodePartitioningManager.getDynamicBucketNodeMap(connectorBucketNodeMap);
                     bucketToPartition = Optional.empty();
                 }
                 else {

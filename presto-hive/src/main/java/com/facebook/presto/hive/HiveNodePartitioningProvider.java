@@ -15,7 +15,6 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.spi.BucketFunction;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
@@ -26,7 +25,6 @@ import com.facebook.presto.spi.type.Type;
 import javax.inject.Inject;
 
 import java.util.List;
-import java.util.function.ToIntFunction;
 import java.util.stream.IntStream;
 
 import static com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider.ConnectorBucketNodeMap.createBucketNodeMap;
@@ -61,16 +59,8 @@ public class HiveNodePartitioningProvider
     public ConnectorBucketNodeMap getBucketNodeMap(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
     {
         HivePartitioningHandle handle = (HivePartitioningHandle) partitioningHandle;
-        return createBucketNodeMap(handle.getBucketCount());
-    }
-
-    @Override
-    public ToIntFunction<ConnectorSplit> getSplitBucketFunction(
-            ConnectorTransactionHandle transactionHandle,
-            ConnectorSession session,
-            ConnectorPartitioningHandle partitioningHandle)
-    {
-        return value -> ((HiveSplit) value).getBucketNumber().getAsInt();
+        return createBucketNodeMap(handle.getBucketCount(),
+                value -> ((HiveSplit) value).getBucketNumber().getAsInt());
     }
 
     @Override

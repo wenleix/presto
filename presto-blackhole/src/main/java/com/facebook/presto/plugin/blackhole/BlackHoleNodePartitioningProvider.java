@@ -15,7 +15,6 @@ package com.facebook.presto.plugin.blackhole;
 
 import com.facebook.presto.spi.BucketFunction;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
@@ -24,7 +23,6 @@ import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.type.Type;
 
 import java.util.List;
-import java.util.function.ToIntFunction;
 
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider.ConnectorBucketNodeMap.createBucketNodeMap;
@@ -44,18 +42,11 @@ public class BlackHoleNodePartitioningProvider
     public ConnectorBucketNodeMap getBucketNodeMap(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
     {
         // create one bucket per node
-        return createBucketNodeMap(nodeManager.getRequiredWorkerNodes().size());
-    }
-
-    @Override
-    public ToIntFunction<ConnectorSplit> getSplitBucketFunction(
-            ConnectorTransactionHandle transactionHandle,
-            ConnectorSession session,
-            ConnectorPartitioningHandle partitioningHandle)
-    {
-        return value -> {
-            throw new PrestoException(NOT_SUPPORTED, "Black hole connector does not supported distributed reads");
-        };
+        return createBucketNodeMap(
+                nodeManager.getRequiredWorkerNodes().size(),
+                value -> {
+                    throw new PrestoException(NOT_SUPPORTED, "Black hole connector does not supported distributed reads");
+                });
     }
 
     @Override

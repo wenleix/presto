@@ -15,7 +15,6 @@ package com.facebook.presto.tpch;
 
 import com.facebook.presto.spi.BucketFunction;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
@@ -26,7 +25,6 @@ import com.google.common.collect.ImmutableList;
 
 import java.util.List;
 import java.util.Set;
-import java.util.function.ToIntFunction;
 
 import static com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider.ConnectorBucketNodeMap.createBucketNodeMap;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -52,13 +50,9 @@ public class TpchNodePartitioningProvider
         Set<Node> nodes = nodeManager.getRequiredWorkerNodes();
 
         // Split the data using split and skew by the number of nodes available.
-        return createBucketNodeMap(toIntExact((long) nodes.size() * splitsPerNode));
-    }
-
-    @Override
-    public ToIntFunction<ConnectorSplit> getSplitBucketFunction(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
-    {
-        return value -> ((TpchSplit) value).getPartNumber();
+        return createBucketNodeMap(
+                toIntExact((long) nodes.size() * splitsPerNode),
+                value -> ((TpchSplit) value).getPartNumber());
     }
 
     @Override

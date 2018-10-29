@@ -49,8 +49,6 @@ public interface ConnectorNodePartitioningProvider
 
     ConnectorBucketNodeMap getBucketNodeMap(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle);
 
-    ToIntFunction<ConnectorSplit> getSplitBucketFunction(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorPartitioningHandle partitioningHandle);
-
     BucketFunction getBucketFunction(
             ConnectorTransactionHandle transactionHandle,
             ConnectorSession session,
@@ -62,13 +60,14 @@ public interface ConnectorNodePartitioningProvider
     {
         private final int bucketCount;
         private final Optional<Map<Integer, Node>> bucketToNode;
+        private final ToIntFunction<ConnectorSplit> bucketSplitFunction;
 
-        public static ConnectorBucketNodeMap createBucketNodeMap(int bucketCount)
+        public static ConnectorBucketNodeMap createBucketNodeMap(int bucketCount, ToIntFunction<ConnectorSplit> bucketSplitFunction)
         {
-            return new ConnectorBucketNodeMap(bucketCount, Optional.empty());
+            return new ConnectorBucketNodeMap(bucketCount, Optional.empty(), bucketSplitFunction);
         }
 
-        public static ConnectorBucketNodeMap createBucketNodeMap(Map<Integer, Node> bucketToNode)
+        public static ConnectorBucketNodeMap createBucketNodeMap(Map<Integer, Node> bucketToNode, ToIntFunction<ConnectorSplit> bucketSplitFunction)
         {
             requireNonNull(bucketToNode, "bucketToNode is null");
             if (bucketToNode.isEmpty()) {
@@ -80,10 +79,11 @@ public interface ConnectorNodePartitioningProvider
                             .mapToInt(Integer::intValue)
                             .max()
                             .getAsInt() + 1,
-                    Optional.of(bucketToNode));
+                    Optional.of(bucketToNode),
+                    bucketSplitFunction);
         }
 
-        private ConnectorBucketNodeMap(int bucketCount, Optional<Map<Integer, Node>> bucketToNode)
+        private ConnectorBucketNodeMap(int bucketCount, Optional<Map<Integer, Node>> bucketToNode, ToIntFunction<ConnectorSplit> bucketSplitFunction)
         {
             if (bucketCount <= 0) {
                 throw new IllegalArgumentException("bucketCount must be positive");
@@ -94,6 +94,7 @@ public interface ConnectorNodePartitioningProvider
             this.bucketCount = bucketCount;
             this.bucketToNode = requireNonNull(bucketToNode, "bucketToNode is null")
                     .map(mapping -> unmodifiableMap(new HashMap<>(mapping)));
+            this.bucketSplitFunction = requireNonNull(bucketSplitFunction, "bucketSplitFunction is null");
         }
 
         public int getBucketCount()
@@ -109,6 +110,11 @@ public interface ConnectorNodePartitioningProvider
         public Map<Integer, Node> getFixedMapping()
         {
             return bucketToNode.orElseThrow(() -> new IllegalArgumentException("No fixed bucket to node mapping"));
+        }
+
+        public ToIntFunction<ConnectorSplit> getBucketSplitFunction()
+        {
+            return bucketSplitFunction;
         }
     }
 }
