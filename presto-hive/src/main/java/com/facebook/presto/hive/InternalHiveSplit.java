@@ -103,6 +103,22 @@ public class InternalHiveSplit
         this.bucketConversion = bucketConversion;
     }
 
+    public InternalHiveSplit(InternalHiveSplit other) {
+        this.partitionName = other.partitionName;
+        this.path = other.path;
+        this.start = other.start;
+        this.end = other.end;
+        this.fileSize = other.fileSize;
+        this.schema = other.schema;
+        this.partitionKeys = ImmutableList.copyOf(other.partitionKeys);
+        this.blocks = ImmutableList.copyOf(other.blocks);
+        this.bucketNumber = other.bucketNumber;
+        this.splittable = other.splittable;
+        this.forceLocalScheduling = other.forceLocalScheduling;
+        this.columnCoercions = ImmutableMap.copyOf(other.columnCoercions);
+        this.bucketConversion = other.bucketConversion;
+    }
+
     public String getPath()
     {
         return path;

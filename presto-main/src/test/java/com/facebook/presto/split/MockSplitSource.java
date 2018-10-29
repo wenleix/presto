@@ -137,6 +137,12 @@ public class MockSplitSource
     }
 
     @Override
+    public void rewind(ConnectorPartitionHandle partitionHandle)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void close()
     {
     }

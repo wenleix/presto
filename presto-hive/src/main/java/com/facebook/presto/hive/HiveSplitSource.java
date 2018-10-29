@@ -22,21 +22,26 @@ import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
+import com.facebook.presto.spi.connector.NotPartitionedPartitionHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.log.Logger;
 import io.airlift.stats.CounterStat;
 import io.airlift.units.DataSize;
 
 import java.io.FileNotFoundException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
+import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -169,6 +174,12 @@ class HiveSplitSource
                         checkArgument(!bucketNumber.isPresent());
                         return queue.isFinished();
                     }
+
+                    @Override
+                    public void rewind(OptionalInt bucketNumber)
+                    {
+                        throw new UnsupportedOperationException();
+                    }
                 },
                 maxInitialSplits,
                 maxOutstandingSplitsSize,
@@ -182,7 +193,6 @@ class HiveSplitSource
             String databaseName,
             String tableName,
             TupleDomain<? extends ColumnHandle> compactEffectivePredicate,
-            int estimatedOutstandingSplitsPerBucket,
             int maxInitialSplits,
             DataSize maxOutstandingSplitsSize,
             HiveSplitLoader splitLoader,
@@ -197,53 +207,94 @@ class HiveSplitSource
                 compactEffectivePredicate,
                 new PerBucket()
                 {
-                    private final Map<Integer, AsyncQueue<InternalHiveSplit>> queues = new ConcurrentHashMap<>();
-                    private final AtomicBoolean finished = new AtomicBoolean();
+                    private final Map<Integer, BucketedSplits> buckets = new HashMap<>();
+                    private boolean loadFinished;
+                    private final SettableFuture<?> readyForRead = SettableFuture.create();
 
                     @Override
-                    public ListenableFuture<?> offer(OptionalInt bucketNumber, InternalHiveSplit connectorSplit)
+                    public synchronized ListenableFuture<?> offer(OptionalInt bucketNumber, InternalHiveSplit internalHiveSplit)
                     {
-                        AsyncQueue<InternalHiveSplit> queue = queueFor(bucketNumber);
-                        queue.offer(connectorSplit);
+                        checkState(!loadFinished);
+                        BucketedSplits bucketedSplits = splitsFor(bucketNumber);
+                        bucketedSplits.allInternalSplits.add(internalHiveSplit);
+                        bucketedSplits.queue.add(new InternalHiveSplit(internalHiveSplit));
                         // Do not block "offer" when running split discovery in bucketed mode.
                         // A limit is enforced on estimatedSplitSizeInBytes.
                         return immediateFuture(null);
                     }
 
                     @Override
-                    public <O> ListenableFuture<O> borrowBatchAsync(OptionalInt bucketNumber, int maxSize, Function<List<InternalHiveSplit>, BorrowResult<InternalHiveSplit, O>> function)
+                    public synchronized <O> ListenableFuture<O> borrowBatchAsync(OptionalInt bucketNumber, int maxSize, Function<List<InternalHiveSplit>, BorrowResult<InternalHiveSplit, O>> function)
                     {
-                        return queueFor(bucketNumber).borrowBatchAsync(maxSize, function);
-                    }
-
-                    @Override
-                    public void finish()
-                    {
-                        if (finished.compareAndSet(false, true)) {
-                            queues.values().forEach(AsyncQueue::finish);
+                        if (!loadFinished) {
+                            return readyForRead.transformAsync(ignored -> borrowBatchAsync(bucketNumber, maxSize, function), executor);
                         }
+
+                        BucketedSplits bucketedSplits = splitsFor(bucketNumber);
+
+                        int oldSize = bucketedSplits.queue.size();
+                        int reduceBy = Math.min(maxSize, oldSize);
+                        if (reduceBy == 0) {
+                            BorrowResult<InternalHiveSplit, O> borrowResult = function.apply(ImmutableList.of());
+                            checkArgument(borrowResult.getElementsToInsert().isEmpty(), "Function must not insert anything when no element is borrowed");
+                            return immediateFuture(borrowResult.getResult());
+                        }
+                        List<InternalHiveSplit> result = new ArrayList<>(reduceBy);
+                        for (int i = 0; i < reduceBy; i++) {
+                            result.add(bucketedSplits.queue.remove());
+                        }
+
+                        // function deliberately invoked while holding the monitor lock for simplicity
+                        BorrowResult<InternalHiveSplit, O> borrowResult = function.apply(result);
+
+                        bucketedSplits.queue.addAll(borrowResult.getElementsToInsert());
+                        return immediateFuture(borrowResult.getResult());
                     }
 
                     @Override
-                    public boolean isFinished(OptionalInt bucketNumber)
+                    public synchronized void finish()
                     {
-                        return queueFor(bucketNumber).isFinished();
+                        if (loadFinished) {
+                            return;
+                        }
+                        loadFinished = true;
+                        readyForRead.set(null);
                     }
 
-                    public AsyncQueue<InternalHiveSplit> queueFor(OptionalInt bucketNumber)
+                    @Override
+                    public synchronized boolean isFinished(OptionalInt bucketNumber)
+                    {
+                        if (!loadFinished) {
+                            return false;
+                        }
+                        BucketedSplits bucketedSplits = splitsFor(bucketNumber);
+                        return bucketedSplits.queue.isEmpty();
+                    }
+
+                    @Override
+                    public synchronized void rewind(OptionalInt bucketNumber)
                     {
                         checkArgument(bucketNumber.isPresent());
-                        AtomicBoolean isNew = new AtomicBoolean();
-                        AsyncQueue<InternalHiveSplit> queue = queues.computeIfAbsent(bucketNumber.getAsInt(), ignored -> {
-                            isNew.set(true);
-                            return new AsyncQueue<>(estimatedOutstandingSplitsPerBucket, executor);
-                        });
-                        if (isNew.get() && finished.get()) {
-                            // Check `finished` and invoke `queue.finish` after the `queue` is added to the map.
-                            // Otherwise, `queue.finish` may not be invoked if `finished` is set while the lambda above is being evaluated.
-                            queue.finish();
+
+                        // Note: this can also be changed to
+                        if (!loadFinished) return;
+                        //checkState(loadFinished);
+
+                        BucketedSplits bucketedSplits = splitsFor(bucketNumber);
+                        bucketedSplits.queue.clear();
+
+                        for (InternalHiveSplit split : bucketedSplits.allInternalSplits) {
+                            bucketedSplits.queue.add(new InternalHiveSplit(split));
                         }
-                        return queue;
+                    }
+
+                    private BucketedSplits splitsFor(OptionalInt bucketNumber)
+                    {
+                        checkArgument(bucketNumber.isPresent());
+                        return buckets.computeIfAbsent(bucketNumber.getAsInt(), ignored -> {
+//                            checkState(!loadFinished);
+                            return new BucketedSplits();
+                        });
                     }
                 },
                 maxInitialSplits,
@@ -251,6 +302,11 @@ class HiveSplitSource
                 splitLoader,
                 stateReference,
                 highMemorySplitSourceCounter);
+    }
+
+    private static class BucketedSplits {
+        final List<InternalHiveSplit> allInternalSplits = new ArrayList<>();
+        final Queue<InternalHiveSplit> queue = new ArrayDeque<>();
     }
 
     /**
@@ -318,6 +374,15 @@ class HiveSplitSource
             splitLoader.stop();
             queues.finish();
         }
+    }
+
+    @Override
+    public void rewind(ConnectorPartitionHandle partitionHandle)
+    {
+        checkArgument(!(partitionHandle instanceof NotPartitionedPartitionHandle));
+        queues.rewind(
+                OptionalInt.of(
+                        ((HivePartitionHandle) partitionHandle).getBucket()));
     }
 
     @Override
@@ -427,6 +492,9 @@ class HiveSplitSource
             case INITIAL:
                 return false;
             case NO_MORE_SPLITS:
+                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                // This is not working after rewind, since count will be negative!!!!
+                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 return bufferedInternalSplitCount.get() == 0;
             case FAILED:
                 throw propagatePrestoException(state.getThrowable());
@@ -490,6 +558,8 @@ class HiveSplitSource
         void finish();
 
         boolean isFinished(OptionalInt bucketNumber);
+
+        void rewind(OptionalInt bucketNumber);
     }
 
     static class State

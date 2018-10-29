@@ -241,7 +241,6 @@ public class TestHiveSplitSource
                 "table",
                 TupleDomain.all(),
                 10,
-                10,
                 new DataSize(1, MEGABYTE),
                 new TestingHiveSplitLoader(),
                 Executors.newFixedThreadPool(5),

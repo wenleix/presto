@@ -227,7 +227,6 @@ public class HiveSplitManager
                         table.getTableName(),
                         layout.getCompactEffectivePredicate(),
                         maxInitialSplits,
-                        maxOutstandingSplits,
                         maxOutstandingSplitsSize,
                         hiveSplitLoader,
                         executor,

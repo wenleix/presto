@@ -17,6 +17,7 @@ import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 
 import java.io.Closeable;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 
 import static java.util.Objects.requireNonNull;
@@ -25,6 +26,11 @@ public interface ConnectorSplitSource
         extends Closeable
 {
     CompletableFuture<ConnectorSplitBatch> getNextBatch(ConnectorPartitionHandle partitionHandle, int maxSize);
+
+    default void rewind(ConnectorPartitionHandle partitionHandle)
+    {
+        throw new UnsupportedOperationException();
+    }
 
     @Override
     void close();
