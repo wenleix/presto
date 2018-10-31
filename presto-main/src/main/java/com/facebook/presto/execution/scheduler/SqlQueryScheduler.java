@@ -74,6 +74,7 @@ import java.util.stream.IntStream;
 
 import static com.facebook.presto.SystemSessionProperties.getConcurrentLifespansPerNode;
 import static com.facebook.presto.SystemSessionProperties.getWriterMinSize;
+import static com.facebook.presto.SystemSessionProperties.isDynamicSchduleForGroupedExecution;
 import static com.facebook.presto.connector.ConnectorId.isInternalSystemConnector;
 import static com.facebook.presto.execution.BasicStageStats.aggregateBasicStageStats;
 import static com.facebook.presto.execution.StageState.ABORTED;
@@ -309,7 +310,8 @@ public class SqlQueryScheduler
 
                 BucketNodeMap bucketNodeMap;
                 List<Node> stageNodeList;
-                if (plan.getSubStages().isEmpty() // no remote source
+                if (isDynamicSchduleForGroupedExecution(session)
+                        && plan.getSubStages().isEmpty() // no remote source
                         && groupedExecutionForStage
                         // connector has no fixed mapping
                         && !connectorBucketNodeMap.hasFixedMapping()) {
