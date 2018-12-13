@@ -36,6 +36,7 @@ import java.util.stream.Collectors;
 import static com.facebook.presto.metadata.FunctionExtractor.extractFunctions;
 import static com.facebook.presto.operator.aggregation.AggregationTestUtils.assertAggregation;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 
 public abstract class AbstractTestGeoAggregationFunctions
         extends AbstractTestFunctions
@@ -83,11 +84,21 @@ public abstract class AbstractTestGeoAggregationFunctions
                     rightGeometry.difference(leftGeometry).isEmpty();
         };
         // Test in forward and reverse order to verify that ordering doesn't affect the output
-        assertAggregation(function, equalityFunction, testDescription,
-                new Page(BlockAssertions.createSlicesBlock(geometrySlices)), expectedWkt);
+        assertAggregation(
+                SESSION,
+                function,
+                equalityFunction,
+                testDescription,
+                new Page(BlockAssertions.createSlicesBlock(geometrySlices)),
+                expectedWkt);
         Collections.reverse(geometrySlices);
-        assertAggregation(function, equalityFunction, testDescription,
-                new Page(BlockAssertions.createSlicesBlock(geometrySlices)), expectedWkt);
+        assertAggregation(
+                SESSION,
+                function,
+                equalityFunction,
+                testDescription,
+                new Page(BlockAssertions.createSlicesBlock(geometrySlices)),
+                expectedWkt);
     }
 
     protected abstract String getFunctionName();

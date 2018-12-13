@@ -16,6 +16,7 @@ package com.facebook.presto.operator.aggregation.groupByAggregations;
 
 import com.facebook.presto.block.BlockAssertions;
 import com.facebook.presto.operator.aggregation.GroupedAccumulator;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.block.BlockBuilder;
 
 import java.util.function.BiConsumer;
@@ -32,9 +33,9 @@ public class AggregationTestOutput
         this.expectedValue = expectedValue;
     }
 
-    public void validateAccumulator(GroupedAccumulator groupedAccumulator, long groupId)
+    public void validateAccumulator(ConnectorSession session, GroupedAccumulator groupedAccumulator, long groupId)
     {
-        createEqualAssertion(expectedValue, groupId).accept(getGroupValue(groupedAccumulator, (int) groupId), expectedValue);
+        createEqualAssertion(expectedValue, groupId).accept(getGroupValue(session, groupedAccumulator, (int) groupId), expectedValue);
     }
 
     private static BiConsumer<Object, Object> createEqualAssertion(Object expectedValue, long groupId)
@@ -51,10 +52,10 @@ public class AggregationTestOutput
         return equalAssertion;
     }
 
-    private static Object getGroupValue(GroupedAccumulator groupedAggregation, int groupId)
+    private static Object getGroupValue(ConnectorSession session, GroupedAccumulator groupedAggregation, int groupId)
     {
         BlockBuilder out = groupedAggregation.getFinalType().createBlockBuilder(null, 1);
-        groupedAggregation.evaluateFinal(groupId, out);
+        groupedAggregation.evaluateFinal(session, groupId, out);
         return BlockAssertions.getOnlyValue(groupedAggregation.getFinalType(), out.build());
     }
 }

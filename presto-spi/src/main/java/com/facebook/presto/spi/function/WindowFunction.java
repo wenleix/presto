@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.spi.function;
 
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.block.BlockBuilder;
 
 public interface WindowFunction
@@ -38,5 +39,5 @@ public interface WindowFunction
      * @param frameStart the position of the first row in the window frame
      * @param frameEnd the position of the last row in the window frame
      */
-    void processRow(BlockBuilder output, int peerGroupStart, int peerGroupEnd, int frameStart, int frameEnd);
+    void processRow(ConnectorSession session, BlockBuilder output, int peerGroupStart, int peerGroupEnd, int frameStart, int frameEnd);
 }

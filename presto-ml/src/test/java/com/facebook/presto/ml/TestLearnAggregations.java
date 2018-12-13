@@ -45,6 +45,7 @@ import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.testing.AggregationTestUtils.generateInternalAggregationFunction;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.facebook.presto.tests.StructuralTestUtil.mapBlockOf;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -87,9 +88,9 @@ public class TestLearnAggregations
 
     private static void assertLearnClassifer(Accumulator accumulator)
     {
-        accumulator.addInput(getPage());
+        accumulator.addInput(SESSION, getPage());
         BlockBuilder finalOut = accumulator.getFinalType().createBlockBuilder(null, 1);
-        accumulator.evaluateFinal(finalOut);
+        accumulator.evaluateFinal(SESSION, finalOut);
         Block block = finalOut.build();
         Slice slice = accumulator.getFinalType().getSlice(block, 0);
         Model deserialized = ModelUtils.deserialize(slice);

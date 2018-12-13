@@ -18,6 +18,7 @@ import com.facebook.presto.operator.GroupByIdBlock;
 import com.facebook.presto.operator.aggregation.AggregationTestUtils;
 import com.facebook.presto.operator.aggregation.GroupedAccumulator;
 import com.facebook.presto.operator.aggregation.InternalAggregationFunction;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.google.common.base.Suppliers;
 import org.testng.internal.collections.Ints;
@@ -27,6 +28,7 @@ import java.util.function.Supplier;
 
 public class AggregationTestInput
 {
+    private final ConnectorSession session;
     private final Page[] pages;
     private final InternalAggregationFunction function;
     private int[] args;
@@ -35,8 +37,9 @@ public class AggregationTestInput
     private final boolean isReversed;
 
     @SuppressWarnings("NumericCastThatLosesPrecision")
-    public AggregationTestInput(InternalAggregationFunction function, Page[] pages, int offset, boolean isReversed)
+    public AggregationTestInput(ConnectorSession session, InternalAggregationFunction function, Page[] pages, int offset, boolean isReversed)
     {
+        this.session = session;
         this.pages = pages;
         this.function = function;
         args = GroupByAggregationTestUtils.createArgs(function);
@@ -49,10 +52,10 @@ public class AggregationTestInput
         GroupedAccumulator accumulator = Suppliers.ofInstance(groupedAccumulator).get();
 
         for (Page page : getPages()) {
-            accumulator.addInput(getGroupIdBlock(groupId, page), page);
+            accumulator.addInput(session, getGroupIdBlock(groupId, page), page);
         }
 
-        expectedValue.validateAccumulator(accumulator, groupId);
+        expectedValue.validateAccumulator(session, accumulator, groupId);
     }
 
     public GroupedAccumulator runPagesOnAccumulator(long groupId, GroupedAccumulator groupedAccumulator)
@@ -65,7 +68,7 @@ public class AggregationTestInput
         GroupedAccumulator accumulator = accumulatorSupplier.get();
 
         for (Page page : getPages()) {
-            accumulator.addInput(getGroupIdBlock(groupId, page), page);
+            accumulator.addInput(session, getGroupIdBlock(groupId, page), page);
         }
 
         return accumulator;

@@ -35,6 +35,7 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static io.airlift.testing.Assertions.assertLessThan;
 import static org.testng.Assert.assertEquals;
 
@@ -138,19 +139,19 @@ public abstract class AbstractTestApproximateCountDistinct
 
     private long estimateGroupByCount(List<Object> values, double maxStandardError)
     {
-        Object result = AggregationTestUtils.groupedAggregation(getAggregationFunction(), createPage(values, maxStandardError));
+        Object result = AggregationTestUtils.groupedAggregation(SESSION, getAggregationFunction(), createPage(values, maxStandardError));
         return (long) result;
     }
 
     private long estimateCount(List<Object> values, double maxStandardError)
     {
-        Object result = AggregationTestUtils.aggregation(getAggregationFunction(), createPage(values, maxStandardError));
+        Object result = AggregationTestUtils.aggregation(SESSION, getAggregationFunction(), createPage(values, maxStandardError));
         return (long) result;
     }
 
     private long estimateCountPartial(List<Object> values, double maxStandardError)
     {
-        Object result = AggregationTestUtils.partialAggregation(getAggregationFunction(), createPage(values, maxStandardError));
+        Object result = AggregationTestUtils.partialAggregation(SESSION, getAggregationFunction(), createPage(values, maxStandardError));
         return (long) result;
     }
 

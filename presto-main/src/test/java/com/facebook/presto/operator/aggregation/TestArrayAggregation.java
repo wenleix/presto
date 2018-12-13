@@ -42,6 +42,7 @@ import static com.facebook.presto.metadata.FunctionKind.AGGREGATE;
 import static com.facebook.presto.operator.aggregation.AggregationTestUtils.assertAggregation;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertTrue;
 
 public class TestArrayAggregation
@@ -146,7 +147,7 @@ public class TestArrayAggregation
                 .createGroupedAccumulator();
         BlockBuilder blockBuilder = groupedAccumulator.getFinalType().createBlockBuilder(null, 1000);
 
-        groupedAccumulator.evaluateFinal(0, blockBuilder);
+        groupedAccumulator.evaluateFinal(SESSION, 0, blockBuilder);
         assertTrue(blockBuilder.isNull(0));
     }
 
@@ -161,6 +162,7 @@ public class TestArrayAggregation
                         parseTypeSignature(StandardTypes.VARCHAR)));
 
         AggregationTestInputBuilder testInputBuilder = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {
                         createStringsBlock("hello", "world", "hello2", "world2", "hello3", "world3", "goodbye")},
                 varcharAgg);
@@ -184,6 +186,7 @@ public class TestArrayAggregation
         Block block2 = createStringsBlock("f", "g", "h", "i", "j");
         AggregationTestOutput aggregationTestOutput1 = new AggregationTestOutput(ImmutableList.of("a", "b", "c", "d", "e"));
         AggregationTestInputBuilder testInputBuilder1 = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {block1},
                 varcharAgg);
         AggregationTestInput test1 = testInputBuilder1.build();
@@ -193,6 +196,7 @@ public class TestArrayAggregation
 
         AggregationTestOutput aggregationTestOutput2 = new AggregationTestOutput(ImmutableList.of("f", "g", "h", "i", "j"));
         AggregationTestInputBuilder testBuilder2 = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {block2},
                 varcharAgg);
         AggregationTestInput test2 = testBuilder2.build();
@@ -227,6 +231,7 @@ public class TestArrayAggregation
 
             Block block = createStringsBlock(valueList);
             AggregationTestInputBuilder testInputBuilder = new AggregationTestInputBuilder(
+                    SESSION,
                     new Block[] {block},
                     varcharAgg);
             AggregationTestInput test1 = testInputBuilder.build();

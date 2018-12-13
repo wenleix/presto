@@ -49,6 +49,7 @@ import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static org.openjdk.jmh.annotations.Level.Invocation;
 
 @SuppressWarnings("MethodMayBeStatic")
@@ -66,7 +67,7 @@ public class BenchmarkArrayAggregation
     @OperationsPerInvocation(ARRAY_SIZE)
     public void arrayAggregation(BenchmarkData data)
     {
-        data.getAccumulator().addInput(data.getPage());
+        data.getAccumulator().addInput(SESSION, data.getPage());
     }
 
     @SuppressWarnings("FieldMayBeFinal")

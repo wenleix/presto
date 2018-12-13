@@ -66,6 +66,7 @@ import static com.facebook.presto.spi.type.TimeZoneKey.getTimeZoneKey;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.facebook.presto.util.DateTimeZoneIndex.getDateTimeZone;
 import static com.facebook.presto.util.StructuralTestUtil.mapBlockOf;
 import static com.facebook.presto.util.StructuralTestUtil.mapType;
@@ -266,7 +267,7 @@ public class TestHistogram
                 .createGroupedAccumulator();
         BlockBuilder blockBuilder = groupedAccumulator.getFinalType().createBlockBuilder(null, 1000);
 
-        groupedAccumulator.evaluateFinal(0, blockBuilder);
+        groupedAccumulator.evaluateFinal(SESSION, 0, blockBuilder);
         assertTrue(blockBuilder.isNull(0));
     }
 
@@ -341,6 +342,7 @@ public class TestHistogram
 
             Block block = createStringsBlock(valueList);
             AggregationTestInputBuilder testInputBuilder = new AggregationTestInputBuilder(
+                    SESSION,
                     new Block[] {block},
                     aggregationFunction);
             AggregationTestInput test1 = testInputBuilder.build();
@@ -363,6 +365,7 @@ public class TestHistogram
         Block block2 = createStringsBlock("b", "c", "d");
         AggregationTestOutput aggregationTestOutput1 = new AggregationTestOutput(ImmutableMap.of("a", 1L, "b", 1L, "c", 1L));
         AggregationTestInputBuilder testBuilder1 = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {block1},
                 aggregationFunction);
         AggregationTestInput test1 = testBuilder1.build();
@@ -372,6 +375,7 @@ public class TestHistogram
 
         AggregationTestOutput aggregationTestOutput2 = new AggregationTestOutput(ImmutableMap.of("b", 1L, "c", 1L, "d", 1L));
         AggregationTestInputBuilder testbuilder2 = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {block2},
                 aggregationFunction);
         AggregationTestInput test2 = testbuilder2.build();
@@ -384,6 +388,7 @@ public class TestHistogram
         Block block2 = createStringsBlock("d", "e", "f");
         AggregationTestOutput aggregationTestOutput1 = new AggregationTestOutput(ImmutableMap.of("a", 1L, "b", 1L, "c", 1L));
         AggregationTestInputBuilder testInputBuilder1 = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {block1},
                 aggregationFunction);
         AggregationTestInput test1 = testInputBuilder1.build();
@@ -393,6 +398,7 @@ public class TestHistogram
 
         AggregationTestOutput aggregationTestOutput2 = new AggregationTestOutput(ImmutableMap.of("d", 1L, "e", 1L, "f", 1L));
         AggregationTestInputBuilder testBuilder2 = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {block2},
                 aggregationFunction);
         AggregationTestInput test2 = testBuilder2.build();
@@ -403,6 +409,7 @@ public class TestHistogram
     {
         Block block1 = createStringsBlock("a", "b", "c", "d", "a1", "b2", "c3", "d4", "a", "b2", "c", "d4", "a3", "b3", "c3", "b2");
         AggregationTestInputBuilder testInputBuilder1 = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {block1},
                 aggregationFunction);
         AggregationTestOutput aggregationTestOutput1 = new AggregationTestOutput(ImmutableMap.<String, Long>builder()

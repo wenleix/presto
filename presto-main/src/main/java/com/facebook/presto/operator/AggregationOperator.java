@@ -149,7 +149,7 @@ public class AggregationOperator
 
         long memorySize = 0;
         for (Aggregator aggregate : aggregates) {
-            aggregate.processPage(page);
+            aggregate.processPage(operatorContext.getSession().toConnectorSession(), page);
             memorySize += aggregate.getEstimatedSize();
         }
         if (useSystemMemory) {
@@ -178,7 +178,7 @@ public class AggregationOperator
         for (int i = 0; i < aggregates.size(); i++) {
             Aggregator aggregator = aggregates.get(i);
             BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(i);
-            aggregator.evaluate(blockBuilder);
+            aggregator.evaluate(operatorContext.getSession().toConnectorSession(), blockBuilder);
         }
 
         state = State.FINISHED;

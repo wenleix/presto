@@ -20,6 +20,7 @@ import com.facebook.presto.operator.OperatorContext;
 import com.facebook.presto.operator.Work;
 import com.facebook.presto.operator.WorkProcessor;
 import com.facebook.presto.operator.aggregation.AccumulatorFactory;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spiller.Spiller;
@@ -100,12 +101,12 @@ public class SpillableHashAggregationBuilder
     }
 
     @Override
-    public Work<?> processPage(Page page)
+    public Work<?> processPage(ConnectorSession session, Page page)
     {
         checkState(hasPreviousSpillCompletedSuccessfully(), "Previous spill hasn't yet finished");
         // hashAggregationBuilder is constructed with yieldForMemoryReservation = false
         // Therefore the processing of the returned Work should always be true
-        return hashAggregationBuilder.processPage(page);
+        return hashAggregationBuilder.processPage(session, page);
     }
 
     @Override

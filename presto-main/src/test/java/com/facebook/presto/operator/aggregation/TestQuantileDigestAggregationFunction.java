@@ -46,6 +46,7 @@ import static com.facebook.presto.operator.aggregation.FloatingPointBitsConverte
 import static com.facebook.presto.operator.aggregation.TestMergeQuantileDigestFunction.QDIGEST_EQUALITY;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.Double.NaN;
 import static java.lang.Integer.max;
@@ -240,7 +241,9 @@ public class TestQuantileDigestAggregationFunction
     private void testAggregationBigints(InternalAggregationFunction function, Page page, double maxError, long... inputs)
     {
         // aggregate level
-        assertAggregation(function,
+        assertAggregation(
+                SESSION,
+                function,
                 QDIGEST_EQUALITY,
                 "test multiple positions",
                 page,
@@ -249,13 +252,15 @@ public class TestQuantileDigestAggregationFunction
         // test scalars
         List<Long> rows = Arrays.stream(inputs).sorted().boxed().collect(Collectors.toList());
 
-        SqlVarbinary returned = (SqlVarbinary) AggregationTestUtils.aggregation(function, page);
+        SqlVarbinary returned = (SqlVarbinary) AggregationTestUtils.aggregation(SESSION, function, page);
         assertPercentileWithinError(StandardTypes.BIGINT, returned, maxError, rows, 0.1, 0.5, 0.9, 0.99);
     }
 
     private void testAggregationDoubles(InternalAggregationFunction function, Page page, double maxError, double... inputs)
     {
-        assertAggregation(function,
+        assertAggregation(
+                SESSION,
+                function,
                 QDIGEST_EQUALITY,
                 "test multiple positions",
                 page,
@@ -264,13 +269,15 @@ public class TestQuantileDigestAggregationFunction
         // test scalars
         List<Double> rows = Arrays.stream(inputs).sorted().boxed().collect(Collectors.toList());
 
-        SqlVarbinary returned = (SqlVarbinary) AggregationTestUtils.aggregation(function, page);
+        SqlVarbinary returned = (SqlVarbinary) AggregationTestUtils.aggregation(SESSION, function, page);
         assertPercentileWithinError(StandardTypes.DOUBLE, returned, maxError, rows, 0.1, 0.5, 0.9, 0.99);
     }
 
     private void testAggregationReal(InternalAggregationFunction function, Page page, double maxError, float... inputs)
     {
-        assertAggregation(function,
+        assertAggregation(
+                SESSION,
+                function,
                 QDIGEST_EQUALITY,
                 "test multiple positions",
                 page,
@@ -279,7 +286,7 @@ public class TestQuantileDigestAggregationFunction
         // test scalars
         List<Double> rows = Floats.asList(inputs).stream().sorted().map(Float::doubleValue).collect(Collectors.toList());
 
-        SqlVarbinary returned = (SqlVarbinary) AggregationTestUtils.aggregation(function, page);
+        SqlVarbinary returned = (SqlVarbinary) AggregationTestUtils.aggregation(SESSION, function, page);
         assertPercentileWithinError(StandardTypes.REAL, returned, maxError, rows, 0.1, 0.5, 0.9, 0.99);
     }
 

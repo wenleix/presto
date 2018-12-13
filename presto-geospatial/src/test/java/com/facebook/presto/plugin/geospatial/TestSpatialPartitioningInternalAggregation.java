@@ -49,6 +49,7 @@ import static com.facebook.presto.plugin.geospatial.GeometryType.GEOMETRY;
 import static com.facebook.presto.plugin.geospatial.GeometryType.GEOMETRY_TYPE_NAME;
 import static com.facebook.presto.spi.type.StandardTypes.INTEGER;
 import static com.facebook.presto.spi.type.StandardTypes.VARCHAR;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.google.common.math.DoubleMath.roundToInt;
 import static java.math.RoundingMode.CEILING;
 import static org.testng.Assert.assertEquals;
@@ -86,13 +87,13 @@ public class TestSpatialPartitioningInternalAggregation
         Page page = new Page(geometryBlock, partitionCountBlock);
 
         Accumulator accumulator = accumulatorFactory.createAccumulator();
-        accumulator.addInput(page);
-        String aggregation = (String) BlockAssertions.getOnlyValue(accumulator.getFinalType(), getFinalBlock(accumulator));
+        accumulator.addInput(SESSION, page);
+        String aggregation = (String) BlockAssertions.getOnlyValue(accumulator.getFinalType(), getFinalBlock(SESSION, accumulator));
         assertEquals(aggregation, expectedValue);
 
         GroupedAccumulator groupedAggregation = accumulatorFactory.createGroupedAccumulator();
-        groupedAggregation.addInput(createGroupByIdBlock(0, page.getPositionCount()), page);
-        String groupValue = (String) getGroupValue(groupedAggregation, 0);
+        groupedAggregation.addInput(SESSION, createGroupByIdBlock(0, page.getPositionCount()), page);
+        String groupValue = (String) getGroupValue(SESSION, groupedAggregation, 0);
         assertEquals(groupValue, expectedValue);
     }
 

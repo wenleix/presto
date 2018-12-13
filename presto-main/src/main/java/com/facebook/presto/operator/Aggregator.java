@@ -15,6 +15,7 @@ package com.facebook.presto.operator;
 
 import com.facebook.presto.operator.aggregation.Accumulator;
 import com.facebook.presto.operator.aggregation.AccumulatorFactory;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Type;
@@ -52,23 +53,23 @@ class Aggregator
         }
     }
 
-    public void processPage(Page page)
+    public void processPage(ConnectorSession session, Page page)
     {
         if (step.isInputRaw()) {
-            aggregation.addInput(page);
+            aggregation.addInput(session, page);
         }
         else {
-            aggregation.addIntermediate(page.getBlock(intermediateChannel));
+            aggregation.addIntermediate(session, page.getBlock(intermediateChannel));
         }
     }
 
-    public void evaluate(BlockBuilder blockBuilder)
+    public void evaluate(ConnectorSession session, BlockBuilder blockBuilder)
     {
         if (step.isOutputPartial()) {
             aggregation.evaluateIntermediate(blockBuilder);
         }
         else {
-            aggregation.evaluateFinal(blockBuilder);
+            aggregation.evaluateFinal(session, blockBuilder);
         }
     }
 

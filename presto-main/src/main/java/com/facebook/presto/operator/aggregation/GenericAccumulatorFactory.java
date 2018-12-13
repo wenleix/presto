@@ -20,6 +20,7 @@ import com.facebook.presto.operator.PagesIndex;
 import com.facebook.presto.operator.UpdateMemory;
 import com.facebook.presto.operator.Work;
 import com.facebook.presto.operator.aggregation.AggregationMetadata.AccumulatorStateDescriptor;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -260,7 +261,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addInput(Page page)
+        public void addInput(ConnectorSession session, Page page)
         {
             // 1. filter out positions based on mask, if present
             Page filtered = maskChannel
@@ -277,17 +278,17 @@ public class GenericAccumulatorFactory
             Block distinctMask = work.getResult();
 
             // 3. feed a Page with a new mask to the underlying aggregation
-            accumulator.addInput(filtered.prependColumn(distinctMask));
+            accumulator.addInput(session, filtered.prependColumn(distinctMask));
         }
 
         @Override
-        public void addInput(WindowIndex index, List<Integer> channels, int startPosition, int endPosition)
+        public void addInput(ConnectorSession session, WindowIndex index, List<Integer> channels, int startPosition, int endPosition)
         {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void addIntermediate(Block block)
+        public void addIntermediate(ConnectorSession session, Block block)
         {
             throw new UnsupportedOperationException();
         }
@@ -299,9 +300,9 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void evaluateFinal(BlockBuilder blockBuilder)
+        public void evaluateFinal(ConnectorSession session, BlockBuilder blockBuilder)
         {
-            accumulator.evaluateFinal(blockBuilder);
+            accumulator.evaluateFinal(session, blockBuilder);
         }
     }
 
@@ -369,7 +370,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addInput(GroupByIdBlock groupIdsBlock, Page page)
+        public void addInput(ConnectorSession session, GroupByIdBlock groupIdsBlock, Page page)
         {
             Page withGroup = page.prependColumn(groupIdsBlock);
 
@@ -393,11 +394,11 @@ public class GenericAccumulatorFactory
                 columns[i] = filtered.getBlock(i);
             }
 
-            accumulator.addInput(groupIds, new Page(filtered.getPositionCount(), columns));
+            accumulator.addInput(session, groupIds, new Page(filtered.getPositionCount(), columns));
         }
 
         @Override
-        public void addIntermediate(GroupByIdBlock groupIdsBlock, Block block)
+        public void addIntermediate(ConnectorSession session, GroupByIdBlock groupIdsBlock, Block block)
         {
             throw new UnsupportedOperationException();
         }
@@ -409,13 +410,13 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void evaluateFinal(int groupId, BlockBuilder output)
+        public void evaluateFinal(ConnectorSession session, int groupId, BlockBuilder output)
         {
-            accumulator.evaluateFinal(groupId, output);
+            accumulator.evaluateFinal(session, groupId, output);
         }
 
         @Override
-        public void prepareFinal()
+        public void prepareFinal(ConnectorSession session)
         {
         }
     }
@@ -460,19 +461,19 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addInput(Page page)
+        public void addInput(ConnectorSession session, Page page)
         {
             pagesIndex.addPage(page);
         }
 
         @Override
-        public void addInput(WindowIndex index, List<Integer> channels, int startPosition, int endPosition)
+        public void addInput(ConnectorSession session, WindowIndex index, List<Integer> channels, int startPosition, int endPosition)
         {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void addIntermediate(Block block)
+        public void addIntermediate(ConnectorSession session, Block block)
         {
             throw new UnsupportedOperationException();
         }
@@ -484,12 +485,12 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void evaluateFinal(BlockBuilder blockBuilder)
+        public void evaluateFinal(ConnectorSession session, BlockBuilder blockBuilder)
         {
             pagesIndex.sort(orderByChannels, orderings);
             Iterator<Page> pagesIterator = pagesIndex.getSortedPages();
-            pagesIterator.forEachRemaining(accumulator::addInput);
-            accumulator.evaluateFinal(blockBuilder);
+            pagesIterator.forEachRemaining(page -> accumulator.addInput(session, page));
+            accumulator.evaluateFinal(session, blockBuilder);
         }
     }
 
@@ -539,7 +540,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addInput(GroupByIdBlock groupIdsBlock, Page page)
+        public void addInput(ConnectorSession session, GroupByIdBlock groupIdsBlock, Page page)
         {
             Block[] blocks = new Block[page.getChannelCount() + 1];
             for (int i = 0; i < page.getChannelCount(); i++) {
@@ -552,7 +553,7 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void addIntermediate(GroupByIdBlock groupIdsBlock, Block block)
+        public void addIntermediate(ConnectorSession session, GroupByIdBlock groupIdsBlock, Block block)
         {
             throw new UnsupportedOperationException();
         }
@@ -564,13 +565,13 @@ public class GenericAccumulatorFactory
         }
 
         @Override
-        public void evaluateFinal(int groupId, BlockBuilder output)
+        public void evaluateFinal(ConnectorSession session, int groupId, BlockBuilder output)
         {
-            accumulator.evaluateFinal(groupId, output);
+            accumulator.evaluateFinal(session, groupId, output);
         }
 
         @Override
-        public void prepareFinal()
+        public void prepareFinal(ConnectorSession session)
         {
             pagesIndex.sort(orderByChannels, orderings);
             Iterator<Page> pagesIterator = pagesIndex.getSortedPages();
@@ -579,7 +580,7 @@ public class GenericAccumulatorFactory
                 GroupByIdBlock groupIds = new GroupByIdBlock(groupCount, page.getBlock(page.getChannelCount() - 1));
                 // We pass group id together with the other input channels to accumulator. Accumulator knows which input channels
                 // to use. Since we did not change the order of original input channels, passing the group id is safe.
-                accumulator.addInput(groupIds, page);
+                accumulator.addInput(session, groupIds, page);
             });
         }
     }

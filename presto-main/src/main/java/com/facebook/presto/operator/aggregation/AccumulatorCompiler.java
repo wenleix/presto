@@ -15,6 +15,7 @@ package com.facebook.presto.operator.aggregation;
 
 import com.facebook.presto.operator.GroupByIdBlock;
 import com.facebook.presto.operator.aggregation.AggregationMetadata.AccumulatorStateDescriptor;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -236,6 +237,8 @@ public class AccumulatorCompiler
             boolean grouped)
     {
         ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
+        Parameter session = arg("session", ConnectorSession.class);
+        parameters.add(session);
         if (grouped) {
             parameters.add(arg("groupIdsBlock", GroupByIdBlock.class));
         }
@@ -293,12 +296,13 @@ public class AccumulatorCompiler
     {
         // TODO: implement masking based on maskChannel field once Window Functions support DISTINCT arguments to the functions.
 
+        Parameter session = arg("session", ConnectorSession.class);
         Parameter index = arg("index", WindowIndex.class);
         Parameter channels = arg("channels", type(List.class, Integer.class));
         Parameter startPosition = arg("startPosition", int.class);
         Parameter endPosition = arg("endPosition", int.class);
 
-        MethodDefinition method = definition.declareMethod(a(PUBLIC), "addInput", type(void.class), ImmutableList.of(index, channels, startPosition, endPosition));
+        MethodDefinition method = definition.declareMethod(a(PUBLIC), "addInput", type(void.class), ImmutableList.of(session, index, channels, startPosition, endPosition));
         Scope scope = method.getScope();
 
         Variable position = scope.declareVariable(int.class, "position");
@@ -690,6 +694,8 @@ public class AccumulatorCompiler
     private static MethodDefinition declareAddIntermediate(ClassDefinition definition, boolean grouped)
     {
         ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
+        Parameter session = arg("session", ConnectorSession.class);
+        parameters.add(session);
         if (grouped) {
             parameters.add(arg("groupIdsBlock", GroupByIdBlock.class));
         }
@@ -805,9 +811,14 @@ public class AccumulatorCompiler
             MethodHandle outputFunction,
             CallSiteBinder callSiteBinder)
     {
+        Parameter session = arg("session", ConnectorSession.class);
         Parameter groupId = arg("groupId", int.class);
         Parameter out = arg("out", BlockBuilder.class);
-        MethodDefinition method = definition.declareMethod(a(PUBLIC), "evaluateFinal", type(void.class), groupId, out);
+        MethodDefinition method = definition.declareMethod(
+                a(PUBLIC),
+                "evaluateFinal",
+                type(void.class),
+                ImmutableList.of(session, groupId, out));
 
         BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
@@ -834,12 +845,13 @@ public class AccumulatorCompiler
             MethodHandle outputFunction,
             CallSiteBinder callSiteBinder)
     {
+        Parameter session = arg("session", ConnectorSession.class);
         Parameter out = arg("out", BlockBuilder.class);
         MethodDefinition method = definition.declareMethod(
                 a(PUBLIC),
                 "evaluateFinal",
                 type(void.class),
-                out);
+                ImmutableList.of(session, out));
 
         BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
@@ -861,10 +873,12 @@ public class AccumulatorCompiler
 
     private static void generatePrepareFinal(ClassDefinition definition)
     {
+        Parameter session = arg("session", ConnectorSession.class);
         MethodDefinition method = definition.declareMethod(
                 a(PUBLIC),
                 "prepareFinal",
-                type(void.class));
+                type(void.class),
+                session);
         method.getBody().ret();
     }
 

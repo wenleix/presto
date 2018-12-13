@@ -14,6 +14,7 @@
 package com.facebook.presto.operator.aggregation;
 
 import com.facebook.presto.operator.GroupByIdBlock;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -27,13 +28,13 @@ public interface GroupedAccumulator
 
     Type getIntermediateType();
 
-    void addInput(GroupByIdBlock groupIdsBlock, Page page);
+    void addInput(ConnectorSession session, GroupByIdBlock groupIdsBlock, Page page);
 
-    void addIntermediate(GroupByIdBlock groupIdsBlock, Block block);
+    void addIntermediate(ConnectorSession session, GroupByIdBlock groupIdsBlock, Block block);
 
     void evaluateIntermediate(int groupId, BlockBuilder output);
 
-    void evaluateFinal(int groupId, BlockBuilder output);
+    void evaluateFinal(ConnectorSession session, int groupId, BlockBuilder output);
 
-    void prepareFinal();
+    void prepareFinal(ConnectorSession session);
 }

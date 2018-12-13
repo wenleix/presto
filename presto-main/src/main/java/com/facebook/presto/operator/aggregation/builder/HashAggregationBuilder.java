@@ -16,13 +16,14 @@ package com.facebook.presto.operator.aggregation.builder;
 import com.facebook.presto.operator.HashCollisionsCounter;
 import com.facebook.presto.operator.Work;
 import com.facebook.presto.operator.WorkProcessor;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.google.common.util.concurrent.ListenableFuture;
 
 public interface HashAggregationBuilder
         extends AutoCloseable
 {
-    Work<?> processPage(Page page);
+    Work<?> processPage(ConnectorSession session, Page page);
 
     WorkProcessor<Page> buildResult();
 

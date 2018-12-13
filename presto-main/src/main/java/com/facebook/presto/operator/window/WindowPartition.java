@@ -15,6 +15,7 @@ package com.facebook.presto.operator.window;
 
 import com.facebook.presto.operator.PagesHashStrategy;
 import com.facebook.presto.operator.PagesIndex;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.function.WindowIndex;
 import com.facebook.presto.sql.tree.FrameBound;
@@ -86,7 +87,7 @@ public final class WindowPartition
         return currentPosition < partitionEnd;
     }
 
-    public void processNextRow(PageBuilder pageBuilder)
+    public void processNextRow(ConnectorSession session, PageBuilder pageBuilder)
     {
         checkState(hasNext(), "No more rows in partition");
 
@@ -106,6 +107,7 @@ public final class WindowPartition
         for (FramedWindowFunction framedFunction : windowFunctions) {
             Range range = getFrameRange(framedFunction.getFrame());
             framedFunction.getFunction().processRow(
+                    session,
                     pageBuilder.getBlockBuilder(channel),
                     peerGroupStart - partitionStart,
                     peerGroupEnd - partitionStart - 1,

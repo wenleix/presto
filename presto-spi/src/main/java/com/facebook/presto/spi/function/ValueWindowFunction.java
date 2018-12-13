@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.spi.function;
 
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.block.BlockBuilder;
 
 public abstract class ValueWindowFunction
@@ -32,7 +33,7 @@ public abstract class ValueWindowFunction
     }
 
     @Override
-    public final void processRow(BlockBuilder output, int peerGroupStart, int peerGroupEnd, int frameStart, int frameEnd)
+    public final void processRow(ConnectorSession session, BlockBuilder output, int peerGroupStart, int peerGroupEnd, int frameStart, int frameEnd)
     {
         processRow(output, frameStart, frameEnd, currentPosition);
 

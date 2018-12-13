@@ -33,6 +33,7 @@ import static com.facebook.presto.metadata.FunctionKind.AGGREGATE;
 import static com.facebook.presto.operator.aggregation.AggregationTestUtils.assertAggregation;
 import static com.facebook.presto.operator.aggregation.AggregationTestUtils.groupedAggregation;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertEquals;
 
 public class TestMinMaxByNAggregation
@@ -349,7 +350,7 @@ public class TestMinMaxByNAggregation
                         parseTypeSignature(StandardTypes.BIGINT),
                         parseTypeSignature(StandardTypes.BIGINT)));
         try {
-            groupedAggregation(function, new Page(createStringsBlock("z"), createLongsBlock(0), createLongsBlock(10001)));
+            groupedAggregation(SESSION, function, new Page(createStringsBlock("z"), createLongsBlock(0), createLongsBlock(10001)));
         }
         catch (PrestoException e) {
             assertEquals(e.getMessage(), "third argument of max_by/min_by must be less than or equal to 10000; found 10001");

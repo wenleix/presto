@@ -420,7 +420,7 @@ public class WindowOperator
                 windowInfo.addPartition(partition);
             }
 
-            partition.processNextRow(pageBuilder);
+            partition.processNextRow(operatorContext.getSession().toConnectorSession(), pageBuilder);
         }
 
         Page page = pageBuilder.build();

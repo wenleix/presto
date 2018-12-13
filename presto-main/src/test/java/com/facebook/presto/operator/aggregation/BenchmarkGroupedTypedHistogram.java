@@ -54,6 +54,7 @@ import static com.facebook.presto.operator.aggregation.histogram.Histogram.NAME;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.facebook.presto.util.StructuralTestUtil.mapType;
 
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -151,7 +152,7 @@ public class BenchmarkGroupedTypedHistogram
         for (int i = 0; i < data.numGroups; i++) {
             GroupByIdBlock groupByIdBlock = data.groupByIdBlocks[i];
             Page page = data.pages[i];
-            groupedAccumulator.addInput(groupByIdBlock, page);
+            groupedAccumulator.addInput(SESSION, groupByIdBlock, page);
         }
 
         return groupedAccumulator;

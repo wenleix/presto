@@ -106,7 +106,7 @@ public class MergingHashAggregationBuilder
 
                 if (!inputFinished) {
                     Page inputPage = inputPageOptional.get();
-                    boolean done = hashAggregationBuilder.processPage(inputPage).process();
+                    boolean done = hashAggregationBuilder.processPage(operatorContext.getSession().toConnectorSession(), inputPage).process();
                     // TODO: this class does not yield wrt memory limit; enable it
                     verify(done);
                     memorySize = hashAggregationBuilder.getSizeInMemory();

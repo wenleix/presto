@@ -227,7 +227,7 @@ public class StreamingAggregationOperator
     private void addRowsToAggregates(Page page, int startPosition, int endPosition)
     {
         for (Aggregator aggregator : aggregates) {
-            aggregator.processPage(page.getRegion(startPosition, endPosition - startPosition + 1));
+            aggregator.processPage(operatorContext.getSession().toConnectorSession(), page.getRegion(startPosition, endPosition - startPosition + 1));
         }
     }
 
@@ -241,7 +241,7 @@ public class StreamingAggregationOperator
         }
         int offset = groupByTypes.size();
         for (int i = 0; i < aggregates.size(); i++) {
-            aggregates.get(i).evaluate(pageBuilder.getBlockBuilder(offset + i));
+            aggregates.get(i).evaluate(operatorContext.getSession().toConnectorSession(), pageBuilder.getBlockBuilder(offset + i));
         }
 
         if (pageBuilder.isFull()) {

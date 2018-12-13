@@ -47,6 +47,7 @@ import static com.facebook.presto.operator.aggregation.multimapagg.MultimapAggre
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.facebook.presto.util.StructuralTestUtil.mapType;
 import static com.google.common.base.Preconditions.checkState;
 import static org.testng.Assert.assertTrue;
@@ -170,7 +171,7 @@ public class TestMultimapAggAggregation
         InternalAggregationFunction aggregationFunction = getInternalAggregationFunction(BIGINT, BIGINT);
         GroupedAccumulator groupedAccumulator = aggregationFunction.bind(Ints.asList(), Optional.empty()).createGroupedAccumulator();
         BlockBuilder blockBuilder = groupedAccumulator.getFinalType().createBlockBuilder(null, 1);
-        groupedAccumulator.evaluateFinal(0, blockBuilder);
+        groupedAccumulator.evaluateFinal(SESSION, 0, blockBuilder);
         assertTrue(blockBuilder.isNull(0));
     }
 
@@ -203,7 +204,7 @@ public class TestMultimapAggAggregation
             builder.row(expectedKeys.get(i), expectedValues.get(i));
         }
 
-        assertAggregation(aggFunc, map.isEmpty() ? null : map, builder.build());
+        assertAggregation(SESSION, aggFunc, map.isEmpty() ? null : map, builder.build());
     }
 
     private static <K, V> void testMultimapAggWithGroupBy(
@@ -224,6 +225,7 @@ public class TestMultimapAggAggregation
         Page page = pageBuilder.build();
 
         AggregationTestInput input = new AggregationTestInputBuilder(
+                SESSION,
                 new Block[] {page.getBlock(0), page.getBlock(1)},
                 aggregationFunction).build();
 

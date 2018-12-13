@@ -35,6 +35,7 @@ import static com.facebook.presto.metadata.FunctionKind.AGGREGATE;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static org.testng.Assert.assertEquals;
 
 public class TestEvaluateClassifierPredictions
@@ -50,9 +51,9 @@ public class TestEvaluateClassifierPredictions
                         AGGREGATE,
                         parseTypeSignature(StandardTypes.VARCHAR), parseTypeSignature(StandardTypes.BIGINT), parseTypeSignature(StandardTypes.BIGINT)));
         Accumulator accumulator = aggregation.bind(ImmutableList.of(0, 1), Optional.empty()).createAccumulator();
-        accumulator.addInput(getPage());
+        accumulator.addInput(SESSION, getPage());
         BlockBuilder finalOut = accumulator.getFinalType().createBlockBuilder(null, 1);
-        accumulator.evaluateFinal(finalOut);
+        accumulator.evaluateFinal(SESSION, finalOut);
         Block block = finalOut.build();
 
         String output = VARCHAR.getSlice(block, 0).toStringUtf8();

@@ -17,6 +17,7 @@ import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.operator.aggregation.Accumulator;
 import com.facebook.presto.operator.aggregation.AccumulatorFactory;
 import com.facebook.presto.operator.aggregation.InternalAggregationFunction;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.function.WindowFunction;
 import com.facebook.presto.spi.function.WindowIndex;
@@ -52,7 +53,7 @@ public class AggregateWindowFunction
     }
 
     @Override
-    public void processRow(BlockBuilder output, int peerGroupStart, int peerGroupEnd, int frameStart, int frameEnd)
+    public void processRow(ConnectorSession session, BlockBuilder output, int peerGroupStart, int peerGroupEnd, int frameStart, int frameEnd)
     {
         if (frameStart < 0) {
             // empty frame
@@ -60,23 +61,23 @@ public class AggregateWindowFunction
         }
         else if ((frameStart == currentStart) && (frameEnd >= currentEnd)) {
             // same or expanding frame
-            accumulate(currentEnd + 1, frameEnd);
+            accumulate(session, currentEnd + 1, frameEnd);
             currentEnd = frameEnd;
         }
         else {
             // different frame
             resetAccumulator();
-            accumulate(frameStart, frameEnd);
+            accumulate(session, frameStart, frameEnd);
             currentStart = frameStart;
             currentEnd = frameEnd;
         }
 
-        accumulator.evaluateFinal(output);
+        accumulator.evaluateFinal(session, output);
     }
 
-    private void accumulate(int start, int end)
+    private void accumulate(ConnectorSession session, int start, int end)
     {
-        accumulator.addInput(windowIndex, argumentChannels, start, end);
+        accumulator.addInput(session, windowIndex, argumentChannels, start, end);
     }
 
     private void resetAccumulator()

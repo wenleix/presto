@@ -29,6 +29,7 @@ import java.util.function.BiFunction;
 
 import static com.facebook.presto.operator.aggregation.AggregationTestUtils.assertAggregation;
 import static com.facebook.presto.spi.type.QuantileDigestParametricType.QDIGEST;
+import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static io.airlift.slice.Slices.wrappedBuffer;
 import static java.util.Objects.requireNonNull;
 
@@ -97,7 +98,9 @@ public class TestMergeQuantileDigestFunction
     @Override
     public void testMultiplePositions()
     {
-        assertAggregation(getFunction(),
+        assertAggregation(
+                SESSION,
+                getFunction(),
                 QDIGEST_EQUALITY,
                 "test multiple positions",
                 new Page(getSequenceBlocks(0, 5)),
@@ -108,7 +111,9 @@ public class TestMergeQuantileDigestFunction
     @Override
     public void testMixedNullAndNonNullPositions()
     {
-        assertAggregation(getFunction(),
+        assertAggregation(
+                SESSION,
+                getFunction(),
                 QDIGEST_EQUALITY,
                 "test mixed null and nonnull position",
                 new Page(createAlternatingNullsBlock(getFunction().getParameterTypes(), getSequenceBlocks(0, 10))),

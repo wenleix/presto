@@ -404,7 +404,7 @@ public class HashAggregationOperator
         }
 
         // process the current page; save the unfinished work if we are waiting for memory
-        unfinishedWork = aggregationBuilder.processPage(page);
+        unfinishedWork = aggregationBuilder.processPage(operatorContext.getSession().toConnectorSession(), page);
         if (unfinishedWork.process()) {
             unfinishedWork = null;
         }
@@ -548,7 +548,7 @@ public class HashAggregationOperator
                     accumulators.get(j).evaluateIntermediate(output.getBlockBuilder(channel));
                 }
                 else {
-                    accumulators.get(j).evaluateFinal(output.getBlockBuilder(channel));
+                    accumulators.get(j).evaluateFinal(operatorContext.getSession().toConnectorSession(), output.getBlockBuilder(channel));
                 }
             }
         }

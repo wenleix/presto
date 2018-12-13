@@ -15,19 +15,22 @@
 package com.facebook.presto.operator.aggregation.groupByAggregations;
 
 import com.facebook.presto.operator.aggregation.InternalAggregationFunction;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 
 public class AggregationTestInputBuilder
 {
+    private final ConnectorSession session;
     private final InternalAggregationFunction function;
 
     private int offset = -1;
     private boolean isRerversed;
     private Page[] pages;
 
-    public AggregationTestInputBuilder(Block[] blocks, InternalAggregationFunction function)
+    public AggregationTestInputBuilder(ConnectorSession session, Block[] blocks, InternalAggregationFunction function)
     {
+        this.session = session;
         this.pages = GroupByAggregationTestUtils.createPages(blocks);
         this.function = function;
     }
@@ -55,6 +58,6 @@ public class AggregationTestInputBuilder
 
     public AggregationTestInput build()
     {
-        return new AggregationTestInput(function, pages, offset, isRerversed);
+        return new AggregationTestInput(session, function, pages, offset, isRerversed);
     }
 }
