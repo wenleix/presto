@@ -101,7 +101,17 @@ public final class InternalAggregationFunction
 
     public AccumulatorFactory bind(List<Integer> inputChannels, Optional<Integer> maskChannel)
     {
-        return factory.bind(inputChannels, maskChannel, ImmutableList.of(), ImmutableList.of(), ImmutableList.of(), null, false, null, null);
+        return factory.bind(
+                inputChannels,
+                maskChannel,
+                ImmutableList.of(),
+                ImmutableList.of(),
+                ImmutableList.of(),
+                null,
+                false,
+                null,
+                ImmutableList.of(),
+                null);
     }
 
     public AccumulatorFactory bind(
@@ -113,9 +123,10 @@ public final class InternalAggregationFunction
             PagesIndex.Factory pagesIndexFactory,
             boolean distinct,
             JoinCompiler joinCompiler,
+            List<LambdaChannelProvider> lambdaChannelProviders,
             Session session)
     {
-        return factory.bind(inputChannels, maskChannel, sourceTypes, orderByChannels, orderings, pagesIndexFactory, distinct, joinCompiler, session);
+        return factory.bind(inputChannels, maskChannel, sourceTypes, orderByChannels, orderings, pagesIndexFactory, distinct, joinCompiler, lambdaChannelProviders, session);
     }
 
     @VisibleForTesting
