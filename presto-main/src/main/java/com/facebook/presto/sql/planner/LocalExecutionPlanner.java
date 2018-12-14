@@ -22,6 +22,7 @@ import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.execution.buffer.PagesSerdeFactory;
 import com.facebook.presto.execution.warnings.WarningCollector;
 import com.facebook.presto.index.IndexManager;
+import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.operator.AggregationOperator.AggregationOperatorFactory;
@@ -78,6 +79,7 @@ import com.facebook.presto.operator.TopNRowNumberOperator;
 import com.facebook.presto.operator.ValuesOperator.ValuesOperatorFactory;
 import com.facebook.presto.operator.WindowFunctionDefinition;
 import com.facebook.presto.operator.WindowOperator.WindowOperatorFactory;
+import com.facebook.presto.operator.aggregation.AccumulatorCompiler;
 import com.facebook.presto.operator.aggregation.AccumulatorFactory;
 import com.facebook.presto.operator.aggregation.LambdaChannelProvider;
 import com.facebook.presto.operator.exchange.LocalExchange.LocalExchangeFactory;
@@ -97,6 +99,7 @@ import com.facebook.presto.operator.window.FrameInfo;
 import com.facebook.presto.operator.window.WindowFunctionSupplier;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorIndex;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
@@ -111,12 +114,19 @@ import com.facebook.presto.spiller.SpillerFactory;
 import com.facebook.presto.split.MappedRecordSet;
 import com.facebook.presto.split.PageSinkManager;
 import com.facebook.presto.split.PageSourceProvider;
+import com.facebook.presto.sql.gen.AggregationLambdaBytecodeGenerator;
+import com.facebook.presto.sql.gen.BytecodeGeneratorContext;
+import com.facebook.presto.sql.gen.CachedInstanceBinder;
+import com.facebook.presto.sql.gen.CallSiteBinder;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
 import com.facebook.presto.sql.gen.JoinCompiler;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler.JoinFilterFunctionFactory;
+import com.facebook.presto.sql.gen.LambdaBytecodeGenerator;
+import com.facebook.presto.sql.gen.LambdaBytecodeGenerator.CompiledLambda;
 import com.facebook.presto.sql.gen.OrderingCompiler;
 import com.facebook.presto.sql.gen.PageFunctionCompiler;
+import com.facebook.presto.sql.gen.RowExpressionCompiler;
 import com.facebook.presto.sql.gen.lambda.BinaryFunctionInterface;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.Partitioning.ArgumentBinding;
@@ -162,6 +172,7 @@ import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.planner.plan.WindowNode.Frame;
+import com.facebook.presto.sql.relational.LambdaDefinitionExpression;
 import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.sql.relational.SqlToRowExpressionTranslator;
 import com.facebook.presto.sql.tree.ComparisonExpression;
@@ -187,6 +198,14 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.SetMultimap;
 import com.google.common.primitives.Ints;
+import io.airlift.bytecode.Access;
+import io.airlift.bytecode.BytecodeBlock;
+import io.airlift.bytecode.ClassDefinition;
+import io.airlift.bytecode.FieldDefinition;
+import io.airlift.bytecode.MethodDefinition;
+import io.airlift.bytecode.Parameter;
+import io.airlift.bytecode.Scope;
+import io.airlift.bytecode.Variable;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 
@@ -235,6 +254,8 @@ import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.TypeUtils.writeNativeValue;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypesFromInput;
+import static com.facebook.presto.sql.gen.LambdaBytecodeGenerator.compileLambdaChannelProvider;
+import static com.facebook.presto.sql.gen.LambdaBytecodeGenerator.generateLambda;
 import static com.facebook.presto.sql.planner.ExpressionNodeInliner.replaceExpression;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.COORDINATOR_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_ARBITRARY_DISTRIBUTION;
@@ -253,6 +274,9 @@ import static com.facebook.presto.sql.planner.plan.TableWriterNode.WriterTarget;
 import static com.facebook.presto.sql.tree.BooleanLiteral.TRUE_LITERAL;
 import static com.facebook.presto.sql.tree.ComparisonExpression.Operator.LESS_THAN;
 import static com.facebook.presto.sql.tree.ComparisonExpression.Operator.LESS_THAN_OR_EQUAL;
+import static com.facebook.presto.util.CompilerUtils.defineClass;
+import static com.facebook.presto.util.CompilerUtils.makeClassName;
+import static com.facebook.presto.util.Reflection.constructorMethodHandle;
 import static com.facebook.presto.util.SpatialJoinUtils.ST_CONTAINS;
 import static com.facebook.presto.util.SpatialJoinUtils.ST_DISTANCE;
 import static com.facebook.presto.util.SpatialJoinUtils.ST_INTERSECTS;
@@ -270,6 +294,12 @@ import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Iterables.concat;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Range.closedOpen;
+import static io.airlift.bytecode.Access.PRIVATE;
+import static io.airlift.bytecode.Access.PUBLIC;
+import static io.airlift.bytecode.Access.a;
+import static io.airlift.bytecode.Parameter.arg;
+import static io.airlift.bytecode.ParameterizedType.type;
+import static io.airlift.bytecode.expression.BytecodeExpressions.constantFalse;
 import static io.airlift.units.DataSize.Unit.BYTE;
 import static java.lang.String.format;
 import static java.util.Collections.emptyList;
@@ -2496,14 +2526,54 @@ public class LocalExecutionPlanner
                 PhysicalOperation source,
                 Aggregation aggregation)
         {
-            List<Integer> arguments = new ArrayList<>();
+            List<Integer> valueChannels = new ArrayList<>();
             for (Expression argument : aggregation.getCall().getArguments()) {
-                if (argument instanceof LambdaExpression) {
-                    // Wenlei Hack TODO: Compile lambda
-                    continue;
+                if (!(argument instanceof LambdaExpression)) {
+                    Symbol argumentSymbol = Symbol.from(argument);
+                    valueChannels.add(source.getLayout().get(argumentSymbol));
                 }
-                Symbol argumentSymbol = Symbol.from(argument);
-                arguments.add(source.getLayout().get(argumentSymbol));
+            }
+
+            List<LambdaChannelProvider> lambdaChannelProviders = new ArrayList<>();
+            List<LambdaExpression> lambdaArguments = aggregation.getCall().getArguments().stream()
+                    .filter(LambdaExpression.class::isInstance)
+                    .map(LambdaExpression.class::cast)
+                    .collect(toImmutableList());
+            if (!lambdaArguments.isEmpty()) {
+                Map<Symbol, Integer> sourceLayout = source.getLayout();
+                Map<Integer, Type> sourceTypes = getInputTypes(source.getLayout(), source.getTypes());
+
+                // compiler uses inputs instead of symbols, so rewrite the expressions first
+                SymbolToInputRewriter symbolToInputRewriter = new SymbolToInputRewriter(sourceLayout);
+                FunctionCall rewrittenAggregationFunctionCall = (FunctionCall) symbolToInputRewriter.rewrite(aggregation.getCall());
+
+                Map<NodeRef<Expression>, Type> expressionTypes = null;
+
+                try {
+                    expressionTypes = getExpressionTypesFromInput(
+                            session,
+                            metadata,
+                            sqlParser,
+                            sourceTypes,
+                            rewrittenAggregationFunctionCall,
+                            emptyList(),
+                            WarningCollector.NOOP);
+                } catch (Exception e)
+                {
+                    e.printStackTrace();
+                }
+
+                for (LambdaExpression lambdaArgument : lambdaArguments) {
+                    LambdaDefinitionExpression lambda = (LambdaDefinitionExpression) toRowExpression(lambdaArgument, expressionTypes);
+                    Class<? extends LambdaChannelProvider> lambdaChannelProviderClass = compileLambdaChannelProvider(lambda, metadata.getFunctionRegistry(), BinaryFunctionInterface.class);
+
+                    try {
+                        lambdaChannelProviders.add((LambdaChannelProvider) constructorMethodHandle(lambdaChannelProviderClass, ConnectorSession.class).invoke(session.toConnectorSession()));
+                    }
+                    catch (Throwable throwable) {
+                        throw new RuntimeException(throwable);
+                    }
+                }
             }
 
             Optional<Integer> maskChannel = aggregation.getMask().map(value -> source.getLayout().get(value));
@@ -2526,7 +2596,7 @@ public class LocalExecutionPlanner
                     .getFunctionRegistry()
                     .getAggregateFunctionImplementation(aggregation.getSignature())
                     .bind(
-                            arguments,
+                            valueChannels,
                             maskChannel,
                             source.getTypes(),
                             getChannelsForSymbols(sortKeys, source.getLayout()),
@@ -2534,30 +2604,8 @@ public class LocalExecutionPlanner
                             pagesIndexFactory,
                             aggregation.getCall().isDistinct(),
                             joinCompiler,
-                            // Wenlei Hack TODO: For test purpose..
-                            hackGetLambdaChannelProviders(),
+                            lambdaChannelProviders,
                             session);
-        }
-
-        private List<LambdaChannelProvider> hackGetLambdaChannelProviders()
-        {
-            LambdaChannelProvider multiLambdaChannelProvider = new LambdaChannelProvider()
-            {
-                @Override
-                public Object getLambda()
-                {
-                    return new BinaryFunctionInterface()
-                    {
-                        @Override
-                        public Object apply(Object arg1, Object arg2)
-                        {
-                            return (long) arg1 * (long) arg2;
-                        }
-                    };
-                }
-            };
-
-            return ImmutableList.of(multiLambdaChannelProvider, multiLambdaChannelProvider);
         }
 
         private PhysicalOperation planGlobalAggregation(AggregationNode node, PhysicalOperation source, LocalExecutionPlanContext context)

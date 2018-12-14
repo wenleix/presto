@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static io.airlift.bytecode.BytecodeUtils.dumpBytecodeTree;
 import static io.airlift.bytecode.BytecodeUtils.toJavaIdentifierString;
 import static io.airlift.bytecode.ClassGenerator.classGenerator;
 import static io.airlift.bytecode.ParameterizedType.typeFromJavaClassName;
@@ -60,6 +61,7 @@ public final class CompilerUtils
     public static <T> Class<? extends T> defineClass(ClassDefinition classDefinition, Class<T> superType, DynamicClassLoader classLoader)
     {
         log.debug("Defining class: %s", classDefinition.getName());
+        System.err.println(dumpBytecodeTree(classDefinition));
         return classGenerator(classLoader).defineClass(classDefinition, superType);
     }
 }
