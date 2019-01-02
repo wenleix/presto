@@ -34,15 +34,23 @@ import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.operator.ForScheduler;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.server.BasicQueryInfo;
+import com.facebook.presto.spi.CatalogSchemaTableName;
+import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.ErrorCode;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
+import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.split.SplitManager;
 import com.facebook.presto.split.SplitSource;
 import com.facebook.presto.sql.analyzer.Analysis;
 import com.facebook.presto.sql.analyzer.Analyzer;
+import com.facebook.presto.sql.analyzer.Field;
+import com.facebook.presto.sql.analyzer.MaterializedIntermediateExtractor;
 import com.facebook.presto.sql.analyzer.QueryExplainer;
+import com.facebook.presto.sql.analyzer.RelationType;
+import com.facebook.presto.sql.analyzer.RootAndIntermediateQueries;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.DistributedExecutionPlanner;
 import com.facebook.presto.sql.planner.InputExtractor;
@@ -58,7 +66,15 @@ import com.facebook.presto.sql.planner.StageExecutionPlan;
 import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.tree.Explain;
+import com.facebook.presto.sql.tree.Identifier;
+import com.facebook.presto.sql.tree.Insert;
+import com.facebook.presto.sql.tree.QualifiedName;
+import com.facebook.presto.sql.tree.Query;
+import com.facebook.presto.sql.tree.Statement;
+import com.facebook.presto.sql.tree.Table;
+import com.facebook.presto.sql.tree.WithQuery;
 import com.facebook.presto.transaction.TransactionManager;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.SetThreadName;
@@ -71,6 +87,7 @@ import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
 import java.net.URI;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -83,8 +100,10 @@ import java.util.function.Consumer;
 import static com.facebook.presto.OutputBuffers.BROADCAST_PARTITION_ID;
 import static com.facebook.presto.OutputBuffers.createInitialEmptyOutputBuffers;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
+import static com.facebook.presto.sql.analyzer.MaterializedIntermediateExtractor.extractRootAndIntermediateQueries;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.concurrent.MoreFutures.addExceptionCallback;
 import static io.airlift.concurrent.MoreFutures.addSuccessCallback;
 import static io.airlift.units.DataSize.Unit.BYTE;
@@ -122,9 +141,10 @@ public class SqlQueryExecution
     private final NodeTaskMap nodeTaskMap;
     private final ExecutionPolicy executionPolicy;
     private final SplitSchedulerStats schedulerStats;
-    private final Analysis analysis;
     private final StatsCalculator statsCalculator;
     private final CostCalculator costCalculator;
+    private final Statement statement;
+    private final Analyzer analyzer;
 
     private SqlQueryExecution(
             String query,
@@ -195,7 +215,7 @@ public class SqlQueryExecution
 
             // analyze query
             requireNonNull(preparedQuery, "preparedQuery is null");
-            Analyzer analyzer = new Analyzer(
+            analyzer = new Analyzer(
                     stateMachine.getSession(),
                     metadata,
                     sqlParser,
@@ -203,9 +223,7 @@ public class SqlQueryExecution
                     Optional.of(queryExplainer),
                     preparedQuery.getParameters(),
                     warningCollector);
-            this.analysis = analyzer.analyze(preparedQuery.getStatement());
-
-            stateMachine.setUpdateType(analysis.getUpdateType());
+            statement = preparedQuery.getStatement();
 
             // when the query finishes cache the final query info, and clear the reference to the output stage
             stateMachine.addStateChangeListener(state -> {
@@ -341,19 +359,34 @@ public class SqlQueryExecution
                     return;
                 }
 
+                RootAndIntermediateQueries statement = extractRootAndIntermediateQueries(getSession(), metadata, this.statement);
+
+                // time analysis phase
+                long analysisStart = System.nanoTime();
+
                 // analyze query
-                PlanRoot plan = analyzeQuery();
+                List<PlanRoot> intermediatePlans = analyzeIntermediateQueries(statement.getWithQueries());
+                PlanRoot planRoot = analyzeRootQuery(statement.getRootStatement());
 
-                metadata.beginQuery(getSession(), plan.getConnectors());
+                // record analysis time
+                stateMachine.recordAnalysisTime(analysisStart);
 
-                // plan distribution of query
-                planDistribution(plan);
+                Set<ConnectorId> connectors = new HashSet<>();
+                for (PlanRoot plan : intermediatePlans) {
+                    connectors.addAll(plan.getConnectors());
+                }
+                connectors.addAll(planRoot.getConnectors());
+
+                metadata.beginQuery(getSession(), connectors);
 
                 // transition to starting
                 if (!stateMachine.transitionToStarting()) {
                     // query already started or finished
                     return;
                 }
+
+                // plan distribution of query
+                planDistribution(planRoot, intermediatePlans);
 
                 // if query is not finished, start the scheduler, otherwise cancel it
                 SqlQueryScheduler scheduler = queryScheduler.get();
@@ -395,43 +428,122 @@ public class SqlQueryExecution
         stateMachine.addQueryInfoStateChangeListener(stateChangeListener);
     }
 
-    private PlanRoot analyzeQuery()
+    private List<PlanRoot> analyzeIntermediateQueries(List<MaterializedIntermediateExtractor.WithQueryQualifiedName> withQueries)
+    {
+        ImmutableList.Builder<PlanRoot> builder = ImmutableList.builder();
+        for (MaterializedIntermediateExtractor.WithQueryQualifiedName withQueryQualifiedName : withQueries) {
+            Insert insert = getInsert(withQueryQualifiedName.getWithQuery(), withQueryQualifiedName.getQualifiedName());
+            Analysis analysis = analyzer.analyze(insert);
+
+            // plan query
+            PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
+            LogicalPlanner logicalPlanner = new LogicalPlanner(stateMachine.getSession(), planOptimizers, idAllocator, metadata, sqlParser, statsCalculator, costCalculator, stateMachine.getWarningCollector());
+            Plan plan = logicalPlanner.plan(analysis);
+            queryPlan.set(plan);
+
+            builder.add(doAnalyzeQuery(analysis, plan));
+        }
+        return builder.build();
+    }
+
+    private PlanRoot analyzeRootQuery(Statement statement)
     {
         try {
-            return doAnalyzeQuery();
+            Analysis analysis = analyzer.analyze(statement);
+            stateMachine.setUpdateType(analysis.getUpdateType());
+
+            // plan query
+            PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
+            LogicalPlanner logicalPlanner = new LogicalPlanner(stateMachine.getSession(), planOptimizers, idAllocator, metadata, sqlParser, statsCalculator, costCalculator, stateMachine.getWarningCollector());
+            Plan plan = logicalPlanner.plan(analysis);
+            queryPlan.set(plan);
+
+            // extract output
+            Optional<Output> output = new OutputExtractor().extractOutput(plan.getRoot());
+            stateMachine.setOutput(output);
+
+            return doAnalyzeQuery(analysis, plan);
         }
         catch (StackOverflowError e) {
             throw new PrestoException(NOT_SUPPORTED, "statement is too large (stack overflow during analysis)", e);
         }
     }
 
-    private PlanRoot doAnalyzeQuery()
+    private PlanRoot doAnalyzeQuery(Analysis analysis, Plan plan)
     {
-        // time analysis phase
-        long analysisStart = System.nanoTime();
-
-        // plan query
-        PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
-        LogicalPlanner logicalPlanner = new LogicalPlanner(stateMachine.getSession(), planOptimizers, idAllocator, metadata, sqlParser, statsCalculator, costCalculator, stateMachine.getWarningCollector());
-        Plan plan = logicalPlanner.plan(analysis);
-        queryPlan.set(plan);
-
         // extract inputs
         List<Input> inputs = new InputExtractor(metadata, stateMachine.getSession()).extractInputs(plan.getRoot());
-        stateMachine.setInputs(inputs);
-
-        // extract output
-        Optional<Output> output = new OutputExtractor().extractOutput(plan.getRoot());
-        stateMachine.setOutput(output);
+        stateMachine.addInputs(inputs);
 
         // fragment the plan
         SubPlan fragmentedPlan = planFragmenter.createSubPlans(stateMachine.getSession(), metadata, nodePartitioningManager, plan, false);
 
-        // record analysis time
-        stateMachine.recordAnalysisTime(analysisStart);
-
         boolean explainAnalyze = analysis.getStatement() instanceof Explain && ((Explain) analysis.getStatement()).isAnalyze();
         return new PlanRoot(fragmentedPlan, !explainAnalyze, extractConnectors(analysis));
+    }
+
+    private Insert getInsert(WithQuery withQuery, CatalogSchemaTableName target)
+    {
+        QualifiedName targetQualifiedName = QualifiedName.of(target.getCatalogName(), target.getSchemaTableName().getSchemaName(), target.getSchemaTableName().getTableName());
+        Query innerQuery = withQuery.getQuery();
+        Analysis innerQueryAnalysis = analyzer.analyze(innerQuery);
+        RelationType queryDescriptor = innerQueryAnalysis.getOutputDescriptor(innerQuery);
+
+        List<ColumnMetadata> columnMetadata = getColumnMetadata(withQuery, targetQualifiedName, queryDescriptor);
+        SchemaTableName schemaTableName = new SchemaTableName(target.getSchemaTableName().getSchemaName(), target.getSchemaTableName().getTableName());
+        ConnectorTableMetadata connectorTableMetadata = new ConnectorTableMetadata(schemaTableName, columnMetadata);
+        metadata.createTable(getSession(), target.getCatalogName(), connectorTableMetadata, false);
+
+        return new Insert(targetQualifiedName, Optional.empty(), innerQuery);
+    }
+
+    /**
+     * The following code is copied from {@link com.facebook.presto.sql.analyzer.StatementAnalyzer.Visitor#visitTable(Table, Optional)}
+     */
+    private List<ColumnMetadata> getColumnMetadata(WithQuery withQuery, QualifiedName targetQualifiedName, RelationType queryDescriptor)
+    {
+        final List<Field> fields;
+        if (withQuery.getColumnNames().isPresent()) {
+            // if columns are explicitly aliased -> WITH cte(alias1, alias2 ...)
+            ImmutableList.Builder<Field> fieldBuilder = ImmutableList.builder();
+
+            int field = 0;
+            for (Identifier columnName : withQuery.getColumnNames().get()) {
+                Field inputField = queryDescriptor.getFieldByIndex(field);
+                fieldBuilder.add(Field.newQualified(
+                        targetQualifiedName,
+                        Optional.of(columnName.getValue()),
+                        inputField.getType(),
+                        false,
+                        inputField.getOriginTable(),
+                        inputField.getOriginColumnName(),
+                        inputField.isAliased()));
+
+                field++;
+            }
+
+            fields = fieldBuilder.build();
+        }
+        else {
+            fields = queryDescriptor.getAllFields().stream()
+                    .map(field -> Field.newQualified(
+                            targetQualifiedName,
+                            field.getName(),
+                            field.getType(),
+                            field.isHidden(),
+                            field.getOriginTable(),
+                            field.getOriginColumnName(),
+                            field.isAliased()))
+                    .collect(toImmutableList());
+        }
+        return fields.stream()
+                .map(field -> new ColumnMetadata(
+                        field.getName().get(),
+                        field.getType(),
+                        null,
+                        null,
+                        field.isHidden()))
+                .collect(toImmutableList());
     }
 
     private static Set<ConnectorId> extractConnectors(Analysis analysis)
@@ -450,14 +562,17 @@ public class SqlQueryExecution
         return connectors.build();
     }
 
-    private void planDistribution(PlanRoot plan)
+    private void planDistribution(PlanRoot planRoot, List<PlanRoot> intermediatePlans)
     {
         // time distribution planning
         long distributedPlanningStart = System.nanoTime();
 
         // plan the execution on the active nodes
         DistributedExecutionPlanner distributedPlanner = new DistributedExecutionPlanner(splitManager);
-        StageExecutionPlan outputStageExecutionPlan = distributedPlanner.plan(plan.getRoot(), stateMachine.getSession());
+        StageExecutionPlan outputStageExecutionPlan = distributedPlanner.plan(
+                planRoot.getRoot(),
+                intermediatePlans.stream().map(PlanRoot::getRoot).collect(toImmutableList()),
+                stateMachine.getSession());
         stateMachine.recordDistributedPlanningTime(distributedPlanningStart);
 
         // ensure split sources are closed
@@ -475,7 +590,7 @@ public class SqlQueryExecution
         // record output field
         stateMachine.setColumns(outputStageExecutionPlan.getFieldNames(), outputStageExecutionPlan.getFragment().getTypes());
 
-        PartitioningHandle partitioningHandle = plan.getRoot().getFragment().getPartitioningScheme().getPartitioning().getHandle();
+        PartitioningHandle partitioningHandle = planRoot.getRoot().getFragment().getPartitioningScheme().getPartitioning().getHandle();
         OutputBuffers rootOutputBuffers = createInitialEmptyOutputBuffers(partitioningHandle)
                 .withBuffer(OUTPUT_BUFFER_ID, BROADCAST_PARTITION_ID)
                 .withNoMoreBufferIds();
@@ -489,7 +604,7 @@ public class SqlQueryExecution
                 nodeScheduler,
                 remoteTaskFactory,
                 stateMachine.getSession(),
-                plan.isSummarizeTaskInfos(),
+                planRoot.isSummarizeTaskInfos(),
                 scheduleSplitBatchSize,
                 queryExecutor,
                 schedulerExecutor,

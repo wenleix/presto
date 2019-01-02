@@ -594,6 +594,12 @@ public class QueryStateMachine
         this.inputs.set(ImmutableSet.copyOf(inputs));
     }
 
+    public void addInputs(List<Input> inputs)
+    {
+        requireNonNull(inputs, "inputs is null");
+        this.inputs.updateAndGet(existingInputs -> ImmutableSet.<Input>builder().addAll(existingInputs).addAll(inputs).build());
+    }
+
     public void setOutput(Optional<Output> output)
     {
         requireNonNull(output, "output is null");

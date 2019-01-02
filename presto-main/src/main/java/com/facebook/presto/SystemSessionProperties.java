@@ -16,11 +16,13 @@ package com.facebook.presto;
 import com.facebook.presto.execution.QueryManagerConfig;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.memory.MemoryManagerConfig;
+import com.facebook.presto.spi.CatalogSchemaName;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -116,6 +118,8 @@ public final class SystemSessionProperties
     public static final String IGNORE_STATS_CALCULATOR_FAILURES = "ignore_stats_calculator_failures";
     public static final String MAX_DRIVERS_PER_TASK = "max_drivers_per_task";
     public static final String DEFAULT_FILTER_FACTOR_ENABLED = "default_filter_factor_enabled";
+    public static final String TO_MATERIALIZE = "to_materialize";
+    public static final String TEMP_CATALOG_SCHEMA = "temp_catalog_schema";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -380,6 +384,16 @@ public final class SystemSessionProperties
                         SPATIAL_PARTITIONING_TABLE_NAME,
                         "Name of the table containing spatial partitioning scheme",
                         null,
+                        false),
+                stringProperty(
+                        TO_MATERIALIZE,
+                        "tables to materialize",
+                        "",
+                        false),
+                stringProperty(
+                        TEMP_CATALOG_SCHEMA,
+                        "catalog schema to store the stuff",
+                        "",
                         false),
                 integerProperty(
                         CONCURRENT_LIFESPANS_PER_NODE,
@@ -924,5 +938,16 @@ public final class SystemSessionProperties
     public static boolean isDefaultFilterFactorEnabled(Session session)
     {
         return session.getSystemProperty(DEFAULT_FILTER_FACTOR_ENABLED, Boolean.class);
+    }
+
+    public static Optional<CatalogSchemaName> getTempCatalogSchema(Session session)
+    {
+        String tempCatalogSchemaString = session.getSystemProperty(TEMP_CATALOG_SCHEMA, String.class);
+        if (tempCatalogSchemaString == null) {
+            return Optional.empty();
+        }
+        List<String> elements = Splitter.on('.').splitToList(tempCatalogSchemaString);
+        checkArgument(elements.size() == 2, "Incorrect catalog schema specified: %s", tempCatalogSchemaString);
+        return Optional.of(new CatalogSchemaName(elements.get(0), elements.get(1)));
     }
 }

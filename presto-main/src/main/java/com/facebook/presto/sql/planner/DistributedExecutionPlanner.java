@@ -78,11 +78,11 @@ public class DistributedExecutionPlanner
         this.splitManager = requireNonNull(splitManager, "splitManager is null");
     }
 
-    public StageExecutionPlan plan(SubPlan root, Session session)
+    public StageExecutionPlan plan(SubPlan root, List<SubPlan> intermediates, Session session)
     {
         ImmutableList.Builder<SplitSource> allSplitSources = ImmutableList.builder();
         try {
-            return doPlan(root, session, allSplitSources);
+            return doPlan(root, intermediates, session, allSplitSources);
         }
         catch (Throwable t) {
             allSplitSources.build().forEach(DistributedExecutionPlanner::closeSplitSource);
@@ -100,17 +100,25 @@ public class DistributedExecutionPlanner
         }
     }
 
-    private StageExecutionPlan doPlan(SubPlan root, Session session, ImmutableList.Builder<SplitSource> allSplitSources)
+    private StageExecutionPlan doPlan(SubPlan root, List<SubPlan> intermediates, Session session, ImmutableList.Builder<SplitSource> allSplitSources)
     {
+        ImmutableList.Builder<StageExecutionPlan> dependencies = ImmutableList.builder();
+
         PlanFragment currentFragment = root.getFragment();
 
         // get splits for this fragment, this is lazy so split assignments aren't actually calculated here
         Map<PlanNodeId, SplitSource> splitSources = currentFragment.getRoot().accept(new Visitor(session, currentFragment.getStageExecutionStrategy(), allSplitSources), null);
 
+        if (intermediates.size() > 1) {
+            dependencies.add(doPlan(intermediates.get(0), intermediates.subList(1, intermediates.size() - 1), session, allSplitSources));
+        }
+        if (intermediates.size() == 1) {
+            dependencies.add(doPlan(intermediates.get(0), ImmutableList.of(), session, allSplitSources));
+        }
+
         // create child stages
-        ImmutableList.Builder<StageExecutionPlan> dependencies = ImmutableList.builder();
         for (SubPlan childPlan : root.getChildren()) {
-            dependencies.add(doPlan(childPlan, session, allSplitSources));
+            dependencies.add(doPlan(childPlan, ImmutableList.of(), session, allSplitSources));
         }
 
         return new StageExecutionPlan(
