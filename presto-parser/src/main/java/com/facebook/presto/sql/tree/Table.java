@@ -20,26 +20,30 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
+import static com.google.common.base.Preconditions.checkArgument;
+import static java.util.Objects.requireNonNull;
 
 public class Table
         extends QueryBody
 {
     private final QualifiedName name;
+    private final List<Annotation> annotations;
 
     public Table(QualifiedName name)
     {
-        this(Optional.empty(), name);
+        this(Optional.empty(), name, ImmutableList.of());
     }
 
     public Table(NodeLocation location, QualifiedName name)
     {
-        this(Optional.of(location), name);
+        this(Optional.of(location), name, ImmutableList.of());
     }
 
-    private Table(Optional<NodeLocation> location, QualifiedName name)
+    private Table(Optional<NodeLocation> location, QualifiedName name, List<Annotation> annotations)
     {
         super(location);
         this.name = name;
+        this.annotations = ImmutableList.copyOf(requireNonNull(annotations, "annotations is null"));
     }
 
     public QualifiedName getName()
@@ -54,6 +58,13 @@ public class Table
     }
 
     @Override
+    public Table withAnnotations(List<Annotation> annotations)
+    {
+        checkArgument(this.annotations.isEmpty());
+        return new Table(getLocation(), name, annotations);
+    }
+
+    @Override
     public List<Node> getChildren()
     {
         return ImmutableList.of();
@@ -63,7 +74,8 @@ public class Table
     public String toString()
     {
         return toStringHelper(this)
-                .addValue(name)
+                .add("name", name)
+                .add("annotations", annotations)
                 .toString();
     }
 

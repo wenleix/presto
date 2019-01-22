@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.tree;
 
+import java.util.List;
 import java.util.Optional;
 
 public abstract class Relation
@@ -27,5 +28,10 @@ public abstract class Relation
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitRelation(this, context);
+    }
+
+    public Relation withAnnotations(List<Annotation> annotaions)
+    {
+        throw new UnsupportedOperationException();
     }
 }

@@ -127,6 +127,14 @@ property
     : identifier EQ expression
     ;
 
+annotations
+    : '{' annotation (',' annotation)* '}'
+    ;
+
+annotation
+    : identifier EQ expression
+    ;
+
 queryNoWith:
       queryTerm
       (ORDER BY sortItem (',' sortItem)*)?
@@ -222,7 +230,9 @@ sampleType
     ;
 
 aliasedRelation
-    : relationPrimary (AS? identifier columnAliases?)?
+    : relationPrimary
+        ('@' annotations)?
+        (AS? identifier columnAliases?)?
     ;
 
 columnAliases

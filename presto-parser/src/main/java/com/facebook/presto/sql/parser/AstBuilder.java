@@ -16,6 +16,7 @@ package com.facebook.presto.sql.parser;
 import com.facebook.presto.sql.tree.AddColumn;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
+import com.facebook.presto.sql.tree.Annotation;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
 import com.facebook.presto.sql.tree.ArrayConstructor;
@@ -487,6 +488,12 @@ class AstBuilder
         return new Property(getLocation(context), (Identifier) visit(context.identifier()), (Expression) visit(context.expression()));
     }
 
+    @Override
+    public Node visitAnnotation(SqlBaseParser.AnnotationContext context)
+    {
+        return new Annotation(getLocation(context), (Identifier) visit(context.identifier()), (Expression) visit(context.expression()));
+    }
+
     // ********************** query expressions ********************
 
     @Override
@@ -954,6 +961,10 @@ class AstBuilder
     public Node visitAliasedRelation(SqlBaseParser.AliasedRelationContext context)
     {
         Relation child = (Relation) visit(context.relationPrimary());
+
+        if (context.annotations() != null) {
+            child = child.withAnnotations(visit(context.annotations().annotation(), Annotation.class));
+        }
 
         if (context.identifier() == null) {
             return child;
