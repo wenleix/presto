@@ -35,7 +35,7 @@ Array Functions
 
 .. function:: array_except(x, y) -> array
 
-    Returns an array of elements in ``x`` but not in ``y``, without duplicates.
+    Returns an array of elements in ``x`` but not in ``y``, without duplicateas.
 
 .. function:: array_join(x, delimiter, null_replacement) -> varchar
 

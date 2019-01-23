@@ -943,7 +943,7 @@ public final class SystemSessionProperties
     public static Optional<CatalogSchemaName> getTempCatalogSchema(Session session)
     {
         String tempCatalogSchemaString = session.getSystemProperty(TEMP_CATALOG_SCHEMA, String.class);
-        if (tempCatalogSchemaString == null) {
+        if (tempCatalogSchemaString.isEmpty()) {
             return Optional.empty();
         }
         List<String> elements = Splitter.on('.').splitToList(tempCatalogSchemaString);

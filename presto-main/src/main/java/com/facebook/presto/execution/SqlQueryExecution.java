@@ -492,7 +492,7 @@ public class SqlQueryExecution
         List<ColumnMetadata> columnMetadata = getColumnMetadata(withQuery, targetQualifiedName, queryDescriptor);
         SchemaTableName schemaTableName = new SchemaTableName(target.getSchemaTableName().getSchemaName(), target.getSchemaTableName().getTableName());
         ConnectorTableMetadata connectorTableMetadata = new ConnectorTableMetadata(schemaTableName, columnMetadata);
-        metadata.createTable(getSession(), target.getCatalogName(), connectorTableMetadata, false);
+//        metadata.createTable(getSession(), target.getCatalogName(), connectorTableMetadata, false);
 
         return new Insert(targetQualifiedName, Optional.empty(), innerQuery);
     }

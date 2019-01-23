@@ -106,7 +106,7 @@ public final class MaterializedIntermediateExtractor
                 CatalogSchemaTableName target = new CatalogSchemaTableName(
                         catalogSchemaName.getCatalogName(),
                         catalogSchemaName.getSchemaName(),
-                        format("%s_%s", node.getName().getValue(), randomUUID().hashCode()));
+                        format("%s_%s", node.getName().getValue(), randomUUID()));
                 context.addWithQuery(target, node);
                 QualifiedName qualifiedName = QualifiedName.of(target.getCatalogName(), target.getSchemaTableName().getSchemaName(), target.getSchemaTableName().getTableName());
                 nameMap.put(node.getName().getValue(), qualifiedName);
