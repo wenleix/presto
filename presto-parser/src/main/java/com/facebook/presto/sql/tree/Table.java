@@ -51,6 +51,11 @@ public class Table
         return name;
     }
 
+    public List<Annotation> getAnnotations()
+    {
+        return annotations;
+    }
+
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {

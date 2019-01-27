@@ -15,9 +15,15 @@ package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.metadata.NewTableLayout;
 import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.spi.ColumnHandle;
+import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.ConnectorTableMetadata;
+import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.MapType;
 import com.facebook.presto.spi.type.RowType;
@@ -38,11 +44,13 @@ import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
+import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.UnionNode;
 import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.tree.AliasedRelation;
+import com.facebook.presto.sql.tree.ArrayConstructor;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.CoalesceExpression;
 import com.facebook.presto.sql.tree.ComparisonExpression;
@@ -57,6 +65,7 @@ import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.JoinUsing;
 import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.Lateral;
+import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.NodeRef;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.Query;
@@ -65,6 +74,7 @@ import com.facebook.presto.sql.tree.Relation;
 import com.facebook.presto.sql.tree.Row;
 import com.facebook.presto.sql.tree.SampledRelation;
 import com.facebook.presto.sql.tree.SetOperation;
+import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.facebook.presto.sql.tree.Table;
 import com.facebook.presto.sql.tree.TableSubquery;
@@ -85,7 +95,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
+import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
+import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.analyzer.SemanticExceptions.notSupportedException;
 import static com.facebook.presto.sql.planner.plan.AggregationNode.singleGroupingSet;
 import static com.facebook.presto.sql.tree.Join.Type.INNER;
@@ -159,6 +172,51 @@ class RelationPlanner
 
         List<Symbol> outputSymbols = outputSymbolsBuilder.build();
         PlanNode root = new TableScanNode(idAllocator.getNextId(), handle, outputSymbols, columns.build());
+
+        if (!node.getAnnotations().isEmpty()) {
+            // Hack, many hard coded :P
+
+            String catalogName = "hive_bucketed";
+
+            ConnectorId connectorId = metadata.getCatalogHandle(session, catalogName)
+                    .orElseThrow(() -> new PrestoException(NOT_FOUND, "Catalog does not exist: " + catalogName));
+
+            Map<String, Object> properties = metadata.getTablePropertyManager().getProperties(
+                    connectorId,
+                    catalogName,
+                    ImmutableMap.of(
+                            // hmm, looks very wrong....
+                            "bucketed_by", new ArrayConstructor(ImmutableList.of(new StringLiteral("custkey"))),
+                            "bucket_count", new LongLiteral("11")),
+                    session,
+                    metadata,
+                    ImmutableList.of());
+
+            System.err.println("Just debug:" + properties);
+
+            // HACK: This is not the correct way...
+            // StageTableNode was originally introduced to delay the creation of NewTableLayout
+            // (thus we don't have to fix the schema at the beginning).
+            // We probably still need to figure out someway to derive the paritition property without NewTableLayout
+            // What we really need is Partitioning...
+            ConnectorTableMetadata tableMetadata = new ConnectorTableMetadata(
+                    new SchemaTableName("tpch_bucketed", "tmp_table_" + UUID.randomUUID().toString()),
+                    ImmutableList.of(
+                            new ColumnMetadata("custkey", BIGINT)
+                    ),
+                    properties);
+
+
+            // HACK: As discussed, this is creating the layout too early.. what we really want is Partitioning...
+            // Update: This is OK, as get new table layout doesn't have side effect. We commit some columns might be pruned later, but that's OK
+            // If it's really a problem, we can introduce a new "StageTableLayout", which doesn't have columns...
+            Optional<NewTableLayout> stageTableLayout = metadata.getNewTableLayout(session, catalogName, tableMetadata);
+            checkState(stageTableLayout.isPresent());
+            System.err.println("DEBUG: newTableLayout = " + stageTableLayout);
+
+            root = new StageTableNode(idAllocator.getNextId(), root, stageTableLayout.get(), outputSymbols, outputSymbols);
+        }
+
         return new RelationPlan(root, scope, outputSymbols);
     }
 

@@ -47,6 +47,7 @@ import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
+import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
@@ -269,6 +270,13 @@ public final class StreamPropertyDerivations
                 return new StreamProperties(MULTIPLE, Optional.empty(), false);
             }
             return new StreamProperties(MULTIPLE, streamPartitionSymbols, false);
+        }
+
+        @Override
+        public StreamProperties visitStageTable(StageTableNode node, List<StreamProperties> inputProperties)
+        {
+            // hmm... seems OK for now...
+            return new StreamProperties(MULTIPLE, Optional.empty(), false);
         }
 
         private static Optional<Set<Symbol>> getNonConstantSymbols(Set<ColumnHandle> columnHandles, Map<ColumnHandle, Symbol> assignments, Set<ColumnHandle> globalConstants)

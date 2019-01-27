@@ -54,6 +54,7 @@ import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
+import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
@@ -533,6 +534,32 @@ public class AddExchanges
             }
             return rebaseAndDeriveProperties(node, source);
         }
+
+        @Override
+        public PlanWithProperties visitStageTable(StageTableNode node, PreferredProperties preferredProperties)
+        {
+            PlanWithProperties source = node.getSource().accept(this, preferredProperties);
+
+            // TODO: Should also take care about scaleWriters and redistributeWrites
+
+            if (!source.getProperties().isCompatibleTablePartitioningWith(
+                    node.getTablePartitioning(),
+                    false,
+                    metadata,
+                    session)) {
+                source = withDerivedProperties(
+                        partitionedExchange(
+                                idAllocator.getNextId(),
+                                REMOTE,
+                                source.getNode(),
+                                // See https://github.com/prestodb/presto/blob/50e856c016c1edc0e61e7ac0293e1c78f9c4da69/presto-main/src/main/java/com/facebook/presto/sql/planner/LogicalPlanner.java#L352
+                                new PartitioningScheme(node.getTablePartitioning(), node.getInputSymbols())),
+                        source.getProperties());
+
+            }
+            return rebaseAndDeriveProperties(node, source);
+        }
+
 
         private PlanWithProperties planTableScan(TableScanNode node, Expression predicate, PreferredProperties preferredProperties)
         {

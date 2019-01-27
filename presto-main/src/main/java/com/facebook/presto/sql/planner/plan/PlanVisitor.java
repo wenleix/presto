@@ -114,6 +114,11 @@ public abstract class PlanVisitor<R, C>
         return visitPlan(node, context);
     }
 
+    public R visitStageTable(StageTableNode node, C context)
+    {
+        return visitPlan(node, context);
+    }
+
     public R visitTableWriter(TableWriterNode node, C context)
     {
         return visitPlan(node, context);

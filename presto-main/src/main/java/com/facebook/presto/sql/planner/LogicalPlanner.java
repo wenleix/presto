@@ -47,9 +47,11 @@ import com.facebook.presto.sql.planner.plan.ExplainAnalyzeNode;
 import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
+import com.facebook.presto.sql.planner.plan.PlanVisitor;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.StatisticAggregations;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
+import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.sanity.PlanSanityChecker;
@@ -158,10 +160,36 @@ public class LogicalPlanner
 
         planSanityChecker.validateIntermediatePlan(root, session, metadata, sqlParser, symbolAllocator.getTypes(), warningCollector);
 
+        int optOrd = 0;
         if (stage.ordinal() >= Stage.OPTIMIZED.ordinal()) {
             for (PlanOptimizer optimizer : planOptimizers) {
                 root = optimizer.optimize(root, session, symbolAllocator.getTypes(), symbolAllocator, idAllocator, warningCollector);
                 requireNonNull(root, format("%s returned a null plan", optimizer.getClass().getName()));
+
+                /*
+                List<TableScanNode> tableScanNodes = root.accept(
+                        new PlanVisitor<List<TableScanNode>, List<TableScanNode>>() {
+                            @Override
+                            protected List<TableScanNode> visitPlan(PlanNode node, List<TableScanNode> context)
+                            {
+                                if (node instanceof TableScanNode) {
+                                    context.add((TableScanNode) node);
+                                }
+
+                                node.getSources().forEach(child -> visitPlan(child, context));
+
+                                return context;
+                            }},
+                        new ArrayList<>());
+
+                if (tableScanNodes.size() == 2) {
+                    System.err.println("Wenlei Debug: applied optimization " + optOrd);
+                    for (TableScanNode tsNode : tableScanNodes) {
+                        System.err.println("Wenlei Debug: TS assignemnts size: " + tsNode.getAssignments().size());
+                    }
+                }
+                optOrd++;
+                */
             }
         }
 

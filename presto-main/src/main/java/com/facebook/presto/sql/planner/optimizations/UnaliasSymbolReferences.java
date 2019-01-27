@@ -54,6 +54,7 @@ import com.facebook.presto.sql.planner.plan.SetOperationNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
+import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
@@ -85,6 +86,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.google.common.base.Preconditions.checkState;
@@ -392,7 +394,6 @@ public class UnaliasSymbolReferences
         public PlanNode visitFilter(FilterNode node, RewriteContext<Void> context)
         {
             PlanNode source = context.rewrite(node.getSource());
-
             return new FilterNode(node.getId(), source, canonicalize(node.getPredicate()));
         }
 
@@ -401,6 +402,17 @@ public class UnaliasSymbolReferences
         {
             PlanNode source = context.rewrite(node.getSource());
             return new ProjectNode(node.getId(), source, canonicalize(node.getAssignments()));
+        }
+
+        @Override
+        public PlanNode visitStageTable(StageTableNode node, RewriteContext<Void> context)
+        {
+            PlanNode source = context.rewrite(node.getSource());
+
+            List<Symbol> canonicalSymbols = node.getOutputSymbols().stream()
+                    .map(this::canonicalize)
+                    .collect(Collectors.toList());
+            return new StageTableNode(node.getId(), source, node.getStageTableLayout(), canonicalSymbols, canonicalSymbols);
         }
 
         @Override

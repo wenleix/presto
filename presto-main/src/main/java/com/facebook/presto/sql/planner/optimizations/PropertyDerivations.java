@@ -59,6 +59,7 @@ import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
+import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
@@ -715,6 +716,16 @@ public class PropertyDerivations
                     .build();
             properties.local(LocalProperties.translate(constantAppendedLocalProperties, column -> Optional.ofNullable(assignments.get(column))));
 
+            return properties.build();
+        }
+
+        @Override
+        public ActualProperties visitStageTable(StageTableNode node, List<ActualProperties> inputProperties)
+        {
+            ActualProperties.Builder properties = ActualProperties.builder();
+            properties.global(Global.partitionedOn(node.getTablePartitioning(), Optional.empty()));
+
+            // TODO: also drive other properties such as local, constant...
             return properties.build();
         }
 

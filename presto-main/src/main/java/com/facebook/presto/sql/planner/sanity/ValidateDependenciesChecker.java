@@ -51,6 +51,7 @@ import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SetOperationNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
+import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
@@ -251,6 +252,19 @@ public final class ValidateDependenciesChecker
             for (Expression expression : node.getAssignments().getExpressions()) {
                 Set<Symbol> dependencies = SymbolsExtractor.extractUnique(expression);
                 checkDependencies(inputs, dependencies, "Invalid node. Expression dependencies (%s) not in source plan output (%s)", dependencies, inputs);
+            }
+
+            return null;
+        }
+
+        @Override
+        public Void visitStageTable(StageTableNode node, Set<Symbol> boundSymbols)
+        {
+            PlanNode source = node.getSource();
+            source.accept(this, boundSymbols); // visit child
+
+            for (int i = 0; i < node.getInputSymbols().size(); i++) {
+                checkArgument(node.getInputSymbols().get(i) == node.getOutputSymbols().get(i));
             }
 
             return null;

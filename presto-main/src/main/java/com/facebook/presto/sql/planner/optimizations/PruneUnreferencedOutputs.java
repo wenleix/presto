@@ -50,6 +50,7 @@ import com.facebook.presto.sql.planner.plan.SetOperationNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
+import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.StatisticAggregations;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
@@ -651,6 +652,19 @@ public class PruneUnreferencedOutputs
                     node.getPartitioningScheme(),
                     node.getStatisticsAggregation(),
                     node.getStatisticsAggregationDescriptor());
+        }
+
+        @Override
+        public PlanNode visitStageTable(StageTableNode node, RewriteContext<Set<Symbol>> context)
+        {
+            // TODO... allow to do unreferenced output prune...
+            PlanNode source = context.rewrite(node.getSource(), ImmutableSet.copyOf(node.getInputSymbols()));
+            return new StageTableNode(
+                    node.getId(),
+                    source,
+                    node.getStageTableLayout(),
+                    node.getInputSymbols(),
+                    node.getOutputSymbols());
         }
 
         @Override

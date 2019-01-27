@@ -78,6 +78,7 @@ import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
+import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.StatisticAggregations;
 import com.facebook.presto.sql.planner.plan.StatisticAggregationsDescriptor;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
@@ -848,6 +849,17 @@ public class PlanPrinter
             printTableScanInfo(node, indent);
 
             return null;
+        }
+
+        @Override
+        public Void visitStageTable(StageTableNode node, Integer indent)
+        {
+            // Some quick thing to print...
+            print(indent, "- StageTable => %s, Layout: %s",
+                    formatOutputs(node.getOutputSymbols()),
+                    node.getStageTableLayout());
+
+            return processChildren(node, indent + 1);
         }
 
         @Override
