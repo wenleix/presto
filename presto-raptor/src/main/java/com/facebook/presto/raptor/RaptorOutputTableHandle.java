@@ -102,6 +102,7 @@ public class RaptorOutputTableHandle
     }
 
     @JsonProperty
+    @Override
     public List<RaptorColumnHandle> getColumnHandles()
     {
         return columnHandles;

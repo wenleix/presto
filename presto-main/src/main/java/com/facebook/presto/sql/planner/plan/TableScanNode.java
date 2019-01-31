@@ -50,6 +50,10 @@ public class TableScanNode
 
     private final TupleDomain<ColumnHandle> enforcedConstraint;
 
+    // Wenlei!@#$%
+    // It shoudn't be considered as a source, but should be done in some "PlanSectioner"
+    private final Optional<TableFinishNode> stagedTableFinishedNode;
+
     @JsonCreator
     public TableScanNode(
             @JsonProperty("id") PlanNodeId id,
@@ -67,6 +71,7 @@ public class TableScanNode
         this.tableLayout = requireNonNull(tableLayout, "tableLayout is null");
         this.currentConstraint = null;
         this.enforcedConstraint = null;
+        this.stagedTableFinishedNode = Optional.empty();
     }
 
     public TableScanNode(
@@ -75,7 +80,7 @@ public class TableScanNode
             List<Symbol> outputs,
             Map<Symbol, ColumnHandle> assignments)
     {
-        this(id, table, outputs, assignments, Optional.empty(), TupleDomain.all(), TupleDomain.all());
+        this(id, table, outputs, assignments, Optional.empty(), TupleDomain.all(), TupleDomain.all(), Optional.empty());
     }
 
     public TableScanNode(
@@ -86,6 +91,19 @@ public class TableScanNode
             Optional<TableLayoutHandle> tableLayout,
             TupleDomain<ColumnHandle> currentConstraint,
             TupleDomain<ColumnHandle> enforcedConstraint)
+    {
+        this(id, table, outputs, assignments, tableLayout, currentConstraint, enforcedConstraint, Optional.empty());
+    }
+
+            public TableScanNode(
+            PlanNodeId id,
+            TableHandle table,
+            List<Symbol> outputs,
+            Map<Symbol, ColumnHandle> assignments,
+            Optional<TableLayoutHandle> tableLayout,
+            TupleDomain<ColumnHandle> currentConstraint,
+            TupleDomain<ColumnHandle> enforcedConstraint,
+            Optional<TableFinishNode> stagedTableFinishedNode)
     {
         super(id);
         this.table = requireNonNull(table, "table is null");
@@ -98,6 +116,8 @@ public class TableScanNode
         if (!currentConstraint.isAll() || !enforcedConstraint.isAll()) {
             checkArgument(tableLayout.isPresent(), "tableLayout must be present when currentConstraint or enforcedConstraint is non-trivial");
         }
+
+        this.stagedTableFinishedNode = requireNonNull(stagedTableFinishedNode);
     }
 
     @JsonProperty("table")
@@ -157,7 +177,12 @@ public class TableScanNode
     @Override
     public List<PlanNode> getSources()
     {
-        return ImmutableList.of();
+        if (stagedTableFinishedNode.isPresent()) {
+            return ImmutableList.of(stagedTableFinishedNode.get());
+        }
+        else {
+            return ImmutableList.of();
+        }
     }
 
     @Override
@@ -184,5 +209,18 @@ public class TableScanNode
     {
         checkArgument(newChildren.isEmpty(), "newChildren is not empty");
         return this;
+    }
+
+    public TableScanNode withStagedTableFinishNode(TableFinishNode tableFinishNode)
+    {
+        return new TableScanNode(
+                getId(),
+                table,
+                outputSymbols,
+                assignments,
+                tableLayout,
+                currentConstraint,
+                enforcedConstraint,
+                Optional.of(tableFinishNode));
     }
 }

@@ -96,6 +96,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -199,22 +200,32 @@ class RelationPlanner
             // (thus we don't have to fix the schema at the beginning).
             // We probably still need to figure out someway to derive the paritition property without NewTableLayout
             // What we really need is Partitioning...
+
+            // Update: the table metadata is purely faked and only needs to contain partitioned columns...
             ConnectorTableMetadata tableMetadata = new ConnectorTableMetadata(
                     new SchemaTableName("tpch_bucketed", "tmp_table_" + UUID.randomUUID().toString()),
                     ImmutableList.of(
+                            //  Since in StageTableNode, we only care about Partitioning, the column name also doesn't matter at all....
                             new ColumnMetadata("custkey", BIGINT)
                     ),
                     properties);
 
 
             // HACK: As discussed, this is creating the layout too early.. what we really want is Partitioning...
-            // Update: This is OK, as get new table layout doesn't have side effect. We commit some columns might be pruned later, but that's OK
+            //
+            // Update: This is OK, as get new table layout doesn't have side effect. We commit some columns might be pruned later,
+            // but doesn't seem hurt for now (excpet looks a bit hack)
             // If it's really a problem, we can introduce a new "StageTableLayout", which doesn't have columns...
+            // One problem here, though, is "tableMetadata" is kind of sythensized.
             Optional<NewTableLayout> stageTableLayout = metadata.getNewTableLayout(session, catalogName, tableMetadata);
             checkState(stageTableLayout.isPresent());
             System.err.println("DEBUG: newTableLayout = " + stageTableLayout);
 
-            root = new StageTableNode(idAllocator.getNextId(), root, stageTableLayout.get(), outputSymbols, outputSymbols);
+            // Skip hidden columns, Hack for now
+            List<Symbol> stageTableSymbols = outputSymbols.stream()
+                    .filter(symbol -> !symbol.getName().startsWith("$"))
+                    .collect(toImmutableList());
+            root = new StageTableNode(idAllocator.getNextId(), root, stageTableLayout.get(), stageTableSymbols, stageTableSymbols);
         }
 
         return new RelationPlan(root, scope, outputSymbols);

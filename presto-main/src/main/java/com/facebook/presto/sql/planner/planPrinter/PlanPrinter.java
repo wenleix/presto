@@ -848,7 +848,7 @@ public class PlanPrinter
             printStats(indent + 2, node.getId());
             printTableScanInfo(node, indent);
 
-            return null;
+            return processChildren(node, indent + 1);
         }
 
         @Override
@@ -963,10 +963,11 @@ public class PlanPrinter
 
             if (scanNode.isPresent()) {
                 printTableScanInfo(scanNode.get(), indent);
-                return null;
+                return processChildren(scanNode.get(), indent + 1);
             }
 
             sourceNode.accept(this, indent + 1);
+
             return null;
         }
 
