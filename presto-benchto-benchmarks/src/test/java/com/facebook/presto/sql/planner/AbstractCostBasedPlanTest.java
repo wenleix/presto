@@ -124,7 +124,7 @@ public abstract class AbstractCostBasedPlanTest
         Plan plan = plan(sql, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED, false);
 
         JoinOrderPrinter joinOrderPrinter = new JoinOrderPrinter();
-        plan.getRoot().accept(joinOrderPrinter, 0);
+        plan.getRootSection().getPlanRoot().accept(joinOrderPrinter, 0);
         return joinOrderPrinter.result();
     }
 

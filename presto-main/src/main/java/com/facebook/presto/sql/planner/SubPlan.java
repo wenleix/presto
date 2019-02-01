@@ -15,30 +15,37 @@ package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Multiset;
 
 import javax.annotation.concurrent.Immutable;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableMultiset.toImmutableMultiset;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.util.Objects.requireNonNull;
 
 @Immutable
 public class SubPlan
 {
     private final PlanFragment fragment;
-    private final List<SubPlan> children;
+    private final List<SubPlan> dataDependencies;
+    private final List<Reference<SubPlan>> dependencies;
 
-    public SubPlan(PlanFragment fragment, List<SubPlan> children)
+    public SubPlan(PlanFragment fragment, List<SubPlan> dataDependencies, List<Reference<SubPlan>> dependencies)
     {
         requireNonNull(fragment, "fragment is null");
-        requireNonNull(children, "children is null");
+        requireNonNull(dataDependencies, "inputs is null");
+        requireNonNull(dependencies, "dependencies is null");
 
         this.fragment = fragment;
-        this.children = ImmutableList.copyOf(children);
+        this.dataDependencies = ImmutableList.copyOf(dataDependencies);
+        this.dependencies = ImmutableList.copyOf(dependencies);
     }
 
     public PlanFragment getFragment()
@@ -46,9 +53,24 @@ public class SubPlan
         return fragment;
     }
 
-    public List<SubPlan> getChildren()
+    public List<SubPlan> getDataDependencies()
     {
-        return children;
+        return dataDependencies;
+    }
+
+    public List<Reference<SubPlan>> getExecutionDependencies()
+    {
+        return dependencies;
+    }
+
+    public SubPlan withExecutionDependencies(List<Reference<SubPlan>> dependencies)
+    {
+        Set<PlanFragmentId> dependencyIds = dependencies.stream()
+                .map(Reference::get)
+                .map(SubPlan::getFragment)
+                .map(PlanFragment::getId)
+                .collect(toImmutableSet());
+        return new SubPlan(fragment.withExecutionDependencies(dependencyIds), dataDependencies, dependencies);
     }
 
     /**
@@ -56,14 +78,15 @@ public class SubPlan
      */
     public List<PlanFragment> getAllFragments()
     {
-        ImmutableList.Builder<PlanFragment> fragments = ImmutableList.builder();
-
-        fragments.add(getFragment());
-        for (SubPlan child : getChildren()) {
-            fragments.addAll(child.getAllFragments());
+        Map<PlanFragmentId, PlanFragment> fragments = new HashMap<>();
+        fragments.put(fragment.getId(), fragment);
+        for (SubPlan dataDependency : dataDependencies) {
+            fragments.put(dataDependency.getFragment().getId(), dataDependency.getFragment());
         }
-
-        return fragments.build();
+        for (Reference<SubPlan> dependency : dependencies) {
+            fragments.put(dependency.get().getFragment().getId(), dependency.get().getFragment());
+        }
+        return ImmutableList.copyOf(fragments.values());
     }
 
     public void sanityCheck()
@@ -73,15 +96,27 @@ public class SubPlan
                 .flatMap(List::stream)
                 .collect(toImmutableMultiset());
 
-        Multiset<PlanFragmentId> childrenIds = children.stream()
+        Multiset<PlanFragmentId> inputIds = dataDependencies.stream()
                 .map(SubPlan::getFragment)
                 .map(PlanFragment::getId)
                 .collect(toImmutableMultiset());
 
-        Preconditions.checkState(exchangeIds.equals(childrenIds), "Subplan exchange ids don't match child fragment ids (%s vs %s)", exchangeIds, childrenIds);
+        checkState(exchangeIds.equals(inputIds), "Subplan exchange ids don't match input fragment ids (%s vs %s)", exchangeIds, inputIds);
 
-        for (SubPlan child : children) {
+        Set<PlanFragmentId> dependencyIds = dependencies.stream()
+                .map(Reference::get)
+                .map(SubPlan::getFragment)
+                .map(PlanFragment::getId)
+                .collect(toImmutableSet());
+
+        checkState(fragment.getExecutionDependencies().equals(dependencyIds), "Subplan dependency ids don't match fragment dependency ids (%s vs %s)", dependencyIds, fragment.getExecutionDependencies());
+
+        for (SubPlan child : dataDependencies) {
             child.sanityCheck();
+        }
+
+        for (Reference<SubPlan> dependency : dependencies) {
+            dependency.get().sanityCheck();
         }
     }
 }

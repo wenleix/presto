@@ -116,12 +116,12 @@ public class QueryExplainer
         switch (planType) {
             case LOGICAL:
                 Plan plan = getLogicalPlan(session, statement, parameters, warningCollector);
-                return PlanPrinter.textLogicalPlan(plan.getRoot(), plan.getTypes(), metadata.getFunctionRegistry(), plan.getStatsAndCosts(), session, 0, false);
+                return PlanPrinter.textLogicalPlan(plan.getRootSection().getPlanRoot(), plan.getTypes(), metadata.getFunctionRegistry(), plan.getStatsAndCosts(), session, 0, false);
             case DISTRIBUTED:
                 SubPlan subPlan = getDistributedPlan(session, statement, parameters, warningCollector);
                 return PlanPrinter.textDistributedPlan(subPlan, metadata.getFunctionRegistry(), session, false);
             case IO:
-                return IOPlanPrinter.textIOPlan(getLogicalPlan(session, statement, parameters, warningCollector).getRoot(), metadata, session);
+                return IOPlanPrinter.textIOPlan(getLogicalPlan(session, statement, parameters, warningCollector).getRootSection().getPlanRoot(), metadata, session);
         }
         throw new IllegalArgumentException("Unhandled plan type: " + planType);
     }
@@ -142,7 +142,7 @@ public class QueryExplainer
         switch (planType) {
             case LOGICAL:
                 Plan plan = getLogicalPlan(session, statement, parameters, warningCollector);
-                return PlanPrinter.graphvizLogicalPlan(plan.getRoot(), plan.getTypes());
+                return PlanPrinter.graphvizLogicalPlan(plan.getRootSection().getPlanRoot(), plan.getTypes());
             case DISTRIBUTED:
                 SubPlan subPlan = getDistributedPlan(session, statement, parameters, warningCollector);
                 return PlanPrinter.graphvizDistributedPlan(subPlan);
@@ -161,7 +161,7 @@ public class QueryExplainer
         switch (planType) {
             case IO:
                 Plan plan = getLogicalPlan(session, statement, parameters, warningCollector);
-                return textIOPlan(plan.getRoot(), metadata, session);
+                return textIOPlan(plan.getRootSection().getPlanRoot(), metadata, session);
             default:
                 throw new PrestoException(NOT_SUPPORTED, format("Unsupported explain plan type %s for JSON format", planType));
         }

@@ -16,24 +16,49 @@ package com.facebook.presto.sql.planner;
 import com.facebook.presto.cost.StatsAndCosts;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Objects.requireNonNull;
 
 public class Plan
 {
-    private final PlanNode root;
+    private final PlanSection rootSection;
     private final TypeProvider types;
     private final StatsAndCosts statsAndCosts;
 
-    public Plan(PlanNode root, TypeProvider types, StatsAndCosts statsAndCosts)
+    public Plan(PlanSection rootSection, TypeProvider types, StatsAndCosts statsAndCosts)
     {
-        this.root = requireNonNull(root, "root is null");
+        this.rootSection = requireNonNull(rootSection, "rootStage is null");
         this.types = requireNonNull(types, "types is null");
         this.statsAndCosts = requireNonNull(statsAndCosts, "statsAndCosts is null");
     }
 
-    public PlanNode getRoot()
+    public PlanSection getRootSection()
     {
-        return root;
+        return rootSection;
+    }
+
+    public List<PlanSection> getSections()
+    {
+        Set<Reference<PlanSection>> references = new HashSet<>();
+        LinkedList<Reference<PlanSection>> queue = new LinkedList<>();
+        queue.add(new Reference<>(rootSection));
+        while (!queue.isEmpty()) {
+            Reference<PlanSection> reference = queue.poll();
+            references.add(reference);
+            for (Reference<PlanSection> dependency : reference.get().getDependencies()) {
+                if (!references.contains(dependency)) {
+                    queue.add(dependency);
+                }
+            }
+        }
+        return references.stream()
+                .map(Reference::get)
+                .collect(toImmutableList());
     }
 
     public TypeProvider getTypes()

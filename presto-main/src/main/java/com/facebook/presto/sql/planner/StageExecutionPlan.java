@@ -31,16 +31,19 @@ public class StageExecutionPlan
     private final PlanFragment fragment;
     private final Map<PlanNodeId, SplitSource> splitSources;
     private final List<StageExecutionPlan> subStages;
+    private final List<Reference<StageExecutionPlan>> executionDependencies;
     private final Optional<List<String>> fieldNames;
 
     public StageExecutionPlan(
             PlanFragment fragment,
             Map<PlanNodeId, SplitSource> splitSources,
-            List<StageExecutionPlan> subStages)
+            List<StageExecutionPlan> subStages,
+            List<Reference<StageExecutionPlan>> executionDependencies)
     {
         this.fragment = requireNonNull(fragment, "fragment is null");
         this.splitSources = requireNonNull(splitSources, "dataSource is null");
         this.subStages = ImmutableList.copyOf(requireNonNull(subStages, "dependencies is null"));
+        this.executionDependencies = ImmutableList.copyOf(requireNonNull(executionDependencies, "executionDependencies is null"));
 
         fieldNames = (fragment.getRoot() instanceof OutputNode) ?
                 Optional.of(ImmutableList.copyOf(((OutputNode) fragment.getRoot()).getColumnNames())) :
@@ -68,9 +71,14 @@ public class StageExecutionPlan
         return subStages;
     }
 
+    public List<Reference<StageExecutionPlan>> getExecutionDependencies()
+    {
+        return executionDependencies;
+    }
+
     public StageExecutionPlan withBucketToPartition(Optional<int[]> bucketToPartition)
     {
-        return new StageExecutionPlan(fragment.withBucketToPartition(bucketToPartition), splitSources, subStages);
+        return new StageExecutionPlan(fragment.withBucketToPartition(bucketToPartition), splitSources, subStages, executionDependencies);
     }
 
     @Override
@@ -80,6 +88,7 @@ public class StageExecutionPlan
                 .add("fragment", fragment)
                 .add("splitSources", splitSources)
                 .add("subStages", subStages)
+                .add("executionDependencies", executionDependencies)
                 .toString();
     }
 }

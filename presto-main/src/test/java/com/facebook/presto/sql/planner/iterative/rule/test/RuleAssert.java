@@ -28,6 +28,7 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
+import com.facebook.presto.sql.planner.PlanSection;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.assertions.PlanMatchPattern;
@@ -152,7 +153,7 @@ public class RuleAssert
         }
 
         inTransaction(session -> {
-            assertPlan(session, metadata, ruleApplication.statsProvider, new Plan(actual, types, StatsAndCosts.empty()), ruleApplication.lookup, pattern);
+            assertPlan(session, metadata, ruleApplication.statsProvider, new Plan(new PlanSection(actual), types, StatsAndCosts.empty()), ruleApplication.lookup, pattern);
             return null;
         });
     }

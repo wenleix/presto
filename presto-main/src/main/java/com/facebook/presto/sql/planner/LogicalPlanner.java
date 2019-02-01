@@ -91,6 +91,7 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Streams.zip;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -193,6 +194,8 @@ public class LogicalPlanner
             }
         }
 
+        PlanSection rootSection = sectionizePlan(root);
+
         if (stage.ordinal() >= Stage.OPTIMIZED_AND_VALIDATED.ordinal()) {
             // make sure we produce a valid plan after optimizations run. This is mainly to catch programming errors
             planSanityChecker.validateFinalPlan(root, session, metadata, sqlParser, symbolAllocator.getTypes(), warningCollector);
@@ -201,7 +204,35 @@ public class LogicalPlanner
         TypeProvider types = symbolAllocator.getTypes();
         StatsProvider statsProvider = new CachingStatsProvider(statsCalculator, session, types);
         CostProvider costProvider = new CachingCostProvider(costCalculator, statsProvider, Optional.empty(), session, types);
-        return new Plan(root, types, StatsAndCosts.create(root, statsProvider, costProvider));
+        return new Plan(rootSection, types, StatsAndCosts.create(root, statsProvider, costProvider));
+    }
+
+    private PlanSection sectionizePlan(PlanNode root)
+    {
+        PlanSection rootSection = new PlanSection(root);
+        root.accept(new PlanVisitor<Void, PlanSection>() {
+            @Override
+            protected Void visitPlan(PlanNode node, PlanSection context)
+            {
+                if (node instanceof TableScanNode) {
+                    TableScanNode tableScanNode = (TableScanNode) node;
+                    if (!tableScanNode.getSources().isEmpty()) {
+                        PlanNode child = getOnlyElement(tableScanNode.getSources());
+                        PlanSection childSection = new PlanSection(child);
+                        context.addExecutionDependency(childSection);
+
+                        visitPlan(child, childSection);
+                        tableScanNode.deleteDependency();
+                        return null;
+                    }
+                }
+
+                node.getSources().forEach(child -> visitPlan(child, context));
+                return null;
+            }
+        }, rootSection);
+
+        return rootSection;
     }
 
     public PlanNode planStatement(Analysis analysis, Statement statement)

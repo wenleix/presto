@@ -64,8 +64,8 @@ final class MetricComparator
     // TODO inline back this method
     {
         Plan queryPlan = runner.createPlan(session, query, WarningCollector.NOOP);
-        OutputNode outputNode = (OutputNode) queryPlan.getRoot();
-        PlanNodeStatsEstimate outputNodeStats = queryPlan.getStatsAndCosts().getStats().getOrDefault(queryPlan.getRoot().getId(), PlanNodeStatsEstimate.unknown());
+        OutputNode outputNode = (OutputNode) queryPlan.getRootSection().getPlanRoot();
+        PlanNodeStatsEstimate outputNodeStats = queryPlan.getStatsAndCosts().getStats().getOrDefault(queryPlan.getRootSection().getPlanRoot().getId(), PlanNodeStatsEstimate.unknown());
         StatsContext statsContext = buildStatsContext(queryPlan, outputNode);
         return getEstimatedValues(metrics, outputNodeStats, statsContext);
     }

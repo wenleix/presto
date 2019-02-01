@@ -37,6 +37,7 @@ import com.facebook.presto.split.SplitSource;
 import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.facebook.presto.sql.planner.NodePartitioningManager;
 import com.facebook.presto.sql.planner.PartitioningHandle;
+import com.facebook.presto.sql.planner.Reference;
 import com.facebook.presto.sql.planner.StageExecutionPlan;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
@@ -61,7 +62,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -70,6 +73,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import static com.facebook.presto.OutputBuffers.BufferType.DISCARDING;
+import static com.facebook.presto.OutputBuffers.createInitialEmptyOutputBuffers;
 import static com.facebook.presto.SystemSessionProperties.getConcurrentLifespansPerNode;
 import static com.facebook.presto.SystemSessionProperties.getWriterMinSize;
 import static com.facebook.presto.SystemSessionProperties.isDynamicSchduleForGroupedExecution;
@@ -118,9 +123,11 @@ public class SqlQueryScheduler
     private final StageId rootStageId;
     private final Map<StageId, StageScheduler> stageSchedulers;
     private final Map<StageId, StageLinkage> stageLinkages;
+    private final Queue<List<SqlStageExecution>> schedulingQueue;
     private final SplitSchedulerStats schedulerStats;
     private final boolean summarizeTaskInfo;
     private final AtomicBoolean started = new AtomicBoolean();
+    private final AtomicBoolean scheduling = new AtomicBoolean();
 
     public static SqlQueryScheduler createSqlQueryScheduler(
             QueryStateMachine queryStateMachine,
@@ -192,6 +199,7 @@ public class SqlQueryScheduler
         Map<PartitioningHandle, NodePartitionMap> partitioningCache = new HashMap<>();
 
         OutputBufferId rootBufferId = Iterables.getOnlyElement(rootOutputBuffers.getBuffers().keySet());
+        Queue<List<SqlStageExecution>> schedulingQueue = new ConcurrentLinkedQueue<>();
         List<SqlStageExecution> stages = createStages(
                 (fragmentId, tasks, noMoreExchangeLocations) -> updateQueryOutputLocations(queryStateMachine, rootBufferId, tasks, noMoreExchangeLocations),
                 new AtomicInteger(),
@@ -208,7 +216,11 @@ public class SqlQueryScheduler
                 failureDetector,
                 nodeTaskMap,
                 stageSchedulers,
-                stageLinkages);
+                stageLinkages,
+                new HashSet<>(),
+                schedulingQueue);
+
+        schedulingQueue.add(stages);
 
         SqlStageExecution rootStage = stages.get(0);
         rootStage.setOutputBuffers(rootOutputBuffers);
@@ -219,6 +231,7 @@ public class SqlQueryScheduler
 
         this.stageSchedulers = stageSchedulers.build();
         this.stageLinkages = stageLinkages.build();
+        this.schedulingQueue = schedulingQueue;
 
         this.executor = queryExecutor;
     }
@@ -248,6 +261,23 @@ public class SqlQueryScheduler
                 else if (state == ABORTED) {
                     // this should never happen, since abort can only be triggered in query clean up after the query is finished
                     queryStateMachine.transitionToFailed(new PrestoException(GENERIC_INTERNAL_ERROR, "Query stage was aborted"));
+                }
+                else if (state.isDone() && !state.isFailure()) {
+                    List<SqlStageExecution> currentlyScheduled = schedulingQueue.peek();
+                    if (currentlyScheduled.stream().allMatch(execution -> execution.getState().isDone() && !execution.getState().isFailure())) {
+                        schedulingQueue.poll();
+                        if (!schedulingQueue.isEmpty()) {
+                            // TODO: scheduling queue contains duplicates
+                            List<SqlStageExecution> stagesToSchedule = schedulingQueue.peek().stream()
+                                    .filter(execution -> !execution.getState().isDone())
+                                    .collect(toImmutableList());
+                            if (stagesToSchedule.isEmpty()) {
+                                queryStateMachine.transitionToFailed(new PrestoException(GENERIC_INTERNAL_ERROR, "No stage to schedule in the queue, but the queue is not empty"));
+                                return;
+                            }
+                            startScheduling(stagesToSchedule);
+                        }
+                    }
                 }
                 else if (queryStateMachine.getQueryState() == QueryState.STARTING) {
                     // if the stage has at least one task, we are running
@@ -294,7 +324,9 @@ public class SqlQueryScheduler
             FailureDetector failureDetector,
             NodeTaskMap nodeTaskMap,
             ImmutableMap.Builder<StageId, StageScheduler> stageSchedulers,
-            ImmutableMap.Builder<StageId, StageLinkage> stageLinkages)
+            ImmutableMap.Builder<StageId, StageLinkage> stageLinkages,
+            Set<PlanFragmentId> stagedDependencies,
+            Queue<List<SqlStageExecution>> schedulingQueue)
     {
         ImmutableList.Builder<SqlStageExecution> stages = ImmutableList.builder();
 
@@ -416,12 +448,54 @@ public class SqlQueryScheduler
                     failureDetector,
                     nodeTaskMap,
                     stageSchedulers,
-                    stageLinkages);
+                    stageLinkages,
+                    stagedDependencies,
+                    schedulingQueue);
             stages.addAll(subTree);
 
             SqlStageExecution childStage = subTree.get(0);
             childStagesBuilder.add(childStage);
         }
+
+        for (Reference<StageExecutionPlan> dependency : plan.getExecutionDependencies()) {
+            PlanFragmentId fragmentId = dependency.get().getFragment().getId();
+            if (stagedDependencies.contains(fragmentId)) {
+                continue;
+            }
+
+            StageExecutionPlan subStagePlan = dependency.get();
+            List<SqlStageExecution> subTree = createStages(
+                    // dependent stage doesn't produce any output
+                    ((fragment, tasks, noMoreExchangeLocations) -> {}),
+                    nextStageId,
+                    locationFactory,
+                    subStagePlan.withBucketToPartition(bucketToPartition),
+                    nodeScheduler,
+                    remoteTaskFactory,
+                    session,
+                    splitBatchSize,
+                    partitioningCache,
+                    nodePartitioningManager,
+                    queryExecutor,
+                    schedulerExecutor,
+                    failureDetector,
+                    nodeTaskMap,
+                    stageSchedulers,
+                    stageLinkages,
+                    stagedDependencies,
+                    schedulingQueue);
+
+            SqlStageExecution root = subTree.get(0);
+            OutputBuffers outputBuffers = createInitialEmptyOutputBuffers(DISCARDING)
+                    .withBuffer(new OutputBufferId(0), 0)
+                    .withNoMoreBufferIds();
+            root.setOutputBuffers(outputBuffers);
+
+            stages.addAll(subTree);
+            stagedDependencies.add(fragmentId);
+            schedulingQueue.add(subTree);
+        }
+
         Set<SqlStageExecution> childStages = childStagesBuilder.build();
         stage.addStateChangeListener(newState -> {
             if (newState.isDone()) {
@@ -522,15 +596,22 @@ public class SqlQueryScheduler
     public void start()
     {
         if (started.compareAndSet(false, true)) {
-            executor.submit(this::schedule);
+            startScheduling(schedulingQueue.peek());
         }
     }
 
-    private void schedule()
+    private void startScheduling(Collection<SqlStageExecution> stages)
+    {
+        requireNonNull(stages);
+        executor.submit(() -> schedule(stages));
+    }
+
+    private void schedule(Collection<SqlStageExecution> stages)
     {
         try (SetThreadName ignored = new SetThreadName("Query-%s", queryStateMachine.getQueryId())) {
+            verify(scheduling.compareAndSet(false, true), "still scheduling");
             Set<StageId> completedStages = new HashSet<>();
-            ExecutionSchedule executionSchedule = executionPolicy.createExecutionSchedule(stages.values());
+            ExecutionSchedule executionSchedule = executionPolicy.createExecutionSchedule(stages);
             while (!executionSchedule.isFinished()) {
                 List<ListenableFuture<?>> blockedStages = new ArrayList<>();
                 for (SqlStageExecution stage : executionSchedule.getStagesToSchedule()) {
@@ -547,8 +628,9 @@ public class SqlQueryScheduler
                     else if (!result.getBlocked().isDone()) {
                         blockedStages.add(result.getBlocked());
                     }
-                    stageLinkages.get(stage.getStageId())
-                            .processScheduleResults(stage.getState(), result.getNewTasks());
+
+                    stageLinkages.get(stage.getStageId()).processScheduleResults(stage.getState(), result.getNewTasks());
+
                     schedulerStats.getSplitsScheduledPerIteration().add(result.getSplitsScheduled());
                     if (result.getBlockedReason().isPresent()) {
                         switch (result.getBlockedReason().get()) {
@@ -571,7 +653,7 @@ public class SqlQueryScheduler
                 }
 
                 // make sure to update stage linkage at least once per loop to catch async state changes (e.g., partial cancel)
-                for (SqlStageExecution stage : stages.values()) {
+                for (SqlStageExecution stage : stages) {
                     if (!completedStages.contains(stage.getStageId()) && stage.getState().isDone()) {
                         stageLinkages.get(stage.getStageId())
                                 .processScheduleResults(stage.getState(), ImmutableSet.of());
@@ -590,7 +672,7 @@ public class SqlQueryScheduler
                 }
             }
 
-            for (SqlStageExecution stage : stages.values()) {
+            for (SqlStageExecution stage : stages) {
                 StageState state = stage.getState();
                 if (state != SCHEDULED && state != RUNNING && !state.isDone()) {
                     throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Scheduling is complete, but stage %s is in state %s", stage.getStageId(), state));
@@ -602,10 +684,11 @@ public class SqlQueryScheduler
             throw t;
         }
         finally {
+            scheduling.set(false);
             RuntimeException closeError = new RuntimeException();
-            for (StageScheduler scheduler : stageSchedulers.values()) {
+            for (SqlStageExecution stage : stages) {
                 try {
-                    scheduler.close();
+                    stageSchedulers.get(stage.getStageId()).close();
                 }
                 catch (Throwable t) {
                     queryStateMachine.transitionToFailed(t);

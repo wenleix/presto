@@ -52,7 +52,7 @@ public class TableScanNode
 
     // Wenlei!@#$%
     // It shoudn't be considered as a source, but should be done in some "PlanSectioner"
-    private final Optional<TableFinishNode> stagedTableFinishedNode;
+    private Optional<TableFinishNode> stagedTableFinishedNode;
 
     @JsonCreator
     public TableScanNode(
@@ -222,5 +222,11 @@ public class TableScanNode
                 currentConstraint,
                 enforcedConstraint,
                 Optional.of(tableFinishNode));
+    }
+
+    // be called after sectionize finished
+    public void deleteDependency()
+    {
+        this.stagedTableFinishedNode = Optional.empty();
     }
 }

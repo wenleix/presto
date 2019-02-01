@@ -53,6 +53,7 @@ public class PlanFragment
     private final PartitioningScheme partitioningScheme;
     private final StageExecutionStrategy stageExecutionStrategy;
     private final StatsAndCosts statsAndCosts;
+    private final Set<PlanFragmentId> executionDependencies;
 
     @JsonCreator
     public PlanFragment(
@@ -63,7 +64,8 @@ public class PlanFragment
             @JsonProperty("partitionedSources") List<PlanNodeId> partitionedSources,
             @JsonProperty("partitioningScheme") PartitioningScheme partitioningScheme,
             @JsonProperty("stageExecutionStrategy") StageExecutionStrategy stageExecutionStrategy,
-            @JsonProperty("statsAndCosts") StatsAndCosts statsAndCosts)
+            @JsonProperty("statsAndCosts") StatsAndCosts statsAndCosts,
+            @JsonProperty("executionDependencies") Set<PlanFragmentId> executionDependencies)
     {
         this.id = requireNonNull(id, "id is null");
         this.root = requireNonNull(root, "root is null");
@@ -73,6 +75,7 @@ public class PlanFragment
         this.partitionedSourcesSet = ImmutableSet.copyOf(partitionedSources);
         this.stageExecutionStrategy = requireNonNull(stageExecutionStrategy, "stageExecutionStrategy is null");
         this.statsAndCosts = requireNonNull(statsAndCosts, "statsAndCosts is null");
+        this.executionDependencies = ImmutableSet.copyOf(requireNonNull(executionDependencies, "dependencies is null"));
 
         checkArgument(partitionedSourcesSet.size() == partitionedSources.size(), "partitionedSources contains duplicates");
         checkArgument(ImmutableSet.copyOf(root.getOutputSymbols()).containsAll(partitioningScheme.getOutputLayout()),
@@ -144,6 +147,12 @@ public class PlanFragment
         return statsAndCosts;
     }
 
+    @JsonProperty
+    public Set<PlanFragmentId> getExecutionDependencies()
+    {
+        return executionDependencies;
+    }
+
     public List<Type> getTypes()
     {
         return types;
@@ -195,12 +204,17 @@ public class PlanFragment
 
     public PlanFragment withBucketToPartition(Optional<int[]> bucketToPartition)
     {
-        return new PlanFragment(id, root, symbols, partitioning, partitionedSources, partitioningScheme.withBucketToPartition(bucketToPartition), stageExecutionStrategy, statsAndCosts);
+        return new PlanFragment(id, root, symbols, partitioning, partitionedSources, partitioningScheme.withBucketToPartition(bucketToPartition), stageExecutionStrategy, statsAndCosts, executionDependencies);
     }
 
     public PlanFragment withGroupedExecution(List<PlanNodeId> capableTableScanNodes)
     {
-        return new PlanFragment(id, root, symbols, partitioning, partitionedSources, partitioningScheme, StageExecutionStrategy.groupedExecution(capableTableScanNodes), statsAndCosts);
+        return new PlanFragment(id, root, symbols, partitioning, partitionedSources, partitioningScheme, StageExecutionStrategy.groupedExecution(capableTableScanNodes), statsAndCosts, executionDependencies);
+    }
+
+    public PlanFragment withExecutionDependencies(Set<PlanFragmentId> executionDependencies)
+    {
+        return new PlanFragment(id, root, symbols, partitioning, partitionedSources, partitioningScheme, stageExecutionStrategy, statsAndCosts, executionDependencies);
     }
 
     @Override

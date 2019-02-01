@@ -64,6 +64,11 @@ public class PhasedExecutionSchedule
 
     public PhasedExecutionSchedule(Collection<SqlStageExecution> stages)
     {
+        for (SqlStageExecution execution : stages) {
+            // TODO:
+            checkArgument(execution.getFragment().getExecutionDependencies().isEmpty(), "phased execution does not support dependent stages");
+        }
+
         List<Set<PlanFragmentId>> phases = extractPhases(stages.stream().map(SqlStageExecution::getFragment).collect(toImmutableList()));
 
         Map<PlanFragmentId, SqlStageExecution> stagesByFragmentId = stages.stream().collect(toImmutableMap(stage -> stage.getFragment().getId(), identity()));

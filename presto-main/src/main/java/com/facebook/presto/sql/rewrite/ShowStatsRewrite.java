@@ -144,7 +144,7 @@ public class ShowStatsRewrite
             //  - no having
             //  - no set quantifier
 
-            Optional<FilterNode> filterNode = searchFrom(plan.getRoot())
+            Optional<FilterNode> filterNode = searchFrom(plan.getRootSection().getPlanRoot())
                     .where(FilterNode.class::isInstance)
                     .findSingle();
 
@@ -193,7 +193,7 @@ public class ShowStatsRewrite
 
         private Constraint<ColumnHandle> getConstraint(Plan plan)
         {
-            Optional<TableScanNode> scanNode = searchFrom(plan.getRoot())
+            Optional<TableScanNode> scanNode = searchFrom(plan.getRootSection().getPlanRoot())
                     .where(TableScanNode.class::isInstance)
                     .findSingle();
 

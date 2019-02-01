@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import static java.util.Objects.requireNonNull;
+
 public class InputExtractor
 {
     private final Metadata metadata;
@@ -46,12 +48,14 @@ public class InputExtractor
         this.session = session;
     }
 
-    public List<Input> extractInputs(PlanNode root)
+    public List<Input> extractInputs(Plan plan)
     {
-        Visitor visitor = new Visitor();
-        root.accept(visitor, null);
-
-        return ImmutableList.copyOf(visitor.getInputs());
+        ImmutableSet.Builder<Input> inputs = ImmutableSet.builder();
+        Visitor visitor = new Visitor(inputs);
+        for (PlanSection section : plan.getSections()) {
+            section.getPlanRoot().accept(visitor, null);
+        }
+        return ImmutableList.copyOf(inputs.build());
     }
 
     private static Column createColumn(ColumnMetadata columnMetadata)
@@ -69,11 +73,11 @@ public class InputExtractor
     private class Visitor
             extends PlanVisitor<Void, Void>
     {
-        private final ImmutableSet.Builder<Input> inputs = ImmutableSet.builder();
+        private final ImmutableSet.Builder<Input> inputs;
 
-        public Set<Input> getInputs()
+        private Visitor(ImmutableSet.Builder<Input> inputs)
         {
-            return inputs.build();
+            this.inputs = requireNonNull(inputs, "inputs is null");
         }
 
         @Override

@@ -171,7 +171,7 @@ public final class GraphvizPrinter
         printFragmentNodes(output, fragment, idGenerator);
         fragment.getRoot().accept(new EdgePrinter(output, fragmentsById, idGenerator), null);
 
-        for (SubPlan child : plan.getChildren()) {
+        for (SubPlan child : plan.getDataDependencies()) {
             printSubPlan(child, fragmentsById, idGenerator, output);
         }
     }

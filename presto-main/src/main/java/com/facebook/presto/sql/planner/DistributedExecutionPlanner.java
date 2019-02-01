@@ -58,6 +58,7 @@ import io.airlift.log.Logger;
 
 import javax.inject.Inject;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -82,7 +83,7 @@ public class DistributedExecutionPlanner
     {
         ImmutableList.Builder<SplitSource> allSplitSources = ImmutableList.builder();
         try {
-            return doPlan(root, session, allSplitSources);
+            return doPlan(root, session, new HashMap<>(), allSplitSources);
         }
         catch (Throwable t) {
             allSplitSources.build().forEach(DistributedExecutionPlanner::closeSplitSource);
@@ -100,7 +101,11 @@ public class DistributedExecutionPlanner
         }
     }
 
-    private StageExecutionPlan doPlan(SubPlan root, Session session, ImmutableList.Builder<SplitSource> allSplitSources)
+    private StageExecutionPlan doPlan(
+            SubPlan root,
+            Session session,
+            Map<Reference<SubPlan>, Reference<StageExecutionPlan>> plansCache,
+            ImmutableList.Builder<SplitSource> allSplitSources)
     {
         PlanFragment currentFragment = root.getFragment();
 
@@ -108,14 +113,20 @@ public class DistributedExecutionPlanner
         Map<PlanNodeId, SplitSource> splitSources = currentFragment.getRoot().accept(new Visitor(session, currentFragment.getStageExecutionStrategy(), allSplitSources), null);
 
         // create child stages
-        ImmutableList.Builder<StageExecutionPlan> dependencies = ImmutableList.builder();
-        for (SubPlan childPlan : root.getChildren()) {
-            dependencies.add(doPlan(childPlan, session, allSplitSources));
+        ImmutableList.Builder<StageExecutionPlan> inputs = ImmutableList.builder();
+        for (SubPlan childPlan : root.getDataDependencies()) {
+            inputs.add(doPlan(childPlan, session, plansCache, allSplitSources));
+        }
+
+        ImmutableList.Builder<Reference<StageExecutionPlan>> dependencies = ImmutableList.builder();
+        for (Reference<SubPlan> dependency : root.getExecutionDependencies()) {
+            dependencies.add(plansCache.computeIfAbsent(dependency, key -> Reference.of(doPlan(key.get(), session, plansCache, allSplitSources))));
         }
 
         return new StageExecutionPlan(
                 currentFragment,
                 splitSources,
+                inputs.build(),
                 dependencies.build());
     }
 

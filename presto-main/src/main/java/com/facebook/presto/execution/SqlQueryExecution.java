@@ -54,11 +54,13 @@ import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.PlanFragmenter;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.PlanOptimizers;
+import com.facebook.presto.sql.planner.Reference;
 import com.facebook.presto.sql.planner.StageExecutionPlan;
 import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.tree.Explain;
 import com.facebook.presto.transaction.TransactionManager;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.SetThreadName;
@@ -419,11 +421,12 @@ public class SqlQueryExecution
         queryPlan.set(plan);
 
         // extract inputs
-        List<Input> inputs = new InputExtractor(metadata, stateMachine.getSession()).extractInputs(plan.getRoot());
+//        List<Input> inputs = new InputExtractor(metadata, stateMachine.getSession()).extractInputs(plan);
+        List<Input> inputs = ImmutableList.of();
         stateMachine.setInputs(inputs);
 
         // extract output
-        Optional<Output> output = new OutputExtractor().extractOutput(plan.getRoot());
+        Optional<Output> output = new OutputExtractor().extractOutput(plan.getRootSection().getPlanRoot());
         stateMachine.setOutput(output);
 
         // fragment the plan
@@ -524,6 +527,10 @@ public class SqlQueryExecution
 
         for (StageExecutionPlan stage : plan.getSubStages()) {
             closeSplitSources(stage);
+        }
+
+        for (Reference<StageExecutionPlan> stage : plan.getExecutionDependencies()) {
+            closeSplitSources(stage.get());
         }
     }
 

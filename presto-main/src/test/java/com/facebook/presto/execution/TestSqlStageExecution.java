@@ -34,6 +34,7 @@ import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
 import com.facebook.presto.util.FinalizerService;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.SettableFuture;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -178,6 +179,7 @@ public class TestSqlStageExecution
                 ImmutableList.of(planNode.getId()),
                 new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), planNode.getOutputSymbols()),
                 StageExecutionStrategy.ungroupedExecution(),
-                StatsAndCosts.empty());
+                StatsAndCosts.empty(),
+                ImmutableSet.of());
     }
 }
