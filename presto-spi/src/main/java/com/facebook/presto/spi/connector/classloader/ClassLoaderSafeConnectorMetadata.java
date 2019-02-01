@@ -108,6 +108,13 @@ public class ClassLoaderSafeConnectorMetadata
     }
 
     @Override
+    public ConnectorTableLayoutHandle getPromisedTableLayoutHandleForStageTable(ConnectorSession connectorSession, String tableName, List<ColumnHandle> columnHandles) {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.getPromisedTableLayoutHandleForStageTable(connectorSession, tableName, columnHandles);
+        }
+    }
+
+    @Override
     public Optional<ConnectorNewTableLayout> getInsertLayout(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {

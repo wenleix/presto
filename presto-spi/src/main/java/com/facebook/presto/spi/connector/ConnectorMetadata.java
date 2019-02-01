@@ -270,6 +270,11 @@ public interface ConnectorMetadata
         return Optional.empty();
     }
 
+    default ConnectorTableLayoutHandle getPromisedTableLayoutHandleForStageTable(ConnectorSession connectorSession, String tableName, List<ColumnHandle> columnHandles)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support " + getClass().getName());
+    }
+
     /**
      * Get the physical layout for a inserting into an existing table.
      */

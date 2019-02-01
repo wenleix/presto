@@ -6,18 +6,19 @@ import com.facebook.presto.execution.warnings.WarningCollector;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.NewTableLayout;
 import com.facebook.presto.metadata.TableHandle;
+import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorTableHandle;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
+import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.TypeProvider;
-import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.planner.plan.StageTableNode;
@@ -118,20 +119,20 @@ public class ExpandTableStage
                     ImmutableList.of());
 
             ConnectorTableMetadata tableMetadata = new ConnectorTableMetadata(
-                    new SchemaTableName("tpch_bucketed", "tmp_table_" + UUID.randomUUID().toString()),
+                    new SchemaTableName("tpch_bucketed", "tmp_table_" + node.getTableNameHint() + "_" + UUID.randomUUID().toString()),
                     node.getInputSymbols().stream()
                         .map(symbol -> new ColumnMetadata(symbol.getName(), types.get(symbol)))
                         .collect(toImmutableList()),
                     properties);
 
-            Optional<NewTableLayout> stageTableLayout = metadata.getNewTableLayout(session, catalogName, tableMetadata);
+            Optional<NewTableLayout> stageNewTableLayout = metadata.getNewTableLayout(session, catalogName, tableMetadata);
 
             TableWriterNode.CreateHandle createHandle = new TableWriterNode.CreateHandle(
                     metadata.beginCreateTable(
                             session,
                             catalogName,
                             tableMetadata,
-                            stageTableLayout),
+                            stageNewTableLayout),
                     tableMetadata.getTable());
 
 
@@ -168,18 +169,25 @@ public class ExpandTableStage
                 assignments.put(node.getOutputSymbols().get(i), columnHandles.get(i));
             }
 
-            // Use this version of constructor similar to
-            //      https://github.com/prestodb/presto/blob/1e7691554ef0e6a0064c77fc811b102002662cb4/presto-main/src/main/java/com/facebook/presto/sql/planner/RelationPlanner.java#L161
-            // TODO: This constructor doesn't care about constraint, is it OK???
-            // TODO: We still need the table layout for executing...
+            // TODO: hmm..... extremely hack
+            TableLayoutHandle promisedLayout = metadata.getPromisedTableLayoutHandleForStageTable(
+                    session,
+                    catalogName,
+                    tableMetadata.getTable().getTableName(),
+                    columnHandles.stream()
+                            .map(ColumnHandle.class::cast)
+                            .collect(toImmutableList()));
+
             TableScanNode tableScanNode = new TableScanNode(
                     idAllocator.getNextId(),
                     // TableHandle is used in planning, once planning is finished, TableLayout is used to get splits: https://github.com/prestodb/presto/blob/569a811fd1c584245fc472221b0258453e0ad851/presto-main/src/main/java/com/facebook/presto/sql/planner/DistributedExecutionPlanner.java#L146-L149
                     // So it safe to put a faked handle here :P
                     new TableHandle(connectorId, new StageTableHandle()),
                     node.getOutputSymbols(),
-                    assignments);
-
+                    assignments,
+                    Optional.of(promisedLayout),
+                    TupleDomain.all(),
+                    TupleDomain.all());
 
             return tableScanNode.withStagedTableFinishNode(commitNode);
         }

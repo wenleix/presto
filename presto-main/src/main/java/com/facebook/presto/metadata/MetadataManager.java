@@ -641,6 +641,23 @@ public class MetadataManager
     }
 
     @Override
+    public TableLayoutHandle getPromisedTableLayoutHandleForStageTable(Session session, String catalogName, String tableName, List<ColumnHandle> columnHandles)
+    {
+        CatalogMetadata catalogMetadata = getCatalogMetadataForWrite(session, catalogName);
+        ConnectorId connectorId = catalogMetadata.getConnectorId();
+        ConnectorMetadata metadata = catalogMetadata.getMetadata();
+
+        ConnectorTransactionHandle transactionHandle = catalogMetadata.getTransactionHandleFor(connectorId);
+        ConnectorSession connectorSession = session.toConnectorSession(connectorId);
+
+        return new TableLayoutHandle(
+                connectorId,
+                transactionHandle,
+                metadata.getPromisedTableLayoutHandleForStageTable(connectorSession, tableName, columnHandles)
+        );
+    }
+
+    @Override
     public void beginQuery(Session session, Set<ConnectorId> connectors)
     {
         for (ConnectorId connectorId : connectors) {

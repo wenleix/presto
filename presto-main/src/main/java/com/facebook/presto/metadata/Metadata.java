@@ -176,6 +176,8 @@ public interface Metadata
 
     Optional<NewTableLayout> getNewTableLayout(Session session, String catalogName, ConnectorTableMetadata tableMetadata);
 
+    TableLayoutHandle getPromisedTableLayoutHandleForStageTable(Session session, String catalogName, String tableName, List<ColumnHandle> columnHandles);
+
     /**
      * Begin the atomic creation of a table with data.
      */

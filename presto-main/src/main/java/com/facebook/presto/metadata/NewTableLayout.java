@@ -56,6 +56,11 @@ public class NewTableLayout
         return layout;
     }
 
+    public ConnectorTransactionHandle getTransactionHandle()
+    {
+        return transactionHandle;
+    }
+
     public PartitioningHandle getPartitioning()
     {
         return new PartitioningHandle(Optional.of(connectorId), Optional.of(transactionHandle), layout.getPartitioning());

@@ -412,7 +412,7 @@ public class UnaliasSymbolReferences
             List<Symbol> canonicalSymbols = node.getOutputSymbols().stream()
                     .map(this::canonicalize)
                     .collect(Collectors.toList());
-            return new StageTableNode(node.getId(), source, node.getStageTableLayout(), canonicalSymbols, canonicalSymbols);
+            return new StageTableNode(node.getId(), source, node.getTableNameHint(), node.getStageTableLayout(), canonicalSymbols, canonicalSymbols);
         }
 
         @Override

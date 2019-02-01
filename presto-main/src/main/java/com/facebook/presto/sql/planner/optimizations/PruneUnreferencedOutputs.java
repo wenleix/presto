@@ -662,6 +662,7 @@ public class PruneUnreferencedOutputs
             return new StageTableNode(
                     node.getId(),
                     source,
+                    node.getTableNameHint(),
                     node.getStageTableLayout(),
                     node.getInputSymbols(),
                     node.getOutputSymbols());

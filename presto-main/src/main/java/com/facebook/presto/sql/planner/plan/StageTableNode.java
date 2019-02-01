@@ -37,6 +37,7 @@ public class StageTableNode
     // TODO: Add things like catalog/schema name
     // For now, stage table will always do identity map for simplification.
 
+    private final String tableNameHint;
     NewTableLayout stageTableLayout;
     private final List<Symbol> inputSymbols;
     private final List<Symbol> outputSymbols; // This is used to rename symbols, but do we need this??
@@ -44,12 +45,14 @@ public class StageTableNode
     public StageTableNode(
             PlanNodeId id,
             PlanNode source,
+            String tableNameHint,
             NewTableLayout stageTableLayout,
             List<Symbol> inputSymbols,
             List<Symbol> outputSymbols)
     {
         super(id);
         this.source = requireNonNull(source, "source is null");
+        this.tableNameHint = requireNonNull(tableNameHint, "tableNameHint is null");
         this.stageTableLayout = requireNonNull(stageTableLayout, "stageTableLayout is null");
         this.inputSymbols = ImmutableList.copyOf(requireNonNull(inputSymbols, "inputSymbols is null"));
         this.outputSymbols = ImmutableList.copyOf(requireNonNull(outputSymbols, "outputSymbols is null"));
@@ -58,6 +61,11 @@ public class StageTableNode
     public PlanNode getSource()
     {
         return source;
+    }
+
+    public String getTableNameHint()
+    {
+        return tableNameHint;
     }
 
     public NewTableLayout getStageTableLayout()
@@ -97,7 +105,7 @@ public class StageTableNode
     @Override
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
-        return new StageTableNode(getId(), Iterables.getOnlyElement(newChildren), stageTableLayout, inputSymbols, outputSymbols);
+        return new StageTableNode(getId(), Iterables.getOnlyElement(newChildren), tableNameHint, stageTableLayout, inputSymbols, outputSymbols);
     }
 
     public List<Symbol> getInputSymbols()

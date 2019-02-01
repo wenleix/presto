@@ -95,7 +95,7 @@ public class TableScanNode
         this(id, table, outputs, assignments, tableLayout, currentConstraint, enforcedConstraint, Optional.empty());
     }
 
-            public TableScanNode(
+    public TableScanNode(
             PlanNodeId id,
             TableHandle table,
             List<Symbol> outputs,

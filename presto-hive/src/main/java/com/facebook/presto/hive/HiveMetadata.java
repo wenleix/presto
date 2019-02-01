@@ -1723,6 +1723,27 @@ public class HiveMetadata
     }
 
     @Override
+    public ConnectorTableLayoutHandle getPromisedTableLayoutHandleForStageTable(ConnectorSession connectorSession, String tableName, List<ColumnHandle> columnHandles)
+    {
+        SchemaTableName schemaTableName = new SchemaTableName("tpch_bucketed", tableName);
+
+        List<HiveColumnHandle> bucketColumnHandle = columnHandles.stream()
+                .map(HiveColumnHandle.class::cast)
+                .filter(handle -> handle.getName().startsWith("custkey"))
+                .collect(toImmutableList());
+        verify(bucketColumnHandle.size() == 1);
+
+        return new HiveTableLayoutHandle(
+                schemaTableName,
+                ImmutableList.of(),
+                ImmutableList.of(new HivePartition(schemaTableName)),
+                TupleDomain.all(),
+                TupleDomain.none(),
+                Optional.of(new HiveBucketHandle(bucketColumnHandle, 11, 11)),
+                Optional.empty());
+    }
+
+    @Override
     public TableStatisticsMetadata getStatisticsCollectionMetadata(ConnectorSession session, ConnectorTableMetadata tableMetadata)
     {
         if (!isCollectColumnStatisticsOnWrite(session)) {

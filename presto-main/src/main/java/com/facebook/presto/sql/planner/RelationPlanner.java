@@ -225,7 +225,14 @@ class RelationPlanner
             List<Symbol> stageTableSymbols = outputSymbols.stream()
                     .filter(symbol -> !symbol.getName().startsWith("$"))
                     .collect(toImmutableList());
-            root = new StageTableNode(idAllocator.getNextId(), root, stageTableLayout.get(), stageTableSymbols, stageTableSymbols);
+
+            root = new StageTableNode(
+                    idAllocator.getNextId(),
+                    root,
+                    node.getName().getSuffix(),
+                    stageTableLayout.get(),
+                    stageTableSymbols,
+                    stageTableSymbols);
         }
 
         return new RelationPlan(root, scope, outputSymbols);
