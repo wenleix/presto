@@ -74,6 +74,11 @@ public interface ConnectorMetadata
      */
     ConnectorTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName);
 
+    default ConnectorTableHandle getPromisedTableHandle(String schemaName, String tableName)
+    {
+        throw new UnsupportedOperationException();
+    }
+
     /**
      * Returns the system table for the specified table name, if one exists.
      * The system tables handled via {@link #getSystemTable} differ form those returned by {@link Connector#getSystemTables()}.

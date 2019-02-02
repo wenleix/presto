@@ -275,6 +275,8 @@ public class SqlQueryScheduler
                                 queryStateMachine.transitionToFailed(new PrestoException(GENERIC_INTERNAL_ERROR, "No stage to schedule in the queue, but the queue is not empty"));
                                 return;
                             }
+
+                            // TODO(wxie): Can there be race contention that we enqueue the same MegaStage twice?
                             startScheduling(stagesToSchedule);
                         }
                     }
@@ -608,6 +610,10 @@ public class SqlQueryScheduler
 
     private void schedule(Collection<SqlStageExecution> stages)
     {
+        if (stages.size() == 2) {
+            System.err.println("Wenlei Debug: Schedule with number of stages: " + stages.size());
+        }
+
         try (SetThreadName ignored = new SetThreadName("Query-%s", queryStateMachine.getQueryId())) {
             verify(scheduling.compareAndSet(false, true), "still scheduling");
             Set<StageId> completedStages = new HashSet<>();

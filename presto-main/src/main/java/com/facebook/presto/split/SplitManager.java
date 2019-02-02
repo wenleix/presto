@@ -13,17 +13,21 @@
  */
 package com.facebook.presto.split;
 
+import com.beust.jcommander.internal.Nullable;
 import com.facebook.presto.Session;
 import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.execution.QueryManagerConfig;
 import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplitSource;
+import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSchedulingStrategy;
+import com.google.common.base.Supplier;
 
 import javax.inject.Inject;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -61,11 +65,12 @@ public class SplitManager
 
         ConnectorSession connectorSession = session.toConnectorSession(connectorId);
 
-        ConnectorSplitSource source = splitManager.getSplits(
-                layout.getTransactionHandle(),
-                connectorSession,
-                layout.getConnectorHandle(),
-                splitSchedulingStrategy);
+        ConnectorSplitSource source = new LazyConnectorSplitSource(
+                () -> splitManager.getSplits(
+                        layout.getTransactionHandle(),
+                        connectorSession,
+                        layout.getConnectorHandle(),
+                        splitSchedulingStrategy));
 
         SplitSource splitSource = new ConnectorAwareSplitSource(connectorId, layout.getTransactionHandle(), source);
         if (minScheduleSplitBatchSize > 1) {
@@ -79,5 +84,46 @@ public class SplitManager
         ConnectorSplitManager result = splitManagers.get(connectorId);
         checkArgument(result != null, "No split manager for connector '%s'", connectorId);
         return result;
+    }
+
+    class LazyConnectorSplitSource
+        implements ConnectorSplitSource
+    {
+        Supplier<ConnectorSplitSource> supplier;
+        @Nullable ConnectorSplitSource delegate;
+
+        public LazyConnectorSplitSource(Supplier<ConnectorSplitSource> supplier)
+        {
+            delegate = null;
+            this.supplier = supplier;
+        }
+
+        @Override
+        public CompletableFuture<ConnectorSplitBatch> getNextBatch(ConnectorPartitionHandle partitionHandle, int maxSize)
+        {
+            ensureLoaded();
+            return delegate.getNextBatch(partitionHandle, maxSize);
+        }
+
+        @Override
+        public void close()
+        {
+            ensureLoaded();
+            delegate.close();
+        }
+
+        @Override
+        public boolean isFinished()
+        {
+            ensureLoaded();
+            return delegate.isFinished();
+        }
+
+        private synchronized void ensureLoaded()
+        {
+            if (delegate == null) {
+                delegate = supplier.get();
+            }
+        }
     }
 }

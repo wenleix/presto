@@ -28,6 +28,8 @@ import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.tree.ArrayConstructor;
 import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.StringLiteral;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
@@ -182,7 +184,13 @@ public class ExpandTableStage
                     idAllocator.getNextId(),
                     // TableHandle is used in planning, once planning is finished, TableLayout is used to get splits: https://github.com/prestodb/presto/blob/569a811fd1c584245fc472221b0258453e0ad851/presto-main/src/main/java/com/facebook/presto/sql/planner/DistributedExecutionPlanner.java#L146-L149
                     // So it safe to put a faked handle here :P
-                    new TableHandle(connectorId, new StageTableHandle()),
+
+                    // Well , not true... unfortunately
+                    metadata.getPromisedTableHandle(
+                            session,
+                            catalogName,
+                            tableMetadata.getTable().getSchemaName(),
+                            tableMetadata.getTable().getTableName()),
                     node.getOutputSymbols(),
                     assignments,
                     Optional.of(promisedLayout),
@@ -197,5 +205,18 @@ public class ExpandTableStage
     public static class StageTableHandle
             implements ConnectorTableHandle
     {
+        String dumb;
+
+        @JsonCreator
+        public StageTableHandle(@JsonProperty("dumb") String dumb)
+        {
+            this.dumb = dumb;
+        }
+
+        @JsonProperty
+        public String getDumb()
+        {
+            return dumb;
+        }
     }
 }
