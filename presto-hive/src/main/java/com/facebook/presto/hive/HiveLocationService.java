@@ -59,7 +59,7 @@ public class HiveLocationService
             throw new PrestoException(HIVE_PATH_ALREADY_EXISTS, format("Target directory for table '%s.%s' already exists: %s", schemaName, tableName, targetPath));
         }
 
-        if (shouldUseTemporaryDirectory(context, targetPath)) {
+        if (false && shouldUseTemporaryDirectory(context, targetPath)) {
             Path writePath = createTemporaryPath(context, hdfsEnvironment, targetPath);
             return new LocationHandle(targetPath, writePath, false, STAGE_AND_MOVE_TO_TARGET_DIRECTORY);
         }

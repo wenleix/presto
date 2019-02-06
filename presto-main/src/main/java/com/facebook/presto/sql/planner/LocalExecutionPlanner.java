@@ -451,6 +451,11 @@ public class LocalExecutionPlanner
         Session session = taskContext.getSession();
         LocalExecutionPlanContext context = new LocalExecutionPlanContext(taskContext, types);
 
+        System.err.println("Wenlei Debug: " + plan.getClass().getName());
+        if (plan instanceof TableFinishNode) {
+            System.err.println("Wenlei Debug: I am breakpoint!");
+        }
+
         PhysicalOperation physicalOperation = plan.accept(new Visitor(session, stageExecutionStrategy), context);
 
         Function<Page, Page> pagePreprocessor = enforceLayoutProcessor(outputLayout, physicalOperation.getLayout());
