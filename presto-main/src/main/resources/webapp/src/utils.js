@@ -258,6 +258,8 @@ export function computeSources(nodeInfo: any)
             remoteSources = nodeInfo.sourceFragmentIds;
             break;
         case 'tablescan':
+            remoteSources = nodeInfo.sourceFragmentIds;
+            break;
         case 'values':
         case 'indexsource':
             break;

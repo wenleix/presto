@@ -220,6 +220,8 @@ public class LogicalPlanner
                         PlanNode child = getOnlyElement(tableScanNode.getSources());
                         PlanSection childSection = new PlanSection(child);
                         context.addExecutionDependency(childSection);
+                        context.scanDependentSection.put(tableScanNode, childSection);
+                        tableScanNode.section = context;
 
                         visitPlan(child, childSection);
                         tableScanNode.deleteDependency();

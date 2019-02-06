@@ -118,6 +118,8 @@ public class PlanFragmenter
         SubPlan subPlan = fragmenter.buildFragment(root, properties, rootFragmentId);
         subPlan = analyzeGroupedExecution(session, subPlan);
         subPlan = reassignPartitioningHandleIfNecessary(session, subPlan);
+        section.rootFragment = subPlan.getFragment();
+
         List<Reference<SubPlan>> dependencies = section.getDependencies().stream()
                 .map(dependency -> plansCache.computeIfAbsent(
                         dependency,

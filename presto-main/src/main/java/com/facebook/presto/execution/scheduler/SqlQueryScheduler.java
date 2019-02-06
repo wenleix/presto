@@ -45,6 +45,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Streams;
 import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -123,6 +124,7 @@ public class SqlQueryScheduler
     private final StageId rootStageId;
     private final Map<StageId, StageScheduler> stageSchedulers;
     private final Map<StageId, StageLinkage> stageLinkages;
+    private final Map<StageId, Set<StageId>> stageDependencies;
     private final Queue<List<SqlStageExecution>> schedulingQueue;
     private final SplitSchedulerStats schedulerStats;
     private final boolean summarizeTaskInfo;
@@ -194,6 +196,7 @@ public class SqlQueryScheduler
         // todo come up with a better way to build this, or eliminate this map
         ImmutableMap.Builder<StageId, StageScheduler> stageSchedulers = ImmutableMap.builder();
         ImmutableMap.Builder<StageId, StageLinkage> stageLinkages = ImmutableMap.builder();
+        ImmutableMap.Builder<StageId, Set<StageId>> stageDependencies = ImmutableMap.builder();
 
         // Only fetch a distribution once per query to assure all stages see the same machine assignments
         Map<PartitioningHandle, NodePartitionMap> partitioningCache = new HashMap<>();
@@ -217,6 +220,7 @@ public class SqlQueryScheduler
                 nodeTaskMap,
                 stageSchedulers,
                 stageLinkages,
+                stageDependencies,
                 new HashSet<>(),
                 schedulingQueue);
 
@@ -231,6 +235,7 @@ public class SqlQueryScheduler
 
         this.stageSchedulers = stageSchedulers.build();
         this.stageLinkages = stageLinkages.build();
+        this.stageDependencies = stageDependencies.build();
         this.schedulingQueue = schedulingQueue;
 
         this.executor = queryExecutor;
@@ -327,6 +332,7 @@ public class SqlQueryScheduler
             NodeTaskMap nodeTaskMap,
             ImmutableMap.Builder<StageId, StageScheduler> stageSchedulers,
             ImmutableMap.Builder<StageId, StageLinkage> stageLinkages,
+            ImmutableMap.Builder<StageId, Set<StageId>> stagedDependenciesGraph,
             Set<PlanFragmentId> stagedDependencies,
             Queue<List<SqlStageExecution>> schedulingQueue)
     {
@@ -451,6 +457,7 @@ public class SqlQueryScheduler
                     nodeTaskMap,
                     stageSchedulers,
                     stageLinkages,
+                    stagedDependenciesGraph,
                     stagedDependencies,
                     schedulingQueue);
             stages.addAll(subTree);
@@ -459,6 +466,7 @@ public class SqlQueryScheduler
             childStagesBuilder.add(childStage);
         }
 
+        ImmutableSet.Builder<StageId> dependentStageIdsBuilder = ImmutableSet.builder();
         for (Reference<StageExecutionPlan> dependency : plan.getExecutionDependencies()) {
             PlanFragmentId fragmentId = dependency.get().getFragment().getId();
             if (stagedDependencies.contains(fragmentId)) {
@@ -484,6 +492,7 @@ public class SqlQueryScheduler
                     nodeTaskMap,
                     stageSchedulers,
                     stageLinkages,
+                    stagedDependenciesGraph,
                     stagedDependencies,
                     schedulingQueue);
 
@@ -496,6 +505,7 @@ public class SqlQueryScheduler
             stages.addAll(subTree);
             stagedDependencies.add(fragmentId);
             schedulingQueue.add(subTree);
+            dependentStageIdsBuilder.add(root.getStageId());
         }
 
         Set<SqlStageExecution> childStages = childStagesBuilder.build();
@@ -506,6 +516,7 @@ public class SqlQueryScheduler
         });
 
         stageLinkages.put(stageId, new StageLinkage(plan.getFragment().getId(), parent, childStages));
+        stagedDependenciesGraph.put(stageId, dependentStageIdsBuilder.build());
 
         if (partitioningHandle.equals(SCALED_WRITER_DISTRIBUTION)) {
             Supplier<Collection<TaskStatus>> sourceTasksProvider = () -> childStages.stream()
@@ -555,7 +566,10 @@ public class SqlQueryScheduler
     {
         StageInfo parent = stageInfos.get(stageId);
         checkArgument(parent != null, "No stageInfo for %s", parent);
-        List<StageInfo> childStages = stageLinkages.get(stageId).getChildStageIds().stream()
+        List<StageInfo> childStages =
+                Streams.concat(
+                        stageLinkages.get(stageId).getChildStageIds().stream(),
+                        stageDependencies.get(stageId).stream())
                 .map(childStageId -> buildStageInfo(childStageId, stageInfos))
                 .collect(toImmutableList());
         if (childStages.isEmpty()) {

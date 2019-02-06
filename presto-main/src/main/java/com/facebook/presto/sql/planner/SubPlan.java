@@ -78,15 +78,17 @@ public class SubPlan
      */
     public List<PlanFragment> getAllFragments()
     {
-        Map<PlanFragmentId, PlanFragment> fragments = new HashMap<>();
-        fragments.put(fragment.getId(), fragment);
-        for (SubPlan dataDependency : dataDependencies) {
-            fragments.put(dataDependency.getFragment().getId(), dataDependency.getFragment());
+        ImmutableList.Builder<PlanFragment> fragments = ImmutableList.builder();
+
+        fragments.add(getFragment());
+        for (SubPlan child : getDataDependencies()) {
+            fragments.addAll(child.getAllFragments());
         }
-        for (Reference<SubPlan> dependency : dependencies) {
-            fragments.put(dependency.get().getFragment().getId(), dependency.get().getFragment());
+        for (Reference<SubPlan> dependencies : getExecutionDependencies()) {
+            fragments.addAll(dependencies.get().getAllFragments());
         }
-        return ImmutableList.copyOf(fragments.values());
+
+        return fragments.build();
     }
 
     public void sanityCheck()

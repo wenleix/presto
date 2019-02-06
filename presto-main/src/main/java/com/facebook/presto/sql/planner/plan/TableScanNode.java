@@ -17,6 +17,7 @@ import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.sql.planner.PlanSection;
 import com.facebook.presto.sql.planner.Symbol;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -53,6 +54,9 @@ public class TableScanNode
     // Wenlei!@#$%
     // It shoudn't be considered as a source, but should be done in some "PlanSectioner"
     private Optional<TableFinishNode> stagedTableFinishedNode;
+
+    // Hack
+    public PlanSection section;
 
     @JsonCreator
     public TableScanNode(
@@ -144,6 +148,24 @@ public class TableScanNode
     {
         return assignments;
     }
+
+    @JsonProperty("sourceFragmentIds")
+    public List<PlanFragmentId> getSourceFragmentIds()
+    {
+        if (section == null) {
+            return ImmutableList.of();
+        }
+
+        PlanFragmentId sourceId = section.scanDependentSection.get(this).rootFragment.getId();
+
+        if (sourceId != null) {
+            return ImmutableList.of(sourceId);
+        }
+        else {
+            return ImmutableList.of();
+        }
+    }
+
 
     /**
      * A TupleDomain that represents a predicate that every row this TableScan node
