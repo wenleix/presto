@@ -326,19 +326,6 @@ public class MetadataManager
     }
 
     @Override
-    public TableHandle getPromisedTableHandle(Session session, String catalogName, String schemaName, String tableName)
-    {
-        CatalogMetadata catalogMetadata = getCatalogMetadataForWrite(session, catalogName);
-        ConnectorId connectorId = catalogMetadata.getConnectorId();
-        ConnectorMetadata metadata = catalogMetadata.getMetadata();
-
-        return new TableHandle(
-                connectorId,
-                metadata.getPromisedTableHandle(schemaName, tableName));
-    }
-
-
-    @Override
     public Optional<SystemTable> getSystemTable(Session session, QualifiedObjectName tableName)
     {
         requireNonNull(session, "session is null");

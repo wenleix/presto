@@ -68,7 +68,7 @@ public class TableScanNode
     {
         // This constructor is for JSON deserialization only. Do not use.
         super(id);
-        this.table = requireNonNull(table, "table is null");
+        this.table = table;
         this.outputSymbols = ImmutableList.copyOf(requireNonNull(outputs, "outputs is null"));
         this.assignments = ImmutableMap.copyOf(requireNonNull(assignments, "assignments is null"));
         checkArgument(assignments.keySet().containsAll(outputs), "assignments does not cover all of outputs");
@@ -110,7 +110,7 @@ public class TableScanNode
             Optional<TableFinishNode> stagedTableFinishedNode)
     {
         super(id);
-        this.table = requireNonNull(table, "table is null");
+        this.table = table;
         this.outputSymbols = ImmutableList.copyOf(requireNonNull(outputs, "outputs is null"));
         this.assignments = ImmutableMap.copyOf(requireNonNull(assignments, "assignments is null"));
         checkArgument(assignments.keySet().containsAll(outputs), "assignments does not cover all of outputs");

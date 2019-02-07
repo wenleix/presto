@@ -67,10 +67,6 @@ public interface Metadata
      */
     Optional<TableHandle> getTableHandle(Session session, QualifiedObjectName tableName);
 
-    // Again, some kind of "LazyTableHandle" should be able to sovle the problem with proper refactor and correct
-    // execution ordering
-    TableHandle getPromisedTableHandle(Session session, String catalogName, String schemaName, String tableName);
-
     Optional<SystemTable> getSystemTable(Session session, QualifiedObjectName tableName);
 
     List<TableLayoutResult> getLayouts(Session session, TableHandle tableHandle, Constraint<ColumnHandle> constraint, Optional<Set<ColumnHandle>> desiredColumns);

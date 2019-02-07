@@ -100,13 +100,6 @@ public abstract class AbstractMockMetadata
     }
 
     @Override
-    public TableHandle getPromisedTableHandle(Session session, String catalogName, String schemaName, String tableName)
-    {
-        throw new UnsupportedOperationException();
-    }
-
-
-    @Override
     public Optional<SystemTable> getSystemTable(Session session, QualifiedObjectName tableName)
     {
         throw new UnsupportedOperationException();

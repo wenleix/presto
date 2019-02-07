@@ -183,14 +183,9 @@ public class ExpandTableStage
             TableScanNode tableScanNode = new TableScanNode(
                     idAllocator.getNextId(),
                     // TableHandle is used in planning, once planning is finished, TableLayout is used to get splits: https://github.com/prestodb/presto/blob/569a811fd1c584245fc472221b0258453e0ad851/presto-main/src/main/java/com/facebook/presto/sql/planner/DistributedExecutionPlanner.java#L146-L149
-                    // So it safe to put a faked handle here :P
+                    // We cannot use a faked handle here since JSON serializer will complaint cannot resolve connector
 
-                    // Well , not true... unfortunately
-                    metadata.getPromisedTableHandle(
-                            session,
-                            catalogName,
-                            tableMetadata.getTable().getSchemaName(),
-                            tableMetadata.getTable().getTableName()),
+                    null,
                     node.getOutputSymbols(),
                     assignments,
                     Optional.of(promisedLayout),

@@ -296,13 +296,6 @@ public class HiveMetadata
     }
 
     @Override
-    public ConnectorTableHandle getPromisedTableHandle(String schemaName, String tableName)
-    {
-        return new HiveTableHandle(schemaName, tableName);
-    }
-
-
-    @Override
     public Optional<SystemTable> getSystemTable(ConnectorSession session, SchemaTableName tableName)
     {
         if (isPartitionsSystemTable(tableName)) {

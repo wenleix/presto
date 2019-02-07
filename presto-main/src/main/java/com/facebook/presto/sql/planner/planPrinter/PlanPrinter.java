@@ -974,12 +974,10 @@ public class PlanPrinter
 
         private void printTableScanInfo(TableScanNode node, int indent)
         {
-            TableHandle table = node.getTable();
-
             if (node.getLayout().isPresent()) {
                 // TODO: find a better way to do this
                 ConnectorTableLayoutHandle layout = node.getLayout().get().getConnectorHandle();
-                if (!table.getConnectorHandle().toString().equals(layout.toString())) {
+                if (node.getTable() == null || !node.getTable().getConnectorHandle().toString().equals(layout.toString())) {
                     print(indent + 2, "LAYOUT: %s", layout);
                 }
             }
