@@ -39,10 +39,13 @@ import static java.util.Objects.requireNonNull;
 public class TableScanNode
         extends PlanNode
 {
-    private final TableHandle table;
     private final List<Symbol> outputSymbols;
     private final Map<Symbol, ColumnHandle> assignments; // symbol -> column
 
+    // fields below will not be serialized
+    // See also: https://github.com/prestodb/presto/pull/12325
+
+    private final TableHandle table;
     private final Optional<TableLayoutHandle> tableLayout;
 
     // Used during predicate refinement over multiple passes of predicate pushdown
@@ -61,18 +64,17 @@ public class TableScanNode
     @JsonCreator
     public TableScanNode(
             @JsonProperty("id") PlanNodeId id,
-            @JsonProperty("table") TableHandle table,
             @JsonProperty("outputSymbols") List<Symbol> outputs,
-            @JsonProperty("assignments") Map<Symbol, ColumnHandle> assignments,
-            @JsonProperty("layout") Optional<TableLayoutHandle> tableLayout)
+            @JsonProperty("assignments") Map<Symbol, ColumnHandle> assignments)
     {
         // This constructor is for JSON deserialization only. Do not use.
         super(id);
-        this.table = table;
         this.outputSymbols = ImmutableList.copyOf(requireNonNull(outputs, "outputs is null"));
         this.assignments = ImmutableMap.copyOf(requireNonNull(assignments, "assignments is null"));
         checkArgument(assignments.keySet().containsAll(outputs), "assignments does not cover all of outputs");
-        this.tableLayout = requireNonNull(tableLayout, "tableLayout is null");
+
+        this.table = null;
+        this.tableLayout = Optional.empty();
         this.currentConstraint = null;
         this.enforcedConstraint = null;
         this.stagedTableFinishedNode = Optional.empty();
@@ -124,18 +126,6 @@ public class TableScanNode
         this.stagedTableFinishedNode = requireNonNull(stagedTableFinishedNode);
     }
 
-    @JsonProperty("table")
-    public TableHandle getTable()
-    {
-        return table;
-    }
-
-    @JsonProperty
-    public Optional<TableLayoutHandle> getLayout()
-    {
-        return tableLayout;
-    }
-
     @Override
     @JsonProperty("outputSymbols")
     public List<Symbol> getOutputSymbols()
@@ -166,6 +156,15 @@ public class TableScanNode
         }
     }
 
+    public TableHandle getTable()
+    {
+        return table;
+    }
+
+    public Optional<TableLayoutHandle> getLayout()
+    {
+        return tableLayout;
+    }
 
     /**
      * A TupleDomain that represents a predicate that every row this TableScan node
