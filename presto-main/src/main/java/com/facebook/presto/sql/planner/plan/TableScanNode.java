@@ -21,6 +21,7 @@ import com.facebook.presto.sql.planner.PlanSection;
 import com.facebook.presto.sql.planner.Symbol;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
@@ -28,6 +29,7 @@ import javax.annotation.concurrent.Immutable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -46,7 +48,7 @@ public class TableScanNode
     // See also: https://github.com/prestodb/presto/pull/12325
 
     private final TableHandle table;
-    private final Optional<TableLayoutHandle> tableLayout;
+    private final TableLayoutHandleProvider tableLayout;
 
     // Used during predicate refinement over multiple passes of predicate pushdown
     // TODO: think about how to get rid of this in new planner
@@ -74,7 +76,7 @@ public class TableScanNode
         checkArgument(assignments.keySet().containsAll(outputs), "assignments does not cover all of outputs");
 
         this.table = null;
-        this.tableLayout = Optional.empty();
+        this.tableLayout = TableLayoutHandleProvider.empty();
         this.currentConstraint = null;
         this.enforcedConstraint = null;
         this.stagedTableFinishedNode = Optional.empty();
@@ -86,7 +88,15 @@ public class TableScanNode
             List<Symbol> outputs,
             Map<Symbol, ColumnHandle> assignments)
     {
-        this(id, table, outputs, assignments, Optional.empty(), TupleDomain.all(), TupleDomain.all(), Optional.empty());
+        this(
+                id,
+                table,
+                outputs,
+                assignments,
+                TableLayoutHandleProvider.empty(),
+                TupleDomain.all(),
+                TupleDomain.all(),
+                Optional.empty());
     }
 
     public TableScanNode(
@@ -94,11 +104,11 @@ public class TableScanNode
             TableHandle table,
             List<Symbol> outputs,
             Map<Symbol, ColumnHandle> assignments,
-            Optional<TableLayoutHandle> tableLayout,
+            TableLayoutHandleProvider tableLayout,
             TupleDomain<ColumnHandle> currentConstraint,
             TupleDomain<ColumnHandle> enforcedConstraint)
     {
-        this(id, table, outputs, assignments, tableLayout, currentConstraint, enforcedConstraint, Optional.empty());
+        this(id, table, outputs, assignments, TableLayoutHandleProvider.empty(), currentConstraint, enforcedConstraint, Optional.empty());
     }
 
     public TableScanNode(
@@ -106,7 +116,7 @@ public class TableScanNode
             TableHandle table,
             List<Symbol> outputs,
             Map<Symbol, ColumnHandle> assignments,
-            Optional<TableLayoutHandle> tableLayout,
+            TableLayoutHandleProvider tableLayout,
             TupleDomain<ColumnHandle> currentConstraint,
             TupleDomain<ColumnHandle> enforcedConstraint,
             Optional<TableFinishNode> stagedTableFinishedNode)
@@ -120,7 +130,7 @@ public class TableScanNode
         this.currentConstraint = requireNonNull(currentConstraint, "currentConstraint is null");
         this.enforcedConstraint = requireNonNull(enforcedConstraint, "enforcedConstraint is null");
         if (!currentConstraint.isAll() || !enforcedConstraint.isAll()) {
-            checkArgument(tableLayout.isPresent(), "tableLayout must be present when currentConstraint or enforcedConstraint is non-trivial");
+            tableLayout.get();
         }
 
         this.stagedTableFinishedNode = requireNonNull(stagedTableFinishedNode);
@@ -161,7 +171,7 @@ public class TableScanNode
         return table;
     }
 
-    public Optional<TableLayoutHandle> getLayout()
+    public TableLayoutHandleProvider getLayout()
     {
         return tableLayout;
     }
@@ -249,5 +259,66 @@ public class TableScanNode
     public void deleteDependency()
     {
         this.stagedTableFinishedNode = Optional.empty();
+    }
+
+    // TODO: Change all the Optional<TableLayoutHandle> to TableLayoutHandleProvider
+    public static class TableLayoutHandleProvider
+    {
+        private TableLayoutHandle value;
+        private final Supplier<TableLayoutHandle> supplier;
+
+        private TableLayoutHandleProvider(TableLayoutHandle value, Supplier<TableLayoutHandle> supplier)
+        {
+            checkArgument(!(value != null && supplier != null));
+            this.value = value;
+            this.supplier = supplier;
+        }
+
+        public synchronized boolean isEmpty()
+        {
+            return value == null && supplier == null;
+        }
+
+        public synchronized boolean isLoaded()
+        {
+            return value != null;
+        }
+
+        public synchronized TableLayoutHandle getOrCalculate()
+        {
+            assureLoaded();
+            return this.value;
+        }
+
+        public synchronized void assureLoaded()
+        {
+            if (value == null) {
+                return;
+            }
+            value = supplier.get();
+        }
+
+        public Optional<TableLayoutHandle> toOptional()
+        {
+            if (isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(getOrCalculate());
+        }
+
+        public static TableLayoutHandleProvider empty()
+        {
+            return new TableLayoutHandleProvider(null, null);
+        }
+
+        public static TableLayoutHandleProvider of(TableLayoutHandle value)
+        {
+            return new TableLayoutHandleProvider(value, null);
+        }
+
+        public static TableLayoutHandleProvider of(Supplier<TableLayoutHandle> value)
+        {
+            return new TableLayoutHandleProvider(null, value);
+        }
     }
 }

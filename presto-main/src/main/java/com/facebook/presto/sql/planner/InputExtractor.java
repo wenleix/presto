@@ -90,7 +90,7 @@ public class InputExtractor
                 columns.add(createColumn(metadata.getColumnMetadata(session, tableHandle, columnHandle)));
             }
 
-            inputs.add(createInput(metadata.getTableMetadata(session, tableHandle), node.getLayout(), columns));
+            inputs.add(createInput(metadata.getTableMetadata(session, tableHandle), node.getLayout().toOptional(), columns));
 
             return null;
         }

@@ -301,7 +301,7 @@ public class IndexJoinOptimizer
                     idAllocator.getNextId(),
                     resolvedIndex.getIndexHandle(),
                     node.getTable(),
-                    node.getLayout(),
+                    node.getLayout().toOptional(),
                     context.getLookupSymbols(),
                     node.getOutputSymbols(),
                     node.getAssignments(),

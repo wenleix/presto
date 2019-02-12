@@ -156,7 +156,7 @@ public class DistributedExecutionPlanner
             // get dataSource for table
             SplitSource splitSource = splitManager.getSplits(
                     session,
-                    node.getLayout().get(),
+                    node.getLayout(),
                     stageExecutionStrategy.isGroupedExecution(node.getId()) ? GROUPED_SCHEDULING : UNGROUPED_SCHEDULING);
 
             splitSources.add(splitSource);

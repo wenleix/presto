@@ -16,18 +16,21 @@ package com.facebook.presto.split;
 import com.beust.jcommander.internal.Nullable;
 import com.facebook.presto.Session;
 import com.facebook.presto.connector.ConnectorId;
+import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.QueryManagerConfig;
-import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSchedulingStrategy;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
+import com.facebook.presto.sql.planner.plan.TableScanNode;
+import com.facebook.presto.sql.planner.plan.TableScanNode.TableLayoutHandleProvider;
 import com.google.common.base.Supplier;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import javax.inject.Inject;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -58,25 +61,26 @@ public class SplitManager
         splitManagers.remove(connectorId);
     }
 
-    public SplitSource getSplits(Session session, TableLayoutHandle layout, SplitSchedulingStrategy splitSchedulingStrategy)
+    public SplitSource getSplits(Session session, TableLayoutHandleProvider layout, SplitSchedulingStrategy splitSchedulingStrategy)
     {
-        ConnectorId connectorId = layout.getConnectorId();
-        ConnectorSplitManager splitManager = getConnectorSplitManager(connectorId);
+        return new LazySplitSource(() -> {
+            ConnectorId connectorId = layout.getOrCalculate().getConnectorId();
+            ConnectorSplitManager splitManager = getConnectorSplitManager(connectorId);
 
-        ConnectorSession connectorSession = session.toConnectorSession(connectorId);
+            ConnectorSession connectorSession = session.toConnectorSession(connectorId);
 
-        ConnectorSplitSource source = new LazyConnectorSplitSource(
-                () -> splitManager.getSplits(
-                        layout.getTransactionHandle(),
-                        connectorSession,
-                        layout.getConnectorHandle(),
-                        splitSchedulingStrategy));
+            ConnectorSplitSource source = splitManager.getSplits(
+                    layout.getOrCalculate().getTransactionHandle(),
+                    connectorSession,
+                    layout.getOrCalculate().getConnectorHandle(),
+                    splitSchedulingStrategy);
 
-        SplitSource splitSource = new ConnectorAwareSplitSource(connectorId, layout.getTransactionHandle(), source);
-        if (minScheduleSplitBatchSize > 1) {
-            splitSource = new BufferingSplitSource(splitSource, minScheduleSplitBatchSize);
+            SplitSource splitSource = new ConnectorAwareSplitSource(connectorId, layout.getTransactionHandle(), source);
+            if (minScheduleSplitBatchSize > 1) {
+                splitSource = new BufferingSplitSource(splitSource, minScheduleSplitBatchSize);
+            }
+            return splitSource;
         }
-        return splitSource;
     }
 
     private ConnectorSplitManager getConnectorSplitManager(ConnectorId connectorId)
@@ -86,40 +90,54 @@ public class SplitManager
         return result;
     }
 
-    class LazyConnectorSplitSource
-        implements ConnectorSplitSource
+    class LazySplitSource
+        implements SplitSource
     {
-        Supplier<ConnectorSplitSource> supplier;
-        @Nullable ConnectorSplitSource delegate;
+        Supplier<SplitSource> supplier;
+        @Nullable SplitSource delegate;
 
-        public LazyConnectorSplitSource(Supplier<ConnectorSplitSource> supplier)
+        public LazySplitSource(Supplier<SplitSource> supplier)
         {
             delegate = null;
             this.supplier = supplier;
         }
 
         @Override
-        public CompletableFuture<ConnectorSplitBatch> getNextBatch(ConnectorPartitionHandle partitionHandle, int maxSize)
+        public ConnectorId getConnectorId()
         {
-            ensureLoaded();
-            return delegate.getNextBatch(partitionHandle, maxSize);
+            assureLoaded();
+            return delegate.getConnectorId();
+        }
+
+        @Override
+        public ConnectorTransactionHandle getTransactionHandle()
+        {
+            assureLoaded();
+            return delegate.getTransactionHandle();
+        }
+
+        @Override
+        public ListenableFuture<SplitBatch> getNextBatch(ConnectorPartitionHandle partitionHandle, Lifespan lifespan, int maxSize)
+        {
+            assureLoaded();
+            return delegate.getNextBatch(partitionHandle, lifespan, maxSize);
         }
 
         @Override
         public void close()
         {
-            ensureLoaded();
+            assureLoaded();
             delegate.close();
         }
 
         @Override
         public boolean isFinished()
         {
-            ensureLoaded();
+            assureLoaded();
             return delegate.isFinished();
         }
 
-        private synchronized void ensureLoaded()
+        private synchronized void assureLoaded()
         {
             if (delegate == null) {
                 delegate = supplier.get();
