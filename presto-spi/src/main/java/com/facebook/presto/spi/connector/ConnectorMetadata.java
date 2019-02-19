@@ -15,6 +15,7 @@ package com.facebook.presto.spi.connector;
 
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.ConnectorExchangeTableDescriptor;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorNewTableLayout;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
@@ -270,11 +271,6 @@ public interface ConnectorMetadata
         return Optional.empty();
     }
 
-    default ConnectorTableLayoutHandle getPromisedTableLayoutHandleForStageTable(ConnectorSession connectorSession, String tableName, List<ColumnHandle> columnHandles)
-    {
-        throw new PrestoException(NOT_SUPPORTED, "This connector does not support " + getClass().getName());
-    }
-
     /**
      * Get the physical layout for a inserting into an existing table.
      */
@@ -319,6 +315,11 @@ public interface ConnectorMetadata
     default ConnectorOutputTableHandle beginCreateTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, Optional<ConnectorNewTableLayout> layout)
     {
         throw new PrestoException(NOT_SUPPORTED, "This connector does not support creating tables with data");
+    }
+
+    default ConnectorExchangeTableDescriptor prepareExchangeTable(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support creating ");
     }
 
     /**

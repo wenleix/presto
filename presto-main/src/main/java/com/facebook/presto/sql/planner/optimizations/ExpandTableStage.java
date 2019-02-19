@@ -3,41 +3,33 @@ package com.facebook.presto.sql.planner.optimizations;
 import com.facebook.presto.Session;
 import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.execution.warnings.WarningCollector;
+import com.facebook.presto.metadata.ExchangeTableDescriptor;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.metadata.NewTableLayout;
-import com.facebook.presto.metadata.TableHandle;
-import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorTableHandle;
-import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.sql.planner.Partitioning;
 import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.TypeProvider;
+import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.planner.plan.StageTableNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
-import com.facebook.presto.sql.tree.ArrayConstructor;
-import com.facebook.presto.sql.tree.LongLiteral;
-import com.facebook.presto.sql.tree.StringLiteral;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -46,7 +38,6 @@ import static com.facebook.presto.sql.planner.plan.ExchangeNode.Scope.LOCAL;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.Scope.REMOTE;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.gatheringExchange;
 import static com.google.common.base.Verify.verify;
-import static com.google.common.collect.Iterables.getOnlyElement;
 import static org.glassfish.jersey.internal.util.collection.ImmutableCollectors.toImmutableList;
 
 // Expand TableStage to TableScan - TableFinish - TableWriter
@@ -102,6 +93,9 @@ public class ExpandTableStage
 
             ConnectorId connectorId = metadata.getCatalogHandle(session, catalogName)
                     .orElseThrow(() -> new PrestoException(NOT_FOUND, "Catalog does not exist: " + catalogName));
+
+            /*
+             * The old way.........
 
             String bucketedColumn = getOnlyElement(
                     node.getInputSymbols().stream()
@@ -180,17 +174,74 @@ public class ExpandTableStage
                             .map(ColumnHandle.class::cast)
                             .collect(toImmutableList()));
 
+            */
+
+
+            // Comment(wxie): This is to explore whether we can just materialize the ExchangeNode...
+            // So we will try to use all information we can get from ExchangeNode instead of TableStageNode
+            ExchangeNode exchangeNode = (ExchangeNode) node.getSource();
+            ExchangeTableDescriptor exchangeTableDescriptor = metadata.prepareExchangeTable(
+                    session,
+                    catalogName,
+                    /* List<ColumnMetadata> columnMetadatas */
+                    node.getInputSymbols().stream()
+                            .map(symbol -> new ColumnMetadata(symbol.getName(), types.get(symbol)))
+                            .collect(toImmutableList()),
+                    exchangeNode.getPartitioningScheme().getPartitioning().getHandle().getConnectorHandle(),
+                    /* List<String> partitionColumns */
+                    exchangeNode.getPartitioningScheme().getPartitioning().getArguments().stream()
+                        .map(Partitioning.ArgumentBinding::getColumn)
+                        .map(Symbol::getName)
+                        .collect(toImmutableList()));
+
+            TableWriterNode.CreateHandle createHandle = new TableWriterNode.CreateHandle(exchangeTableDescriptor.outputTableHandle, exchangeTableDescriptor.tableName);
+
+            // Based on
+            //      https://github.com/prestodb/presto/blob/1e7691554ef0e6a0064c77fc811b102002662cb4/presto-main/src/main/java/com/facebook/presto/sql/planner/LogicalPlanner.java#L395
+            TableFinishNode commitNode = new TableFinishNode(
+                    idAllocator.getNextId(),
+                    gatheringExchange(idAllocator.getNextId(), LOCAL,
+                            gatheringExchange(idAllocator.getNextId(), REMOTE,
+                                    new TableWriterNode(
+                                            idAllocator.getNextId(),
+                                            node.getSource(),
+                                            createHandle,
+                                            symbolAllocator.newSymbol("partialrows", BIGINT),
+                                            symbolAllocator.newSymbol("fragment", VARBINARY),
+                                            node.getInputSymbols(),
+                                            node.getInputSymbols().stream()
+                                                    .map(Symbol::getName)
+                                                    .collect(toImmutableList()),
+                                            Optional.of(new PartitioningScheme(node.getTablePartitioning(), node.getInputSymbols())),
+                                            Optional.empty(),
+                                            Optional.empty()))),
+                    createHandle,
+                    symbolAllocator.newSymbol("rows", BIGINT),
+                    Optional.empty(),
+                    Optional.empty());
+
+
+            // Get table scan related stuff
+            List<ColumnHandle> columnHandles = exchangeTableDescriptor.columnHandles;
+            verify(columnHandles.size() == node.getOutputSymbols().size());
+            Map<Symbol, ColumnHandle> assignments = new HashMap<>();
+            for (int i = 0; i < columnHandles.size(); i++) {
+                assignments.put(node.getOutputSymbols().get(i), columnHandles.get(i));
+            }
+
             TableScanNode tableScanNode = new TableScanNode(
                     idAllocator.getNextId(),
                     // TableHandle is used in planning, once planning is finished, TableLayout is used to get splits: https://github.com/prestodb/presto/blob/569a811fd1c584245fc472221b0258453e0ad851/presto-main/src/main/java/com/facebook/presto/sql/planner/DistributedExecutionPlanner.java#L146-L149
-                    null,
+                    exchangeTableDescriptor.tableHandle,
                     node.getOutputSymbols(),
                     assignments,
-                    Optional.of(promisedLayout),
+                    Optional.of(exchangeTableDescriptor.layoutHandle),
                     TupleDomain.all(),
                     TupleDomain.all());
 
             return tableScanNode.withStagedTableFinishNode(commitNode);
+
+
         }
     }
 

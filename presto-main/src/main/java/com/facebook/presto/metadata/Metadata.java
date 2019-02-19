@@ -21,9 +21,11 @@ import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
+import com.facebook.presto.spi.connector.ConnectorPartitioningHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.security.GrantInfo;
 import com.facebook.presto.spi.security.Privilege;
@@ -176,12 +178,16 @@ public interface Metadata
 
     Optional<NewTableLayout> getNewTableLayout(Session session, String catalogName, ConnectorTableMetadata tableMetadata);
 
-    TableLayoutHandle getPromisedTableLayoutHandleForStageTable(Session session, String catalogName, String tableName, List<ColumnHandle> columnHandles);
-
     /**
      * Begin the atomic creation of a table with data.
      */
     OutputTableHandle beginCreateTable(Session session, String catalogName, ConnectorTableMetadata tableMetadata, Optional<NewTableLayout> layout);
+
+//    ConnectorPartitioningHandle getConnectorPartitioningHandleForExcahnge(xxx)
+
+    // See HiveBucketHandle and ConnectorNewTableLayout: ConnectorPartitioningHandle + partitionColumnName (represented by a list of Strings) to represent table partitioning information.
+    ExchangeTableDescriptor prepareExchangeTable(Session session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns);
+
 
     /**
      * Finish a table creation with data after the data is written.

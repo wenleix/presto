@@ -711,6 +711,7 @@ public class AddExchanges
                             left.getProperties());
                 }
                 else {
+
                     left = withDerivedProperties(
                             partitionedExchange(idAllocator.getNextId(), REMOTE, left.getNode(), leftSymbols, Optional.empty()),
                             left.getProperties());

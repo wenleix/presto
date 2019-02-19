@@ -29,6 +29,7 @@ import com.facebook.presto.hive.metastore.Table;
 import com.facebook.presto.hive.statistics.HiveStatisticsProvider;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.ConnectorExchangeTableDescriptor;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorNewTableLayout;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
@@ -103,6 +104,7 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -185,6 +187,7 @@ import static com.facebook.presto.spi.StandardErrorCode.SCHEMA_NOT_EMPTY;
 import static com.facebook.presto.spi.predicate.TupleDomain.withColumnDomains;
 import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
@@ -964,6 +967,89 @@ public class HiveMetadata
     }
 
     @Override
+    public ConnectorExchangeTableDescriptor prepareExchangeTable(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    {
+        verifyJvmTimeZone();
+        checkArgument(partitioningHandle instanceof HivePartitioningHandle);
+
+        HiveStorageFormat tableStorageFormat = getHiveStorageFormat(session);
+        List<String> partitionedBy = ImmutableList.of();
+        HivePartitioningHandle hivePartitioningHandle = (HivePartitioningHandle) partitioningHandle;
+        HiveBucketProperty bucketProperty = new HiveBucketProperty(partitionColumns, hivePartitioningHandle.getBucketCount(), ImmutableList.of());
+
+        // get the root directory for the database
+        SchemaTableName schemaTableName = new SchemaTableName(
+                "tpch_bucketed", // TODO(wxie): hard-coded a special schema (e.g. exchange_temp) ??
+                "temp_" + session.getQueryId() + "_" + UUID.randomUUID().toString());
+
+        // TODO(wxie): I create a "fake" TableMetadata since I copied some logic from `beginCreateTable()`, which calls
+        // `getEmptyTableProperties` and `getColumnHandles`, which requires tableMetadata.
+        // Do we have any better way to do that???
+        ConnectorTableMetadata tableMetadata = new ConnectorTableMetadata(
+                schemaTableName,
+                columnMetadatas,
+                ImmutableMap.of(
+                        BUCKETED_BY_PROPERTY, bucketProperty.getBucketedBy(),
+                        BUCKET_COUNT_PROPERTY, bucketProperty.getBucketCount(),
+                        SORTED_BY_PROPERTY, bucketProperty.getSortedBy()));
+
+        Map<String, String> tableProperties = getEmptyTableProperties(tableMetadata, !partitionedBy.isEmpty(), new HdfsContext(session, schemaTableName.getSchemaName(), schemaTableName.getTableName()));
+        List<HiveColumnHandle> columnHandles = getColumnHandles(tableMetadata, ImmutableSet.copyOf(partitionedBy), typeTranslator);
+        HiveStorageFormat partitionStorageFormat = isRespectTableFormat(session) ? tableStorageFormat : getHiveStorageFormat(session);
+
+        // unpartitioned tables ignore the partition storage format
+        HiveStorageFormat actualStorageFormat = partitionedBy.isEmpty() ? tableStorageFormat : partitionStorageFormat;
+        actualStorageFormat.validateColumns(columnHandles);
+
+        //  Get the output table handle...
+        LocationHandle locationHandle = locationService.forNewTable(metastore, session, schemaTableName.getSchemaName(), schemaTableName.getTableName());
+        HiveOutputTableHandle outputTableHandle = new HiveOutputTableHandle(
+                schemaTableName.getSchemaName(),
+                schemaTableName.getTableName(),
+                columnHandles,
+                session.getQueryId(),
+                metastore.generatePageSinkMetadata(schemaTableName),
+                locationHandle,
+                tableStorageFormat,
+                partitionStorageFormat,
+                partitionedBy,
+                Optional.of(bucketProperty),
+                session.getUser(),
+                tableProperties);
+
+        WriteInfo writeInfo = locationService.getQueryWriteInfo(locationHandle);
+        metastore.declareIntentionToWrite(session, writeInfo.getWriteMode(), writeInfo.getWritePath(), outputTableHandle.getFilePrefix(), schemaTableName);
+
+        // Now, get the layout handle...
+        List<HiveColumnHandle> bucketedColumnHandle = columnHandles.stream()
+                .filter(columnHandle -> partitionColumns.contains(columnHandle.getName()))
+                .collect(toImmutableList());
+        checkArgument(bucketedColumnHandle.size() == partitionColumns.size());
+
+        HiveTableLayoutHandle tableLayoutHandle = new HiveTableLayoutHandle(
+                schemaTableName,
+                ImmutableList.of(),
+                ImmutableList.of(new HivePartition(schemaTableName)),
+                TupleDomain.all(),
+                TupleDomain.none(),
+                Optional.of(new HiveBucketHandle(
+                        bucketedColumnHandle,
+                        ((HivePartitioningHandle) partitioningHandle).getBucketCount(),
+                        ((HivePartitioningHandle) partitioningHandle).getBucketCount())),
+                Optional.empty());
+
+        return new ConnectorExchangeTableDescriptor(
+                // The table doesn't exist yet, cannot use normal getTableHandle
+                new HiveTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName()),
+                columnHandles.stream()
+                        .map(ColumnHandle.class::cast)
+                        .collect(toImmutableList()),
+                schemaTableName,
+                tableLayoutHandle,
+                outputTableHandle);
+    }
+
+    @Override
     public Optional<ConnectorOutputMetadata> finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
         HiveOutputTableHandle handle = (HiveOutputTableHandle) tableHandle;
@@ -1720,27 +1806,6 @@ public class HiveMetadata
                                 .collect(toList()),
                         OptionalInt.of(bucketProperty.get().getBucketCount())),
                 bucketedBy));
-    }
-
-    @Override
-    public ConnectorTableLayoutHandle getPromisedTableLayoutHandleForStageTable(ConnectorSession connectorSession, String tableName, List<ColumnHandle> columnHandles)
-    {
-        SchemaTableName schemaTableName = new SchemaTableName("tpch_bucketed", tableName);
-
-        List<HiveColumnHandle> bucketColumnHandle = columnHandles.stream()
-                .map(HiveColumnHandle.class::cast)
-                .filter(handle -> handle.getName().startsWith("custkey"))
-                .collect(toImmutableList());
-        verify(bucketColumnHandle.size() == 1);
-
-        return new HiveTableLayoutHandle(
-                schemaTableName,
-                ImmutableList.of(),
-                ImmutableList.of(new HivePartition(schemaTableName)),
-                TupleDomain.all(),
-                TupleDomain.none(),
-                Optional.of(new HiveBucketHandle(bucketColumnHandle, 11, 11)),
-                Optional.empty());
     }
 
     @Override

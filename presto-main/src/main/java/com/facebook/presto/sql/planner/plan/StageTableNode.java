@@ -74,6 +74,9 @@ public class StageTableNode
     }
 
     // That's the actual meat we want...
+
+    // Partitioning can be created from the PartitioningHandle + Partitioned Column symbols. not difficult.
+    // The key is still the PartitioningHandle, which need to be provided by Connector :)
     public Partitioning getTablePartitioning()
     {
         List<Symbol> tablePartitioningSymbols = outputSymbols.stream()

@@ -83,10 +83,4 @@ public class HiveOutputTableHandle
     {
         return additionalTableParameters;
     }
-
-    @Override
-    public List<? extends ColumnHandle> getColumnHandles()
-    {
-        return getInputColumns();
-    }
 }

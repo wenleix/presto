@@ -19,6 +19,7 @@ import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.spi.CatalogSchemaName;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.ConnectorExchangeTableDescriptor;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorResolvedIndex;
@@ -641,23 +642,6 @@ public class MetadataManager
     }
 
     @Override
-    public TableLayoutHandle getPromisedTableLayoutHandleForStageTable(Session session, String catalogName, String tableName, List<ColumnHandle> columnHandles)
-    {
-        CatalogMetadata catalogMetadata = getCatalogMetadataForWrite(session, catalogName);
-        ConnectorId connectorId = catalogMetadata.getConnectorId();
-        ConnectorMetadata metadata = catalogMetadata.getMetadata();
-
-        ConnectorTransactionHandle transactionHandle = catalogMetadata.getTransactionHandleFor(connectorId);
-        ConnectorSession connectorSession = session.toConnectorSession(connectorId);
-
-        return new TableLayoutHandle(
-                connectorId,
-                transactionHandle,
-                metadata.getPromisedTableLayoutHandleForStageTable(connectorSession, tableName, columnHandles)
-        );
-    }
-
-    @Override
     public void beginQuery(Session session, Set<ConnectorId> connectors)
     {
         for (ConnectorId connectorId : connectors) {
@@ -703,6 +687,25 @@ public class MetadataManager
         ConnectorSession connectorSession = session.toConnectorSession(connectorId);
         ConnectorOutputTableHandle handle = metadata.beginCreateTable(connectorSession, tableMetadata, layout.map(NewTableLayout::getLayout));
         return new OutputTableHandle(connectorId, transactionHandle, handle);
+    }
+
+    @Override
+    public ExchangeTableDescriptor prepareExchangeTable(Session session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    {
+        CatalogMetadata catalogMetadata = getCatalogMetadataForWrite(session, catalogName);
+        ConnectorId connectorId = catalogMetadata.getConnectorId();
+        ConnectorMetadata metadata = catalogMetadata.getMetadata();
+
+        ConnectorTransactionHandle transactionHandle = catalogMetadata.getTransactionHandleFor(connectorId);
+        ConnectorSession connectorSession = session.toConnectorSession(connectorId);
+        ConnectorExchangeTableDescriptor descriptor = metadata.prepareExchangeTable(connectorSession, catalogName, columnMetadatas, partitioningHandle, partitionColumns);
+
+        return new ExchangeTableDescriptor(
+                new TableHandle(connectorId, descriptor.tableHandle),
+                descriptor.columnHandles,
+                descriptor.tableName,
+                new TableLayoutHandle(connectorId, transactionHandle, descriptor.layoutHandle),
+                new OutputTableHandle(connectorId, transactionHandle, descriptor.outputTableHandle));
     }
 
     @Override

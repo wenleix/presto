@@ -18,9 +18,4 @@ import java.util.List;
 @SuppressWarnings("MarkerInterface")
 public interface ConnectorOutputTableHandle
 {
-    // This method only needs to be implemented by connectors that supports stage table
-    default List<? extends ColumnHandle> getColumnHandles()
-    {
-        throw new UnsupportedOperationException();
-    }
 }
