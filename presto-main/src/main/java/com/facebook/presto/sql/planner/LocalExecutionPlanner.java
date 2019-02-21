@@ -2786,7 +2786,13 @@ public class LocalExecutionPlanner
         WriterTarget target = node.getTarget();
         return (fragments, statistics) -> {
             if (target instanceof CreateHandle) {
-                return metadata.finishCreateTable(session, ((CreateHandle) target).getHandle(), fragments, statistics);
+                CreateHandle createHandle = (CreateHandle) target;
+                if (createHandle.isMaterializedExchange()) {
+                    return metadata.finishMaterializeExchange(session, createHandle.getHandle(), fragments);
+                }
+                else {
+                    return metadata.finishCreateTable(session, createHandle.getHandle(), fragments, statistics);
+                }
             }
             else if (target instanceof InsertHandle) {
                 return metadata.finishInsert(session, ((InsertHandle) target).getHandle(), fragments, statistics);

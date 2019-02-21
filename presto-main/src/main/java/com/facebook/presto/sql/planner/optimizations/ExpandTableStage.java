@@ -180,7 +180,7 @@ public class ExpandTableStage
             // Comment(wxie): This is to explore whether we can just materialize the ExchangeNode...
             // So we will try to use all information we can get from ExchangeNode instead of TableStageNode
             ExchangeNode exchangeNode = (ExchangeNode) node.getSource();
-            ExchangeTableDescriptor exchangeTableDescriptor = metadata.prepareExchangeTable(
+            ExchangeTableDescriptor exchangeTableDescriptor = metadata.prepareMaterializeExchange(
                     session,
                     catalogName,
                     /* List<ColumnMetadata> columnMetadatas */
@@ -194,7 +194,7 @@ public class ExpandTableStage
                         .map(Symbol::getName)
                         .collect(toImmutableList()));
 
-            TableWriterNode.CreateHandle createHandle = new TableWriterNode.CreateHandle(exchangeTableDescriptor.outputTableHandle, exchangeTableDescriptor.tableName);
+            TableWriterNode.CreateHandle createHandle = new TableWriterNode.CreateHandle(exchangeTableDescriptor.outputTableHandle, exchangeTableDescriptor.tableName, true);
 
             // Based on
             //      https://github.com/prestodb/presto/blob/1e7691554ef0e6a0064c77fc811b102002662cb4/presto-main/src/main/java/com/facebook/presto/sql/planner/LogicalPlanner.java#L395

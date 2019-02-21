@@ -690,7 +690,15 @@ public class MetadataManager
     }
 
     @Override
-    public ExchangeTableDescriptor prepareExchangeTable(Session session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    public Optional<ConnectorOutputMetadata> finishCreateTable(Session session, OutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
+    {
+        ConnectorId connectorId = tableHandle.getConnectorId();
+        ConnectorMetadata metadata = getMetadata(session, connectorId);
+        return metadata.finishCreateTable(session.toConnectorSession(connectorId), tableHandle.getConnectorHandle(), fragments, computedStatistics);
+    }
+
+    @Override
+    public ExchangeTableDescriptor prepareMaterializeExchange(Session session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
     {
         CatalogMetadata catalogMetadata = getCatalogMetadataForWrite(session, catalogName);
         ConnectorId connectorId = catalogMetadata.getConnectorId();
@@ -698,7 +706,7 @@ public class MetadataManager
 
         ConnectorTransactionHandle transactionHandle = catalogMetadata.getTransactionHandleFor(connectorId);
         ConnectorSession connectorSession = session.toConnectorSession(connectorId);
-        ConnectorExchangeTableDescriptor descriptor = metadata.prepareExchangeTable(connectorSession, catalogName, columnMetadatas, partitioningHandle, partitionColumns);
+        ConnectorExchangeTableDescriptor descriptor = metadata.prepareMaterializeExchange(connectorSession, catalogName, columnMetadatas, partitioningHandle, partitionColumns);
 
         return new ExchangeTableDescriptor(
                 new TableHandle(connectorId, descriptor.tableHandle),
@@ -709,11 +717,11 @@ public class MetadataManager
     }
 
     @Override
-    public Optional<ConnectorOutputMetadata> finishCreateTable(Session session, OutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
+    public Optional<ConnectorOutputMetadata> finishMaterializeExchange(Session session, OutputTableHandle tableHandle, Collection<Slice> fragments)
     {
         ConnectorId connectorId = tableHandle.getConnectorId();
         ConnectorMetadata metadata = getMetadata(session, connectorId);
-        return metadata.finishCreateTable(session.toConnectorSession(connectorId), tableHandle.getConnectorHandle(), fragments, computedStatistics);
+        return metadata.finishMaterializeExchange(session.toConnectorSession(connectorId), tableHandle.getConnectorHandle(), fragments);
     }
 
     @Override

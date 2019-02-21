@@ -317,17 +317,22 @@ public interface ConnectorMetadata
         throw new PrestoException(NOT_SUPPORTED, "This connector does not support creating tables with data");
     }
 
-    default ConnectorExchangeTableDescriptor prepareExchangeTable(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
-    {
-        throw new PrestoException(NOT_SUPPORTED, "This connector does not support creating ");
-    }
-
     /**
      * Finish a table creation with data after the data is written.
      */
     default Optional<ConnectorOutputMetadata> finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
         throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata beginCreateTable() is implemented without finishCreateTable()");
+    }
+
+    default ConnectorExchangeTableDescriptor prepareMaterializeExchange(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support creating ");
+    }
+
+    default Optional<ConnectorOutputMetadata> finishMaterializeExchange(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata prepareMaterializeExchange() is implemented without finishMaterializeExchange()");
     }
 
     /**

@@ -688,6 +688,7 @@ public class HiveMetadata
                 principalPrivileges,
                 Optional.empty(),
                 ignoreExisting,
+                false,
                 new PartitionStatistics(basicStatistics, ImmutableMap.of()));
     }
 
@@ -967,7 +968,86 @@ public class HiveMetadata
     }
 
     @Override
-    public ConnectorExchangeTableDescriptor prepareExchangeTable(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    public Optional<ConnectorOutputMetadata> finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
+    {
+        HiveOutputTableHandle handle = (HiveOutputTableHandle) tableHandle;
+        List<PartitionUpdate> partitionUpdates = fragments.stream()
+                .map(Slice::getBytes)
+                .map(partitionUpdateCodec::fromJson)
+                .collect(toList());
+
+        WriteInfo writeInfo = locationService.getQueryWriteInfo(handle.getLocationHandle());
+
+        Table table = buildTableObject(
+                session.getQueryId(),
+                handle.getSchemaName(),
+                handle.getTableName(),
+                handle.getTableOwner(),
+                handle.getInputColumns(),
+                handle.getTableStorageFormat(),
+                handle.getPartitionedBy(),
+                handle.getBucketProperty(),
+                handle.getAdditionalTableParameters(),
+                writeInfo.getTargetPath(),
+                false,
+                prestoVersion);
+        PrincipalPrivileges principalPrivileges = buildInitialPrivilegeSet(handle.getTableOwner());
+
+        partitionUpdates = PartitionUpdate.mergePartitionUpdates(partitionUpdates);
+
+        if (handle.getBucketProperty().isPresent()) {
+            ImmutableList<PartitionUpdate> partitionUpdatesForMissingBuckets = computePartitionUpdatesForMissingBuckets(session, handle, table, partitionUpdates);
+            // replace partitionUpdates before creating the empty files so that those files will be cleaned up if we end up rollback
+            partitionUpdates = PartitionUpdate.mergePartitionUpdates(Iterables.concat(partitionUpdates, partitionUpdatesForMissingBuckets));
+            for (PartitionUpdate partitionUpdate : partitionUpdatesForMissingBuckets) {
+                Optional<Partition> partition = table.getPartitionColumns().isEmpty() ? Optional.empty() : Optional.of(buildPartitionObject(session, table, partitionUpdate));
+                createEmptyFile(session, partitionUpdate.getWritePath(), table, partition, partitionUpdate.getFileNames());
+            }
+        }
+
+        Map<String, Type> columnTypes = handle.getInputColumns().stream()
+                .collect(toImmutableMap(HiveColumnHandle::getName, column -> column.getHiveType().getType(typeManager)));
+        Map<List<String>, ComputedStatistics> partitionComputedStatistics = createComputedStatisticsToPartitionMap(computedStatistics, handle.getPartitionedBy(), columnTypes);
+
+        PartitionStatistics tableStatistics;
+        if (table.getPartitionColumns().isEmpty()) {
+            HiveBasicStatistics basicStatistics = partitionUpdates.stream()
+                    .map(PartitionUpdate::getStatistics)
+                    .reduce((first, second) -> reduce(first, second, ADD))
+                    .orElse(createZeroStatistics());
+            tableStatistics = createPartitionStatistics(session, basicStatistics, ImmutableList.of(), columnTypes, partitionComputedStatistics);
+        }
+        else {
+            tableStatistics = new PartitionStatistics(createEmptyStatistics(), ImmutableMap.of());
+        }
+
+        metastore.createTable(session, table, principalPrivileges, Optional.of(writeInfo.getWritePath()), false, false, tableStatistics);
+
+        if (!handle.getPartitionedBy().isEmpty()) {
+            if (isRespectTableFormat(session)) {
+                Verify.verify(handle.getPartitionStorageFormat() == handle.getTableStorageFormat());
+            }
+            for (PartitionUpdate update : partitionUpdates) {
+                Partition partition = buildPartitionObject(session, table, update);
+                PartitionStatistics partitionStatistics = createPartitionStatistics(session, update.getStatistics(), partition.getValues(), columnTypes, partitionComputedStatistics);
+                metastore.addPartition(
+                        session,
+                        handle.getSchemaName(),
+                        handle.getTableName(),
+                        buildPartitionObject(session, table, update),
+                        update.getWritePath(),
+                        partitionStatistics);
+            }
+        }
+
+        return Optional.of(new HiveWrittenPartitions(
+                partitionUpdates.stream()
+                        .map(PartitionUpdate::getName)
+                        .collect(Collectors.toList())));
+    }
+
+    @Override
+    public ConnectorExchangeTableDescriptor prepareMaterializeExchange(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
     {
         verifyJvmTimeZone();
         checkArgument(partitioningHandle instanceof HivePartitioningHandle);
@@ -1050,8 +1130,9 @@ public class HiveMetadata
     }
 
     @Override
-    public Optional<ConnectorOutputMetadata> finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
+    public Optional<ConnectorOutputMetadata> finishMaterializeExchange(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
     {
+        // Copied from finishCreateTable(), remove commit part...
         HiveOutputTableHandle handle = (HiveOutputTableHandle) tableHandle;
 
         List<PartitionUpdate> partitionUpdates = fragments.stream()
@@ -1060,6 +1141,7 @@ public class HiveMetadata
                 .collect(toList());
 
         WriteInfo writeInfo = locationService.getQueryWriteInfo(handle.getLocationHandle());
+
         Table table = buildTableObject(
                 session.getQueryId(),
                 handle.getSchemaName(),
@@ -1087,40 +1169,14 @@ public class HiveMetadata
             }
         }
 
-        Map<String, Type> columnTypes = handle.getInputColumns().stream()
-                .collect(toImmutableMap(HiveColumnHandle::getName, column -> column.getHiveType().getType(typeManager)));
-        Map<List<String>, ComputedStatistics> partitionComputedStatistics = createComputedStatisticsToPartitionMap(computedStatistics, handle.getPartitionedBy(), columnTypes);
-
-        PartitionStatistics tableStatistics;
-        if (table.getPartitionColumns().isEmpty()) {
-            HiveBasicStatistics basicStatistics = partitionUpdates.stream()
-                    .map(PartitionUpdate::getStatistics)
-                    .reduce((first, second) -> reduce(first, second, ADD))
-                    .orElse(createZeroStatistics());
-            tableStatistics = createPartitionStatistics(session, basicStatistics, ImmutableList.of(), columnTypes, partitionComputedStatistics);
-        }
-        else {
-            tableStatistics = new PartitionStatistics(createEmptyStatistics(), ImmutableMap.of());
-        }
-
-        metastore.createTable(session, table, principalPrivileges, Optional.of(writeInfo.getWritePath()), false, tableStatistics);
-
-        if (!handle.getPartitionedBy().isEmpty()) {
-            if (isRespectTableFormat(session)) {
-                Verify.verify(handle.getPartitionStorageFormat() == handle.getTableStorageFormat());
-            }
-            for (PartitionUpdate update : partitionUpdates) {
-                Partition partition = buildPartitionObject(session, table, update);
-                PartitionStatistics partitionStatistics = createPartitionStatistics(session, update.getStatistics(), partition.getValues(), columnTypes, partitionComputedStatistics);
-                metastore.addPartition(
-                        session,
-                        handle.getSchemaName(),
-                        handle.getTableName(),
-                        buildPartitionObject(session, table, update),
-                        update.getWritePath(),
-                        partitionStatistics);
-            }
-        }
+        metastore.createTable(
+                session,
+                table,
+                principalPrivileges,
+                Optional.of(writeInfo.getWritePath()),
+                false,
+                true,
+                PartitionStatistics.empty());
 
         return Optional.of(new HiveWrittenPartitions(
                 partitionUpdates.stream()
@@ -1437,7 +1493,7 @@ public class HiveMetadata
         }
 
         try {
-            metastore.createTable(session, table, principalPrivileges, Optional.empty(), false, new PartitionStatistics(createEmptyStatistics(), ImmutableMap.of()));
+            metastore.createTable(session, table, principalPrivileges, Optional.empty(), false, false, new PartitionStatistics(createEmptyStatistics(), ImmutableMap.of()));
         }
         catch (TableAlreadyExistsException e) {
             throw new ViewAlreadyExistsException(e.getTableName());

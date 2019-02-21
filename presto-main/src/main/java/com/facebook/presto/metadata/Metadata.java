@@ -183,16 +183,18 @@ public interface Metadata
      */
     OutputTableHandle beginCreateTable(Session session, String catalogName, ConnectorTableMetadata tableMetadata, Optional<NewTableLayout> layout);
 
-//    ConnectorPartitioningHandle getConnectorPartitioningHandleForExcahnge(xxx)
-
-    // See HiveBucketHandle and ConnectorNewTableLayout: ConnectorPartitioningHandle + partitionColumnName (represented by a list of Strings) to represent table partitioning information.
-    ExchangeTableDescriptor prepareExchangeTable(Session session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns);
-
-
     /**
      * Finish a table creation with data after the data is written.
      */
     Optional<ConnectorOutputMetadata> finishCreateTable(Session session, OutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics);
+
+    // See HiveBucketHandle and ConnectorNewTableLayout: ConnectorPartitioningHandle + partitionColumnName (represented by a list of Strings) to represent table partitioning information.
+    ExchangeTableDescriptor prepareMaterializeExchange(Session session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns);
+
+    // Similar to finishCreateTable, but:
+    // (1) No stats
+    // (2) Won't make the table visible
+    Optional<ConnectorOutputMetadata> finishMaterializeExchange(Session session, OutputTableHandle tableHandle, Collection<Slice> fragments);
 
     Optional<NewTableLayout> getInsertLayout(Session session, TableHandle target);
 

@@ -223,14 +223,17 @@ public class TableWriterNode
     {
         private final OutputTableHandle handle;
         private final SchemaTableName schemaTableName;
+        private final boolean materializedExchange;
 
         @JsonCreator
         public CreateHandle(
                 @JsonProperty("handle") OutputTableHandle handle,
-                @JsonProperty("schemaTableName") SchemaTableName schemaTableName)
+                @JsonProperty("schemaTableName") SchemaTableName schemaTableName,
+                @JsonProperty("materializedExchange") boolean materializedExchange)
         {
             this.handle = requireNonNull(handle, "handle is null");
             this.schemaTableName = requireNonNull(schemaTableName, "schemaTableName is null");
+            this.materializedExchange = materializedExchange;
         }
 
         @JsonProperty
@@ -243,6 +246,12 @@ public class TableWriterNode
         public SchemaTableName getSchemaTableName()
         {
             return schemaTableName;
+        }
+
+        @JsonProperty
+        public boolean isMaterializedExchange()
+        {
+            return materializedExchange;
         }
 
         @Override

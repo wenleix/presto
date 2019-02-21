@@ -146,6 +146,7 @@ public class SemiTransactionalHiveMetastore
             case ADD:
             case ALTER:
             case INSERT_EXISTING:
+            case ADD_TEMP:
                 return Optional.of(tableAction.getData().getTable());
             case DROP:
                 return Optional.empty();
@@ -304,6 +305,7 @@ public class SemiTransactionalHiveMetastore
             PrincipalPrivileges principalPrivileges,
             Optional<Path> currentPath,
             boolean ignoreExisting,
+            boolean temporary,
             PartitionStatistics statistics)
     {
         setShared();
@@ -314,7 +316,12 @@ public class SemiTransactionalHiveMetastore
         TableAndMore tableAndMore = new TableAndMore(table, Optional.of(principalPrivileges), currentPath, Optional.empty(), ignoreExisting, statistics, statistics);
         if (oldTableAction == null) {
             HdfsContext context = new HdfsContext(session, table.getDatabaseName(), table.getTableName());
-            tableActions.put(schemaTableName, new Action<>(ActionType.ADD, tableAndMore, context));
+            if (!temporary) {
+                tableActions.put(schemaTableName, new Action<>(ActionType.ADD, tableAndMore, context));
+            }
+            else {
+                tableActions.put(schemaTableName, new Action<>(ActionType.ADD_TEMP, tableAndMore, context));
+            }
             return;
         }
         switch (oldTableAction.getType()) {
@@ -323,6 +330,7 @@ public class SemiTransactionalHiveMetastore
             case ADD:
             case ALTER:
             case INSERT_EXISTING:
+            case ADD_TEMP:
                 throw new TableAlreadyExistsException(schemaTableName);
             default:
                 throw new IllegalStateException("Unknown action type");
@@ -865,6 +873,10 @@ public class SemiTransactionalHiveMetastore
                     case INSERT_EXISTING:
                         committer.prepareInsertExistingTable(action.getContext(), action.getData());
                         break;
+                    case ADD_TEMP:
+                        // TODO: i think we should register temporary files in a separate list
+                        committer.prepareDropTemporaryTable(action.getContext(), action.getData());
+                        break;
                     default:
                         throw new IllegalStateException("Unknown action type");
                 }
@@ -1065,6 +1077,11 @@ public class SemiTransactionalHiveMetastore
                     Optional.empty(),
                     tableAndMore.getStatisticsUpdate(),
                     true));
+        }
+
+        private void prepareDropTemporaryTable(HdfsContext context, TableAndMore tableAndMore)
+        {
+            deletionTasksForFinish.add(new DirectoryDeletionTask(context, tableAndMore.getCurrentLocation().get()));
         }
 
         private void prepareDropPartition(SchemaTableName schemaTableName, List<String> partitionValues)
@@ -1825,7 +1842,8 @@ public class SemiTransactionalHiveMetastore
         DROP,
         ADD,
         ALTER,
-        INSERT_EXISTING
+        INSERT_EXISTING,
+        ADD_TEMP,   // will not be committed but dropped at commit time
     }
 
     private enum TableSource

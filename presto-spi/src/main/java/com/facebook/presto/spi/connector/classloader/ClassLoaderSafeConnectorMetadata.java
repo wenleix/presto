@@ -33,7 +33,6 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 
-import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static java.util.Objects.requireNonNull;
 
 public class ClassLoaderSafeConnectorMetadata
@@ -285,18 +284,26 @@ public class ClassLoaderSafeConnectorMetadata
     }
 
     @Override
-    public ConnectorExchangeTableDescriptor prepareExchangeTable(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
-    {
-        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
-            return delegate.prepareExchangeTable(session, catalogName, columnMetadatas, partitioningHandle, partitionColumns);
-        }
-    }
-
-    @Override
     public Optional<ConnectorOutputMetadata> finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
             return delegate.finishCreateTable(session, tableHandle, fragments, computedStatistics);
+        }
+    }
+
+    @Override
+    public ConnectorExchangeTableDescriptor prepareMaterializeExchange(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.prepareMaterializeExchange(session, catalogName, columnMetadatas, partitioningHandle, partitionColumns);
+        }
+    }
+
+    @Override
+    public Optional<ConnectorOutputMetadata> finishMaterializeExchange(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
+            return delegate.finishMaterializeExchange(session, tableHandle, fragments);
         }
     }
 

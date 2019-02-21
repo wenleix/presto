@@ -2189,7 +2189,7 @@ public abstract class AbstractTestHiveClient
                 targetPath = locationService.getQueryWriteInfo(locationHandle).getTargetPath();
                 Table table = createSimpleTable(schemaTableName, columns, session, targetPath, "q1");
                 transaction.getMetastore(schemaName)
-                        .createTable(session, table, privileges, Optional.empty(), false, EMPTY_TABLE_STATISTICS);
+                        .createTable(session, table, privileges, Optional.empty(), false, false, EMPTY_TABLE_STATISTICS);
                 Optional<Table> tableHandle = transaction.getMetastore(schemaName).getTable(schemaName, tableName);
                 assertTrue(tableHandle.isPresent());
                 transaction.commit();
@@ -2199,7 +2199,7 @@ public abstract class AbstractTestHiveClient
             try (Transaction transaction = newTransaction()) {
                 Table table = createSimpleTable(schemaTableName, columns, session, targetPath.suffix("_2"), "q2");
                 transaction.getMetastore(schemaName)
-                        .createTable(session, table, privileges, Optional.empty(), false, EMPTY_TABLE_STATISTICS);
+                        .createTable(session, table, privileges, Optional.empty(), false, false, EMPTY_TABLE_STATISTICS);
                 transaction.commit();
                 fail("Expected exception");
             }
@@ -2211,7 +2211,7 @@ public abstract class AbstractTestHiveClient
             try (Transaction transaction = newTransaction()) {
                 Table table = createSimpleTable(schemaTableName, columns, session, targetPath.suffix("_3"), "q3");
                 transaction.getMetastore(schemaName)
-                        .createTable(session, table, privileges, Optional.empty(), true, EMPTY_TABLE_STATISTICS);
+                        .createTable(session, table, privileges, Optional.empty(), true, false, EMPTY_TABLE_STATISTICS);
                 transaction.commit();
             }
 
@@ -2220,7 +2220,7 @@ public abstract class AbstractTestHiveClient
             try (Transaction transaction = newTransaction()) {
                 Table table = createSimpleTable(schemaTableName, columns, session, targetPath.suffix("_4"), "q4");
                 transaction.getMetastore(schemaName)
-                        .createTable(session, table, privileges, Optional.empty(), true, EMPTY_TABLE_STATISTICS);
+                        .createTable(session, table, privileges, Optional.empty(), true, false, EMPTY_TABLE_STATISTICS);
                 transaction.commit();
                 fail("Expected exception");
             }
@@ -4290,7 +4290,7 @@ public abstract class AbstractTestHiveClient
                     .setSerdeParameters(ImmutableMap.of());
 
             PrincipalPrivileges principalPrivileges = testingPrincipalPrivilege(tableOwner);
-            transaction.getMetastore(schemaName).createTable(session, tableBuilder.build(), principalPrivileges, Optional.empty(), true, EMPTY_TABLE_STATISTICS);
+            transaction.getMetastore(schemaName).createTable(session, tableBuilder.build(), principalPrivileges, Optional.empty(), true, false, EMPTY_TABLE_STATISTICS);
 
             transaction.commit();
         }
