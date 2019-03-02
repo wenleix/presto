@@ -706,7 +706,7 @@ public class MetadataManager
 
         ConnectorTransactionHandle transactionHandle = catalogMetadata.getTransactionHandleFor(connectorId);
         ConnectorSession connectorSession = session.toConnectorSession(connectorId);
-        ConnectorExchangeTableDescriptor descriptor = metadata.prepareMaterializeExchange(connectorSession, catalogName, columnMetadatas, partitioningHandle, partitionColumns);
+        ConnectorExchangeTableDescriptor descriptor = metadata.prepareTempTable(connectorSession, catalogName, columnMetadatas, partitioningHandle, partitionColumns);
 
         return new ExchangeTableDescriptor(
                 new TableHandle(connectorId, descriptor.tableHandle),

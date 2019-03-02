@@ -325,14 +325,14 @@ public interface ConnectorMetadata
         throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata beginCreateTable() is implemented without finishCreateTable()");
     }
 
-    default ConnectorExchangeTableDescriptor prepareMaterializeExchange(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    default ConnectorExchangeTableDescriptor createTemporaryTable(ConnectorSession session, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
     {
         throw new PrestoException(NOT_SUPPORTED, "This connector does not support creating ");
     }
 
     default Optional<ConnectorOutputMetadata> finishMaterializeExchange(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
     {
-        throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata prepareMaterializeExchange() is implemented without finishMaterializeExchange()");
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata prepareTempTable() is implemented without finishMaterializeExchange()");
     }
 
     /**

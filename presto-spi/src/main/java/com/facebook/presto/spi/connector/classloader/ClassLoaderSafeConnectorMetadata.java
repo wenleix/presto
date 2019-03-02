@@ -292,10 +292,10 @@ public class ClassLoaderSafeConnectorMetadata
     }
 
     @Override
-    public ConnectorExchangeTableDescriptor prepareMaterializeExchange(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    public ConnectorExchangeTableDescriptor createTemporaryTable(ConnectorSession session, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(classLoader)) {
-            return delegate.prepareMaterializeExchange(session, catalogName, columnMetadatas, partitioningHandle, partitionColumns);
+            return delegate.createTemporaryTable(session, columnMetadatas, partitioningHandle, partitionColumns);
         }
     }
 

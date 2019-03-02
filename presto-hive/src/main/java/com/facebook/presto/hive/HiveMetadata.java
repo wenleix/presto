@@ -1047,24 +1047,20 @@ public class HiveMetadata
     }
 
     @Override
-    public ConnectorExchangeTableDescriptor prepareMaterializeExchange(ConnectorSession session, String catalogName, List<ColumnMetadata> columnMetadatas, ConnectorPartitioningHandle partitioningHandle, List<String> partitionColumns)
+    public ConnectorExchangeTableDescriptor createTemporaryTable(
+            ConnectorSession session,
+            List<ColumnMetadata> columnMetadatas,
+            ConnectorPartitioningHandle partitioningHandle,
+            List<String> partitionColumns)
     {
-        verifyJvmTimeZone();
         checkArgument(partitioningHandle instanceof HivePartitioningHandle);
-
-        HiveStorageFormat tableStorageFormat = getHiveStorageFormat(session);
-        List<String> partitionedBy = ImmutableList.of();
         HivePartitioningHandle hivePartitioningHandle = (HivePartitioningHandle) partitioningHandle;
+
+        SchemaTableName schemaTableName = new SchemaTableName(
+                "__temp__", // TODO(wxie): What should the name be???
+                "temp_" + session.getQueryId() + "_" + UUID.randomUUID().toString());
         HiveBucketProperty bucketProperty = new HiveBucketProperty(partitionColumns, hivePartitioningHandle.getBucketCount(), ImmutableList.of());
 
-        // get the root directory for the database
-        SchemaTableName schemaTableName = new SchemaTableName(
-                "tpch_bucketed", // TODO(wxie): hard-coded a special schema (e.g. exchange_temp) ??
-                "temp_" + session.getQueryId() + "_" + UUID.randomUUID().toString());
-
-        // TODO(wxie): I create a "fake" TableMetadata since I copied some logic from `beginCreateTable()`, which calls
-        // `getEmptyTableProperties` and `getColumnHandles`, which requires tableMetadata.
-        // Do we have any better way to do that???
         ConnectorTableMetadata tableMetadata = new ConnectorTableMetadata(
                 schemaTableName,
                 columnMetadatas,
@@ -1073,13 +1069,11 @@ public class HiveMetadata
                         BUCKET_COUNT_PROPERTY, bucketProperty.getBucketCount(),
                         SORTED_BY_PROPERTY, bucketProperty.getSortedBy()));
 
-        Map<String, String> tableProperties = getEmptyTableProperties(tableMetadata, !partitionedBy.isEmpty(), new HdfsContext(session, schemaTableName.getSchemaName(), schemaTableName.getTableName()));
-        List<HiveColumnHandle> columnHandles = getColumnHandles(tableMetadata, ImmutableSet.copyOf(partitionedBy), typeTranslator);
-        HiveStorageFormat partitionStorageFormat = isRespectTableFormat(session) ? tableStorageFormat : getHiveStorageFormat(session);
+        List<HiveColumnHandle> columnHandles = getColumnHandles(tableMetadata, ImmutableSet.of(), typeTranslator);
+        HiveStorageFormat hiveStorageFormat = getHiveStorageFormat(tableMetadata.getProperties());
+        Map<String, String> tableProperties = getEmptyTableProperties(tableMetadata, false, new HdfsContext(session, schemaTableName.getSchemaName(), schemaTableName.getTableName()));
 
-        // unpartitioned tables ignore the partition storage format
-        HiveStorageFormat actualStorageFormat = partitionedBy.isEmpty() ? tableStorageFormat : partitionStorageFormat;
-        actualStorageFormat.validateColumns(columnHandles);
+        hiveStorageFormat.validateColumns(columnHandles);
 
         //  Get the output table handle...
         LocationHandle locationHandle = locationService.forNewTable(metastore, session, schemaTableName.getSchemaName(), schemaTableName.getTableName());
