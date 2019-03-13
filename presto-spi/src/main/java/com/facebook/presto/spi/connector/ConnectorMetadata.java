@@ -471,6 +471,11 @@ public interface ConnectorMetadata
         throw new PrestoException(NOT_SUPPORTED, "This connector does not support deletes");
     }
 
+    default boolean supportsPartitionedInsert(ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
+    {
+        return false;
+    }
+
     /**
      * Delete the provided table layout
      *

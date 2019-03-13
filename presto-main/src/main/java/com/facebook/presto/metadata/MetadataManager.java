@@ -805,6 +805,16 @@ public class MetadataManager
     }
 
     @Override
+    public boolean supportsPartitionedInsert(Session session, String catalogName, ConnectorPartitioningHandle partitioningHandle)
+    {
+        CatalogMetadata catalogMetadata = getOptionalCatalogMetadata(session, catalogName)
+                .orElseThrow(() -> new PrestoException(NOT_FOUND, format("Catalog '%s' does not exist", catalogName)));
+        ConnectorId connectorId = catalogMetadata.getConnectorId();
+        ConnectorMetadata metadata = catalogMetadata.getMetadataFor(connectorId);
+        return metadata.supportsPartitionedInsert(session.toConnectorSession(connectorId), partitioningHandle);
+    }
+
+    @Override
     public OptionalLong metadataDelete(Session session, TableHandle tableHandle, TableLayoutHandle tableLayoutHandle)
     {
         ConnectorId connectorId = tableHandle.getConnectorId();

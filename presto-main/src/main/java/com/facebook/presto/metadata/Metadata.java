@@ -25,6 +25,7 @@ import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
 import com.facebook.presto.spi.connector.ConnectorCapabilities;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
+import com.facebook.presto.spi.connector.ConnectorPartitioningHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.security.GrantInfo;
 import com.facebook.presto.spi.security.PrestoPrincipal;
@@ -248,6 +249,12 @@ public interface Metadata
      * @return whether delete without table scan is supported
      */
     boolean supportsMetadataDelete(Session session, TableHandle tableHandle, TableLayoutHandle tableLayoutHandle);
+
+    /**
+     * whether partitioned insert without exchange is supported
+     */
+    // Unstable
+    boolean supportsPartitionedInsert(Session session, String catalogName, ConnectorPartitioningHandle partitioningHandle);
 
     /**
      * Delete the provide table layout

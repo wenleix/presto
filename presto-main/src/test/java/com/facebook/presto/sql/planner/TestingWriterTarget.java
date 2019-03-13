@@ -24,4 +24,10 @@ public class TestingWriterTarget
     {
         return "testing handle";
     }
+
+    @Override
+    public String getCatalogName()
+    {
+        throw new UnsupportedOperationException();
+    }
 }

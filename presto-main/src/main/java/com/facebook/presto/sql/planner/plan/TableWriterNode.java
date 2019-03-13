@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.planner.plan;
 
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.InsertTableHandle;
 import com.facebook.presto.metadata.NewTableLayout;
 import com.facebook.presto.metadata.OutputTableHandle;
@@ -179,6 +180,8 @@ public class TableWriterNode
     {
         @Override
         public abstract String toString();
+
+        public abstract String getCatalogName();
     }
 
     // only used during planning -- will not be serialized
@@ -196,7 +199,8 @@ public class TableWriterNode
             this.layout = requireNonNull(layout, "layout is null");
         }
 
-        public String getCatalog()
+        @Override
+        public String getCatalogName()
         {
             return catalog;
         }
@@ -250,6 +254,12 @@ public class TableWriterNode
         {
             return handle.toString();
         }
+
+        @Override
+        public String getCatalogName()
+        {
+            return handle.getConnectorId().getCatalogName();
+        }
     }
 
     // only used during planning -- will not be serialized
@@ -272,6 +282,12 @@ public class TableWriterNode
         public String toString()
         {
             return handle.toString();
+        }
+
+        @Override
+        public String getCatalogName()
+        {
+            return handle.getConnectorId().getCatalogName();
         }
     }
 
@@ -307,6 +323,12 @@ public class TableWriterNode
         {
             return handle.toString();
         }
+
+        @Override
+        public String getCatalogName()
+        {
+            return handle.getConnectorId().getCatalogName();
+        }
     }
 
     public static class DeleteHandle
@@ -340,6 +362,12 @@ public class TableWriterNode
         public String toString()
         {
             return handle.toString();
+        }
+
+        @Override
+        public String getCatalogName()
+        {
+            return handle.getConnectorId().getCatalogName();
         }
     }
 }

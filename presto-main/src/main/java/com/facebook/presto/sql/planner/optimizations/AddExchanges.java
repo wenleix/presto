@@ -538,7 +538,9 @@ public class AddExchanges
                 }
             }
 
-            if (partitioningScheme.isPresent() && !source.getProperties().isCompatibleTablePartitioningWith(partitioningScheme.get().getPartitioning(), false, metadata, session)) {
+            if (partitioningScheme.isPresent()
+                    && !source.getProperties().isCompatibleTablePartitioningWith(partitioningScheme.get().getPartitioning(), false, metadata, session)
+                    && !metadata.supportsPartitionedInsert(session, node.getTarget().getCatalogName(), partitioningScheme.get().getPartitioning().getHandle().getConnectorHandle())) {
                 source = withDerivedProperties(
                         partitionedExchange(
                                 idAllocator.getNextId(),

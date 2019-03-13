@@ -31,6 +31,7 @@ import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SchemaTablePrefix;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
+import com.facebook.presto.spi.connector.ConnectorPartitioningHandle;
 import com.facebook.presto.spi.statistics.ComputedStatistics;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -263,6 +264,12 @@ public class BlackHoleMetadata
     public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle)
     {
         return new ConnectorTableLayout(handle);
+    }
+
+    @Override
+    public boolean supportsPartitionedInsert(ConnectorSession session, ConnectorPartitioningHandle partitioningHandle)
+    {
+        return true;
     }
 
     private void checkSchemaExists(String schemaName)
