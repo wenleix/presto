@@ -538,16 +538,33 @@ public class AddExchanges
                 }
             }
 
-            if (partitioningScheme.isPresent()
-                    && !source.getProperties().isCompatibleTablePartitioningWith(partitioningScheme.get().getPartitioning(), false, metadata, session)
-                    && !metadata.supportsPartitionedInsert(session, node.getTarget().getCatalogName(), partitioningScheme.get().getPartitioning().getHandle().getConnectorHandle())) {
-                source = withDerivedProperties(
-                        partitionedExchange(
-                                idAllocator.getNextId(),
-                                REMOTE,
-                                source.getNode(),
-                                partitioningScheme.get()),
-                        source.getProperties());
+            if (partitioningScheme.isPresent() && !source.getProperties().isCompatibleTablePartitioningWith(partitioningScheme.get().getPartitioning(), false, metadata, session)) {
+
+                if (metadata.supportsPartitionedInsert(session, node.getTarget().getCatalogName(), partitioningScheme.get().getPartitioning().getHandle().getConnectorHandle())) {
+                    // partition data on write
+                    node = new TableWriterNode(
+                            node.getId(),
+                            node.getSource(),
+                            node.getTarget(),
+                            node.getRowCountSymbol(),
+                            node.getFragmentSymbol(),
+                            node.getColumns(),
+                            node.getColumnNames(),
+                            node.getPartitioningScheme(),
+                            node.getStatisticsAggregation(),
+                            node.getStatisticsAggregationDescriptor(),
+                            true);
+                }
+                else {
+                    // engine needs to do partitioning
+                    source = withDerivedProperties(
+                            partitionedExchange(
+                                    idAllocator.getNextId(),
+                                    REMOTE,
+                                    source.getNode(),
+                                    partitioningScheme.get()),
+                            source.getProperties());
+                }
             }
             return rebaseAndDeriveProperties(node, source);
         }

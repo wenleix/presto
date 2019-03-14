@@ -102,7 +102,8 @@ public class BeginTableWrite
                     node.getColumnNames(),
                     node.getPartitioningScheme(),
                     node.getStatisticsAggregation(),
-                    node.getStatisticsAggregationDescriptor());
+                    node.getStatisticsAggregationDescriptor(),
+                    node.isPartitionDataOnWrite());
         }
 
         @Override

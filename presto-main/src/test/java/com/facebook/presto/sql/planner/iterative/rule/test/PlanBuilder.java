@@ -677,7 +677,8 @@ public class PlanBuilder
                 columnNames,
                 Optional.empty(),
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false);
     }
 
     public Symbol symbol(String name)

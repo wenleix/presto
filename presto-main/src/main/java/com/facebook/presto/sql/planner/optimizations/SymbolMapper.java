@@ -161,7 +161,8 @@ public class SymbolMapper
                 node.getColumnNames(),
                 node.getPartitioningScheme().map(partitioningScheme -> canonicalize(partitioningScheme, source)),
                 node.getStatisticsAggregation().map(this::map),
-                node.getStatisticsAggregationDescriptor().map(this::map));
+                node.getStatisticsAggregationDescriptor().map(this::map),
+                node.isPartitionDataOnWrite());
     }
 
     public StatisticsWriterNode map(StatisticsWriterNode node, PlanNode source)

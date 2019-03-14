@@ -453,7 +453,8 @@ public class LogicalPlanner
                     columnNames,
                     partitioningScheme,
                     Optional.of(partialAggregation),
-                    Optional.of(result.getDescriptor().map(aggregations.getMappings()::get)));
+                    Optional.of(result.getDescriptor().map(aggregations.getMappings()::get)),
+                    false);
 
             TableFinishNode commitNode = new TableFinishNode(
                     idAllocator.getNextId(),
@@ -478,7 +479,8 @@ public class LogicalPlanner
                         columnNames,
                         partitioningScheme,
                         Optional.empty(),
-                        Optional.empty()),
+                        Optional.empty(),
+                        false),
                 target,
                 symbolAllocator.newSymbol("rows", BIGINT),
                 Optional.empty(),
