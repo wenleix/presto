@@ -65,7 +65,8 @@ public class BlackHoleNodePartitioningProvider
             ConnectorTransactionHandle transactionHandle,
             ConnectorSession session,
             ConnectorPartitioningHandle partitioningHandle,
-            List<Type> partitionChannelTypes, int bucketCount)
+            List<Type> partitionChannelTypes,
+            int bucketCount)
     {
         return (page, position) -> {
             long hash = 13;

@@ -20,6 +20,7 @@ import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import io.airlift.slice.Slice;
 import io.airlift.units.Duration;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 
@@ -45,6 +46,15 @@ class BlackHolePageSink
     @Override
     public CompletableFuture<?> appendPage(Page page)
     {
+        appendFuture = scheduleAppend();
+        return appendFuture;
+    }
+
+    @Override
+    public CompletableFuture<?> appendPage(int[] partitionIds, Page page)
+    {
+        System.err.println("Wenlei Debug: partition ids: " + Arrays.toString(partitionIds));
+
         appendFuture = scheduleAppend();
         return appendFuture;
     }

@@ -25,6 +25,7 @@ import java.util.Set;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 public class PartitioningScheme
@@ -33,7 +34,7 @@ public class PartitioningScheme
     private final List<Symbol> outputLayout;
     private final Optional<Symbol> hashColumn;
     private final boolean replicateNullsAndAny;
-    private final Optional<int[]> bucketToPartition;
+    private Optional<int[]> bucketToPartition;
 
     public PartitioningScheme(Partitioning partitioning, List<Symbol> outputLayout)
     {
@@ -107,6 +108,12 @@ public class PartitioningScheme
     public Optional<int[]> getBucketToPartition()
     {
         return bucketToPartition;
+    }
+
+    public void setBucketToPartition(int[] bucketToPartition) {
+        checkState(!this.bucketToPartition.isPresent());
+        // Hack!
+        this.bucketToPartition = Optional.of(bucketToPartition);
     }
 
     public PartitioningScheme withBucketToPartition(Optional<int[]> bucketToPartition)

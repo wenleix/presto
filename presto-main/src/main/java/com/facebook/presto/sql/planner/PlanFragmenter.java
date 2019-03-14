@@ -117,7 +117,8 @@ public class PlanFragmenter
                 plan.getStatsAndCosts(),
                 new PlanSanityChecker(forceSingleNode),
                 warningCollector,
-                sqlParser);
+                sqlParser,
+                nodePartitioningManager);
 
         FragmentProperties properties = new FragmentProperties(new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), plan.getRoot().getOutputSymbols()));
         if (forceSingleNode || isForceSingleNodeOutput(session)) {
@@ -231,6 +232,7 @@ public class PlanFragmenter
         private final PlanSanityChecker planSanityChecker;
         private final WarningCollector warningCollector;
         private final SqlParser sqlParser;
+        private final NodePartitioningManager nodePartitioningManager;
         private int nextFragmentId = ROOT_FRAGMENT_ID + 1;
 
         public Fragmenter(
@@ -240,7 +242,8 @@ public class PlanFragmenter
                 StatsAndCosts statsAndCosts,
                 PlanSanityChecker planSanityChecker,
                 WarningCollector warningCollector,
-                SqlParser sqlParser)
+                SqlParser sqlParser,
+                NodePartitioningManager nodePartitioningManager)
         {
             this.session = requireNonNull(session, "session is null");
             this.metadata = requireNonNull(metadata, "metadata is null");
@@ -249,6 +252,7 @@ public class PlanFragmenter
             this.planSanityChecker = requireNonNull(planSanityChecker, "planSanityChecker is null");
             this.warningCollector = requireNonNull(warningCollector, "warningCollector is null");
             this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
+            this.nodePartitioningManager = requireNonNull(nodePartitioningManager, "nodePartitioningManager is null");
         }
 
         public SubPlan buildRootFragment(PlanNode root, FragmentProperties properties)
@@ -340,8 +344,15 @@ public class PlanFragmenter
         @Override
         public PlanNode visitTableWriter(TableWriterNode node, RewriteContext<FragmentProperties> context)
         {
-            if (node.getPartitioningScheme().isPresent() && !node.isPartitionedWrite()) {
-                context.get().setDistribution(node.getPartitioningScheme().get().getPartitioning().getHandle(), metadata, session);
+            if (node.getPartitioningScheme().isPresent()) {
+                if (node.isPartitionedWrite()) {
+                    // Hack: Actually I just want to an identity bucketToPartition map, but the only way to get bucket count is get the whole NodePartitionMap!@#$%^&
+                    NodePartitionMap nodePartitionMap = nodePartitioningManager.getNodePartitioningMap(session, node.getPartitioningScheme().get().getPartitioning().getHandle());
+                    node.getPartitioningScheme().get().setBucketToPartition(nodePartitionMap.getBucketToPartition());
+                }
+                else {
+                    context.get().setDistribution(node.getPartitioningScheme().get().getPartitioning().getHandle(), metadata, session);
+                }
             }
             return context.defaultRewrite(node, context.get());
         }
