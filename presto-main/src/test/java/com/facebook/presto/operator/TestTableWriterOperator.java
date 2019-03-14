@@ -304,7 +304,10 @@ public class TestTableWriterOperator
                 ImmutableList.of(0),
                 session,
                 statisticsAggregation,
-                outputTypes);
+                outputTypes,
+                false,
+                null,
+                null);
         return factory.createOperator(driverContext);
     }
 

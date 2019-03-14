@@ -60,6 +60,17 @@ public interface ConnectorPageSink
      */
     CompletableFuture<?> appendPage(Page page);
 
+    // @Unstable
+    // :)
+    // While this API is introduce to support partitioned table write (ConnectorMetadata.supportsPartitionedInsert),
+    // it seems to be generally useful. For example,
+    // thinking about writing to Hive bucketed table, and we can avoid compute the
+    // hash values twice.
+    default CompletableFuture<?> appendPage(int[] partitionIds, Page page)
+    {
+        throw new UnsupportedOperationException();
+    }
+
     /**
      * Notifies the connector that no more pages will be appended and returns
      * connector-specific information that will be sent to the coordinator to

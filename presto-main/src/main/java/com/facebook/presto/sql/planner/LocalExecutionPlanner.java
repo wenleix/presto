@@ -2221,6 +2221,78 @@ public class LocalExecutionPlanner
                     .map(source::symbolToChannel)
                     .collect(toImmutableList());
 
+            boolean partitionedWrite = false;
+            PartitionFunction partitionFunction = null;
+            List<Integer> partitionChannels = null;
+
+            if (node.isPartitionedWrite()) {
+                partitionedWrite = true;
+
+                // special!
+                // Copy and adapated from https://github.com/prestodb/presto/blob/e629ad1879316b010df3c31db6ec259dc55c35b9/presto-main/src/main/java/com/facebook/presto/sql/planner/LocalExecutionPlanner.java#L371-L442
+
+                PartitioningScheme partitioningScheme = node.getPartitioningScheme().get();
+                List<Symbol> outputLayout = partitioningScheme.getOutputLayout();
+
+                if (partitioningScheme.getPartitioning().getHandle().equals(FIXED_BROADCAST_DISTRIBUTION) ||
+                        partitioningScheme.getPartitioning().getHandle().equals(FIXED_ARBITRARY_DISTRIBUTION) ||
+                        partitioningScheme.getPartitioning().getHandle().equals(SCALED_WRITER_DISTRIBUTION) ||
+                        partitioningScheme.getPartitioning().getHandle().equals(SINGLE_DISTRIBUTION) ||
+                        partitioningScheme.getPartitioning().getHandle().equals(COORDINATOR_DISTRIBUTION)) {
+                    throw new UnsupportedOperationException();  // haha
+                }
+
+                // We can convert the symbols directly into channels, because the root must be a sink and therefore the layout is fixed
+                List<Optional<NullableValue>> partitionConstants;
+                List<Type> partitionChannelTypes;
+                if (partitioningScheme.getHashColumn().isPresent()) {
+                    partitionChannels = ImmutableList.of(outputLayout.indexOf(partitioningScheme.getHashColumn().get()));
+                    partitionConstants = ImmutableList.of(Optional.empty());
+                    partitionChannelTypes = ImmutableList.of(BIGINT);
+                }
+                else {
+                    partitionChannels = partitioningScheme.getPartitioning().getArguments().stream()
+                            .map(argument -> {
+                                if (argument.isConstant()) {
+                                    return -1;
+                                }
+                                return outputLayout.indexOf(argument.getSymbol());
+                            })
+                            .collect(toImmutableList());
+                    partitionConstants = partitioningScheme.getPartitioning().getArguments().stream()
+                            .map(argument -> {
+                                if (argument.isConstant()) {
+                                    return Optional.of(argument.getConstant());
+                                }
+                                return Optional.<NullableValue>empty();
+                            })
+                            .collect(toImmutableList());
+                    partitionChannelTypes = partitioningScheme.getPartitioning().getArguments().stream()
+                            .map(argument -> {
+                                if (argument.isConstant()) {
+                                    return argument.getConstant().getType();
+                                }
+                                return context.getTypes().get(argument.getSymbol());
+                            })
+                            .collect(toImmutableList());
+                }
+
+                partitionFunction = nodePartitioningManager.getPartitionFunction(context.getSession(), partitioningScheme, partitionChannelTypes);
+                OptionalInt nullChannel = OptionalInt.empty();
+                Set<Symbol> partitioningColumns = partitioningScheme.getPartitioning().getColumns();
+
+                // partitioningColumns expected to have one column in the normal case, and zero columns when partitioning on a constant
+                checkArgument(!partitioningScheme.isReplicateNullsAndAny() || partitioningColumns.size() <= 1);
+                if (partitioningScheme.isReplicateNullsAndAny() && partitioningColumns.size() == 1) {
+                    nullChannel = OptionalInt.of(outputLayout.indexOf(getOnlyElement(partitioningColumns)));
+                }
+
+                if (partitioningScheme.isReplicateNullsAndAny() || partitionConstants.stream().anyMatch(Optional::isPresent) || nullChannel.isPresent()) {
+                    // eventually we have to support them, for example execute a SEMI JOIN query with materialized exchange...
+                    throw new UnsupportedOperationException();
+                }
+            }
+
             OperatorFactory operatorFactory = new TableWriterOperatorFactory(
                     context.getNextOperatorId(),
                     node.getId(),
@@ -2229,7 +2301,10 @@ public class LocalExecutionPlanner
                     inputChannels,
                     session,
                     statisticsAggregation,
-                    getSymbolTypes(node.getOutputSymbols(), context.getTypes()));
+                    getSymbolTypes(node.getOutputSymbols(), context.getTypes()),
+                    partitionedWrite,
+                    partitionFunction,
+                    partitionChannels);
 
             return new PhysicalOperation(operatorFactory, outputMapping.build(), context, source);
         }

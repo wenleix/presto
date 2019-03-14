@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.sql.planner.plan;
 
-import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.InsertTableHandle;
 import com.facebook.presto.metadata.NewTableLayout;
 import com.facebook.presto.metadata.OutputTableHandle;
@@ -50,7 +49,7 @@ public class TableWriterNode
     private final Optional<PartitioningScheme> partitioningScheme;
     private final Optional<StatisticAggregations> statisticsAggregation;
     private final Optional<StatisticAggregationsDescriptor<Symbol>> statisticsAggregationDescriptor;
-    private final boolean partitionDataOnWrite; //  bette name...
+    private final boolean partitionedWrite; //  bette name...
     private final List<Symbol> outputs;
 
     @JsonCreator
@@ -65,7 +64,7 @@ public class TableWriterNode
             @JsonProperty("partitioningScheme") Optional<PartitioningScheme> partitioningScheme,
             @JsonProperty("statisticsAggregation") Optional<StatisticAggregations> statisticsAggregation,
             @JsonProperty("statisticsAggregationDescriptor") Optional<StatisticAggregationsDescriptor<Symbol>> statisticsAggregationDescriptor,
-            @JsonProperty("partitionDataOnWrite") boolean partitionDataOnWrite)
+            @JsonProperty("partitionedWrite") boolean partitionedWrite)
     {
         super(id);
 
@@ -82,7 +81,7 @@ public class TableWriterNode
         this.partitioningScheme = requireNonNull(partitioningScheme, "partitioningScheme is null");
         this.statisticsAggregation = requireNonNull(statisticsAggregation, "statisticsAggregation is null");
         this.statisticsAggregationDescriptor = requireNonNull(statisticsAggregationDescriptor, "statisticsAggregationDescriptor is null");
-        this.partitionDataOnWrite = partitionDataOnWrite;
+        this.partitionedWrite = partitionedWrite;
 
         checkArgument(statisticsAggregation.isPresent() == statisticsAggregationDescriptor.isPresent(), "statisticsAggregation and statisticsAggregationDescriptor must be either present or absent");
 
@@ -151,9 +150,9 @@ public class TableWriterNode
     }
 
     @JsonProperty
-    public boolean isPartitionDataOnWrite()
+    public boolean isPartitionedWrite()
     {
-        return partitionDataOnWrite;
+        return partitionedWrite;
     }
 
     @Override
@@ -177,7 +176,7 @@ public class TableWriterNode
     @Override
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
-        return new TableWriterNode(getId(), Iterables.getOnlyElement(newChildren), target, rowCountSymbol, fragmentSymbol, columns, columnNames, partitioningScheme, statisticsAggregation, statisticsAggregationDescriptor, partitionDataOnWrite);
+        return new TableWriterNode(getId(), Iterables.getOnlyElement(newChildren), target, rowCountSymbol, fragmentSymbol, columns, columnNames, partitioningScheme, statisticsAggregation, statisticsAggregationDescriptor, partitionedWrite);
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "@type")

@@ -103,7 +103,7 @@ public class BeginTableWrite
                     node.getPartitioningScheme(),
                     node.getStatisticsAggregation(),
                     node.getStatisticsAggregationDescriptor(),
-                    node.isPartitionDataOnWrite());
+                    node.isPartitionedWrite());
         }
 
         @Override

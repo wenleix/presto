@@ -38,6 +38,7 @@ import io.airlift.units.Duration;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -76,6 +77,10 @@ public class TableWriterOperator
         private final List<Type> types;
         private boolean closed;
 
+        private final boolean partitionedWrite;
+        private final PartitionFunction partitionFunction;
+        private final List<Integer> partitionChannels;
+
         public TableWriterOperatorFactory(int operatorId,
                 PlanNodeId planNodeId,
                 PageSinkManager pageSinkManager,
@@ -83,7 +88,10 @@ public class TableWriterOperator
                 List<Integer> columnChannels,
                 Session session,
                 OperatorFactory statisticsAggregationOperatorFactory,
-                List<Type> types)
+                List<Type> types,
+                boolean partitionedWrite,
+                PartitionFunction partitionFunction,
+                List<Integer> partitionChannels)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
@@ -94,6 +102,10 @@ public class TableWriterOperator
             this.session = session;
             this.statisticsAggregationOperatorFactory = requireNonNull(statisticsAggregationOperatorFactory, "statisticsAggregationOperatorFactory is null");
             this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
+
+            this.partitionedWrite = partitionedWrite;
+            this.partitionFunction = partitionFunction;
+            this.partitionChannels = partitionChannels;
         }
 
         @Override
@@ -103,7 +115,16 @@ public class TableWriterOperator
             OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableWriterOperator.class.getSimpleName());
             Operator statisticsAggregationOperator = statisticsAggregationOperatorFactory.createOperator(driverContext);
             boolean statisticsCpuTimerEnabled = !(statisticsAggregationOperator instanceof DevNullOperator) && isStatisticsCpuTimerEnabled(session);
-            return new TableWriterOperator(context, createPageSink(), columnChannels, statisticsAggregationOperator, types, statisticsCpuTimerEnabled);
+            return new TableWriterOperator(
+                    context,
+                    createPageSink(),
+                    columnChannels,
+                    statisticsAggregationOperator,
+                    types,
+                    statisticsCpuTimerEnabled,
+                    partitionedWrite,
+                    partitionFunction,
+                    partitionChannels);
         }
 
         private ConnectorPageSink createPageSink()
@@ -126,7 +147,18 @@ public class TableWriterOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new TableWriterOperatorFactory(operatorId, planNodeId, pageSinkManager, target, columnChannels, session, statisticsAggregationOperatorFactory, types);
+            return new TableWriterOperatorFactory(
+                    operatorId,
+                    planNodeId,
+                    pageSinkManager,
+                    target,
+                    columnChannels,
+                    session,
+                    statisticsAggregationOperatorFactory,
+                    types,
+                    partitionedWrite,
+                    partitionFunction,
+                    partitionChannels);
         }
     }
 
@@ -154,13 +186,20 @@ public class TableWriterOperator
     private final OperationTiming statisticsTiming = new OperationTiming();
     private final boolean statisticsCpuTimerEnabled;
 
+    private final boolean partitionedWrite;
+    private final PartitionFunction partitionFunction;
+    private final List<Integer> partitionChannels;
+
     public TableWriterOperator(
             OperatorContext operatorContext,
             ConnectorPageSink pageSink,
             List<Integer> columnChannels,
             Operator statisticAggregationOperator,
             List<Type> types,
-            boolean statisticsCpuTimerEnabled)
+            boolean statisticsCpuTimerEnabled,
+            boolean partitionedWrite,
+            PartitionFunction partitionFunction,
+            List<Integer> partitionChannels)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.pageSinkMemoryContext = operatorContext.newLocalSystemMemoryContext(TableWriterOperator.class.getSimpleName());
@@ -170,6 +209,10 @@ public class TableWriterOperator
         this.statisticAggregationOperator = requireNonNull(statisticAggregationOperator, "statisticAggregationOperator is null");
         this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
         this.statisticsCpuTimerEnabled = statisticsCpuTimerEnabled;
+
+        this.partitionedWrite = partitionedWrite;
+        this.partitionFunction = partitionFunction;
+        this.partitionChannels = partitionChannels;
     }
 
     @Override
@@ -235,12 +278,35 @@ public class TableWriterOperator
         timer.end(statisticsTiming);
 
         ListenableFuture<?> blockedOnAggregation = statisticAggregationOperator.isBlocked();
-        CompletableFuture<?> future = pageSink.appendPage(new Page(blocks));
+        CompletableFuture<?> future;
+
+        if (partitionedWrite) {
+            // compute partition ids...
+            Page partitionFunctionArgs = getPartitionFunctionArguments(page);
+            int[] partitionIds = new int[page.getPositionCount()];
+            for (int position = 0; position < page.getPositionCount(); position++) {
+                partitionIds[position] = partitionFunction.getPartition(partitionFunctionArgs, position);
+            }
+            future = pageSink.appendPage(partitionIds, new Page(blocks));
+        }
+        else {
+            future = pageSink.appendPage(new Page(blocks));
+        }
         updateMemoryUsage();
         ListenableFuture<?> blockedOnWrite = toListenableFuture(future);
         blocked = allAsList(blockedOnAggregation, blockedOnWrite);
         rowCount += page.getPositionCount();
         updateWrittenBytes();
+    }
+
+    // Copied from PartitionedOutputOperator
+    private Page getPartitionFunctionArguments(Page page)
+    {
+        Block[] blocks = new Block[partitionChannels.size()];
+        for (int i = 0; i < blocks.length; i++) {
+            blocks[i] = page.getBlock(partitionChannels.get(i));
+        }
+        return new Page(page.getPositionCount(), blocks);
     }
 
     @Override

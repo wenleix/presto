@@ -652,7 +652,7 @@ public class PruneUnreferencedOutputs
                     node.getPartitioningScheme(),
                     node.getStatisticsAggregation(),
                     node.getStatisticsAggregationDescriptor(),
-                    node.isPartitionDataOnWrite());
+                    node.isPartitionedWrite());
         }
 
         @Override
