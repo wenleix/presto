@@ -88,7 +88,7 @@ class HiveSplitSource
     private final AtomicInteger remainingInitialSplits;
 
     private final HiveSplitLoader splitLoader;
-    private final AtomicReference<State> stateReference;
+    private final AtomicReference<State> stateReference = new AtomicReference<>(State.initial());
 
     private final AtomicLong estimatedSplitSizeInBytes = new AtomicLong();
 
@@ -104,7 +104,6 @@ class HiveSplitSource
             int maxInitialSplits,
             DataSize maxOutstandingSplitsSize,
             HiveSplitLoader splitLoader,
-            AtomicReference<State> stateReference,
             CounterStat highMemorySplitSourceCounter)
     {
         requireNonNull(session, "session is null");
@@ -115,7 +114,6 @@ class HiveSplitSource
         this.queues = requireNonNull(queues, "queues is null");
         this.maxOutstandingSplitsBytes = toIntExact(maxOutstandingSplitsSize.toBytes());
         this.splitLoader = requireNonNull(splitLoader, "splitLoader is null");
-        this.stateReference = requireNonNull(stateReference, "stateReference is null");
         this.highMemorySplitSourceCounter = requireNonNull(highMemorySplitSourceCounter, "highMemorySplitSourceCounter is null");
 
         this.maxSplitSize = getMaxSplitSize(session);
@@ -135,7 +133,6 @@ class HiveSplitSource
             Executor executor,
             CounterStat highMemorySplitSourceCounter)
     {
-        AtomicReference<State> stateReference = new AtomicReference<>(State.initial());
         return new HiveSplitSource(
                 session,
                 databaseName,
@@ -175,7 +172,6 @@ class HiveSplitSource
                 maxInitialSplits,
                 maxOutstandingSplitsSize,
                 splitLoader,
-                stateReference,
                 highMemorySplitSourceCounter);
     }
 
@@ -191,7 +187,6 @@ class HiveSplitSource
             Executor executor,
             CounterStat highMemorySplitSourceCounter)
     {
-        AtomicReference<State> stateReference = new AtomicReference<>(State.initial());
         return new HiveSplitSource(
                 session,
                 databaseName,
@@ -258,7 +253,6 @@ class HiveSplitSource
                 maxInitialSplits,
                 maxOutstandingSplitsSize,
                 splitLoader,
-                stateReference,
                 highMemorySplitSourceCounter);
     }
 
