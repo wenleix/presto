@@ -194,6 +194,11 @@ public class InternalHiveSplit
         }
     }
 
+    public void resetStart()
+    {
+        start = 0;
+    }
+
     public int getEstimatedSizeInBytes()
     {
         int result = INSTANCE_SIZE;

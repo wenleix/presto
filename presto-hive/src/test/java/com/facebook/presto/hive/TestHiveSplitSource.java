@@ -319,6 +319,32 @@ public class TestHiveSplitSource
         }
     }
 
+    @Test
+    public void testRewind()
+    {
+        HiveSplitSource hiveSplitSource = HiveSplitSource.bucketed(
+                SESSION,
+                "database",
+                "table",
+                TupleDomain.all(),
+                10,
+                10,
+                new DataSize(1, MEGABYTE),
+                new TestingHiveSplitLoader(),
+                EXECUTOR,
+                new CounterStat());
+        for (int i = 0; i < 10; i++) {
+            hiveSplitSource.addToQueue(new TestSplit(i, OptionalInt.of(0)));
+            assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), i + 1);
+        }
+        hiveSplitSource.noMoreSplits();
+        assertEquals(getSplits(hiveSplitSource, OptionalInt.of(0), 10).size(), 10);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 0);
+
+        hiveSplitSource.rewind(new HivePartitionHandle(0));
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 10);
+    }
+
     private static List<ConnectorSplit> getSplits(ConnectorSplitSource source, int maxSize)
     {
         return getSplits(source, OptionalInt.empty(), maxSize);

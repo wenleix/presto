@@ -27,10 +27,12 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.testing.Assertions.assertContains;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -252,5 +254,42 @@ public class TestAsyncQueue
         // 1 and 2 were removed by borrow call; 8 and 9 were never inserted because insertion happened after finish.
         assertEquals(list, ImmutableList.of(3, 4, 5, 6, 7));
         assertTrue(queue.isFinished());
+    }
+
+    @Test
+    public void testSize()
+    {
+        AsyncQueue<Integer> queue = new AsyncQueue<>(4, executor);
+        for (int i = 0; i < 4; i++) {
+            queue.offer(i);
+            assertEquals(queue.size(), i + 1);
+        }
+
+        for (int i = 0; i < 4; i++) {
+            getFutureValue(queue.getBatchAsync(1));
+            assertEquals(queue.size(), 3 - i);
+        }
+    }
+
+    @Test(timeOut = 10_000)
+    public void testClear()
+            throws Exception
+    {
+        AsyncQueue<Integer> queue = new AsyncQueue<>(4, executor);
+        queue.offer(1);
+        queue.offer(2);
+        assertEquals(getFutureValue(queue.borrowBatchAsync(2, elements -> new BorrowResult<>(elements, elements))), ImmutableList.of(1, 2));
+        queue.clear();
+        try {
+            queue.getBatchAsync(2).get(100, MILLISECONDS);
+            fail("expected timeout");
+        }
+        catch (TimeoutException ignored) {
+        }
+
+        queue.finish();
+        assertTrue(queue.isFinished());
+        queue.clear();
+        assertFalse(queue.isFinished());
     }
 }

@@ -57,6 +57,12 @@ public class FixedSplitSource
     }
 
     @Override
+    public void rewind(ConnectorPartitionHandle partitionHandle)
+    {
+        offset = 0;
+    }
+
+    @Override
     public boolean isFinished()
     {
         return offset >= splits.size();

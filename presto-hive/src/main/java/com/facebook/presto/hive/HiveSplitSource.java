@@ -33,6 +33,7 @@ import io.airlift.stats.CounterStat;
 import io.airlift.units.DataSize;
 
 import java.io.FileNotFoundException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
@@ -168,6 +169,12 @@ class HiveSplitSource
                         checkArgument(!bucketNumber.isPresent());
                         return queue.isFinished();
                     }
+
+                    @Override
+                    public int rewind(OptionalInt bucketNumber)
+                    {
+                        throw new UnsupportedOperationException("rewind is not supported for non-bucketed split source");
+                    }
                 },
                 maxInitialSplits,
                 maxOutstandingSplitsSize,
@@ -194,6 +201,7 @@ class HiveSplitSource
                 compactEffectivePredicate,
                 new PerBucket()
                 {
+                    private final Map<Integer, BucketedSplits> buckets = new ConcurrentHashMap<>();
                     private final Map<Integer, AsyncQueue<InternalHiveSplit>> queues = new ConcurrentHashMap<>();
                     private final AtomicBoolean finished = new AtomicBoolean();
                     private final boolean preloadSplitsForGroupedExecution = isPreloadSplitsForGroupedExecution(session);
@@ -202,8 +210,7 @@ class HiveSplitSource
                     @Override
                     public ListenableFuture<?> offer(OptionalInt bucketNumber, InternalHiveSplit connectorSplit)
                     {
-                        AsyncQueue<InternalHiveSplit> queue = queueFor(bucketNumber);
-                        queue.offer(connectorSplit);
+                        splitsFor(bucketNumber).offer(connectorSplit);
                         // Do not block "offer" when running split discovery in bucketed mode.
                         // A limit is enforced on estimatedSplitSizeInBytes.
                         return immediateFuture(null);
@@ -216,14 +223,14 @@ class HiveSplitSource
                         if (preloadSplitsForGroupedExecution && !finished.get()) {
                             return allSplitsLoaded.transformAsync(ignored -> borrowBatchAsync(bucketNumber, maxSize, function), executor);
                         }
-                        return queueFor(bucketNumber).borrowBatchAsync(maxSize, function);
+                        return splitsFor(bucketNumber).borrowBatchAsync(maxSize, function);
                     }
 
                     @Override
                     public void finish()
                     {
                         if (finished.compareAndSet(false, true)) {
-                            queues.values().forEach(AsyncQueue::finish);
+                            buckets.values().forEach(BucketedSplits::finish);
                             allSplitsLoaded.set(null);
                         }
                     }
@@ -231,7 +238,20 @@ class HiveSplitSource
                     @Override
                     public boolean isFinished(OptionalInt bucketNumber)
                     {
-                        return queueFor(bucketNumber).isFinished();
+                        return splitsFor(bucketNumber).isFinished();
+                    }
+
+                    @Override
+                    public int rewind(OptionalInt bucketNumber)
+                    {
+                        checkState(allSplitsLoaded.isDone(), "rewind is only compatible when all splits are loaded");
+                        return splitsFor(bucketNumber).rewind();
+                    }
+
+                    private BucketedSplits splitsFor(OptionalInt bucketNumber)
+                    {
+                        checkArgument(bucketNumber.isPresent());
+                        return buckets.computeIfAbsent(bucketNumber.getAsInt(), ignored -> new BucketedSplits(estimatedOutstandingSplitsPerBucket, executor));
                     }
 
                     private AsyncQueue<InternalHiveSplit> queueFor(OptionalInt bucketNumber)
@@ -424,6 +444,12 @@ class HiveSplitSource
     }
 
     @Override
+    public void rewind(ConnectorPartitionHandle partitionHandle)
+    {
+        bufferedInternalSplitCount.addAndGet(queues.rewind(toBucketNumber(partitionHandle)));
+    }
+
+    @Override
     public boolean isFinished()
     {
         State state = stateReference.get();
@@ -495,6 +521,51 @@ class HiveSplitSource
         void finish();
 
         boolean isFinished(OptionalInt bucketNumber);
+
+        // returns the number of finished splits being rewinded
+        int rewind(OptionalInt bucketNumber);
+    }
+
+    private static class BucketedSplits
+    {
+        private final List<InternalHiveSplit> discoveredHiveSplits;
+        private final AsyncQueue<InternalHiveSplit> queue;
+
+        public BucketedSplits(int estimatedQueueSize, Executor executor)
+        {
+            this.discoveredHiveSplits = new ArrayList<>();
+            this.queue = new AsyncQueue<>(estimatedQueueSize, requireNonNull(executor, "executor is null"));
+        }
+
+        public synchronized void offer(InternalHiveSplit internalHiveSplit)
+        {
+            discoveredHiveSplits.add(internalHiveSplit);
+            queue.offer(internalHiveSplit);
+        }
+
+        public synchronized <O> ListenableFuture<O> borrowBatchAsync(int maxSize, Function<List<InternalHiveSplit>, BorrowResult<InternalHiveSplit, O>> function)
+        {
+            return queue.borrowBatchAsync(maxSize, function);
+        }
+
+        public synchronized void finish()
+        {
+            queue.finish();
+        }
+
+        public synchronized boolean isFinished()
+        {
+            return queue.isFinished();
+        }
+
+        public synchronized int rewind()
+        {
+            int revivedSplitCount = discoveredHiveSplits.size() - queue.size();
+            queue.clear();
+            discoveredHiveSplits.forEach(InternalHiveSplit::resetStart);
+            discoveredHiveSplits.forEach(queue::offer);
+            return revivedSplitCount;
+        }
     }
 
     static class State

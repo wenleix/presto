@@ -208,6 +208,19 @@ public class AsyncQueue<T>
                 }, directExecutor());
     }
 
+    public int size()
+    {
+        return elements.size();
+    }
+
+    public void clear()
+    {
+        elements.clear();
+        notFullSignal = SettableFuture.create();
+        notEmptySignal = SettableFuture.create();
+        finishing = false;
+    }
+
     private static void completeAsync(Executor executor, SettableFuture<?> future)
     {
         executor.execute(() -> future.set(null));
