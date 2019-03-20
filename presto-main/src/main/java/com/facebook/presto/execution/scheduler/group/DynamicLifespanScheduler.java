@@ -85,7 +85,7 @@ public class DynamicLifespanScheduler
             for (int i = 0; i < nodeByTask.size() && driverGroups.hasNext(); i++) {
                 int driverGroupId = driverGroups.nextInt();
                 checkState(!bucketNodeMap.getAssignedNode(driverGroupId).isPresent());
-                bucketNodeMap.assignBucketToNode(driverGroupId, nodeByTask.get(i));
+                bucketNodeMap.assignOrUpdateBucketToNode(driverGroupId, nodeByTask.get(i));
                 scheduler.startLifespan(Lifespan.driverGroup(driverGroupId), partitionHandles.get(driverGroupId));
             }
 
@@ -138,7 +138,7 @@ public class DynamicLifespanScheduler
             int driverGroupId = driverGroups.nextInt();
 
             Node nodeForCompletedDriverGroup = bucketNodeMap.getAssignedNode(driverGroup.getId()).orElseThrow(IllegalStateException::new);
-            bucketNodeMap.assignBucketToNode(driverGroupId, nodeForCompletedDriverGroup);
+            bucketNodeMap.assignOrUpdateBucketToNode(driverGroupId, nodeForCompletedDriverGroup);
             scheduler.startLifespan(Lifespan.driverGroup(driverGroupId), partitionHandles.get(driverGroupId));
         }
 

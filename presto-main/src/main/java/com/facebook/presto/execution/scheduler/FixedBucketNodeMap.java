@@ -48,7 +48,7 @@ public class FixedBucketNodeMap
     }
 
     @Override
-    public void assignBucketToNode(int bucketedId, Node node)
+    public void assignOrUpdateBucketToNode(int bucketedId, Node node)
     {
         throw new UnsupportedOperationException();
     }
