@@ -18,17 +18,17 @@ import com.facebook.presto.execution.scheduler.BucketNodeMap;
 import com.facebook.presto.execution.scheduler.SourceScheduler;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
-import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.SettableFuture;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntListIterator;
+import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntPriorityQueue;
+import it.unimi.dsi.fastutil.ints.IntSet;
 
 import javax.annotation.concurrent.GuardedBy;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -42,12 +42,17 @@ import static java.util.Objects.requireNonNull;
 public class DynamicLifespanScheduler
         implements LifespanScheduler
 {
+    private final static int NOT_ASSIGNED = -1;
+
     private final BucketNodeMap bucketNodeMap;
     private final List<Node> nodeByTask;
     private final List<ConnectorPartitionHandle> partitionHandles;
     private final OptionalInt concurrentLifespansPerTask;
 
-    private final IntListIterator driverGroups;
+    private final IntSet[] runningDriverGroupIdsByTask;
+    private final int[] taskByDriverGroup;
+    private final IntPriorityQueue driverGroupQueue;
+    private final IntSet failedTasks;
 
     // initialScheduled does not need to be guarded because this object
     // is safely published after its mutation.
@@ -71,7 +76,17 @@ public class DynamicLifespanScheduler
 
         int bucketCount = partitionHandles.size();
         verify(bucketCount > 0);
-        this.driverGroups = new IntArrayList(IntStream.range(0, bucketCount).toArray()).iterator();
+        this.runningDriverGroupIdsByTask = new IntSet[nodeByTask.size()];
+        for (int i = 0; i < nodeByTask.size(); i++) {
+            runningDriverGroupIdsByTask[i] = new IntOpenHashSet();
+        }
+        this.taskByDriverGroup = new int[bucketCount];
+        this.driverGroupQueue = new IntArrayFIFOQueue(bucketCount);
+        for (int i = 0; i < bucketCount; i++) {
+            taskByDriverGroup[i] = NOT_ASSIGNED;
+            driverGroupQueue.enqueue(i);
+        }
+        this.failedTasks = new IntOpenHashSet();
     }
 
     @Override
@@ -81,12 +96,13 @@ public class DynamicLifespanScheduler
         initialScheduled = true;
 
         int driverGroupsScheduledPerTask = 0;
-        while (driverGroups.hasNext()) {
-            for (int i = 0; i < nodeByTask.size() && driverGroups.hasNext(); i++) {
-                int driverGroupId = driverGroups.nextInt();
+        while (!driverGroupQueue.isEmpty()) {
+            for (int i = 0; i < nodeByTask.size() && !driverGroupQueue.isEmpty(); i++) {
+                int driverGroupId = driverGroupQueue.dequeueInt();
                 checkState(!bucketNodeMap.getAssignedNode(driverGroupId).isPresent());
                 bucketNodeMap.assignOrUpdateBucketToNode(driverGroupId, nodeByTask.get(i));
                 scheduler.startLifespan(Lifespan.driverGroup(driverGroupId), partitionHandles.get(driverGroupId));
+                runningDriverGroupIdsByTask[i].add(driverGroupId);
             }
 
             driverGroupsScheduledPerTask++;
@@ -95,7 +111,7 @@ public class DynamicLifespanScheduler
             }
         }
 
-        if (!driverGroups.hasNext()) {
+        if (driverGroupQueue.isEmpty()) {
             scheduler.noMoreLifespans();
         }
     }
@@ -110,10 +126,25 @@ public class DynamicLifespanScheduler
             for (Lifespan newlyCompletedDriverGroup : newlyCompletedDriverGroups) {
                 checkArgument(!newlyCompletedDriverGroup.isTaskWide());
                 recentlyCompletedDriverGroups.add(newlyCompletedDriverGroup);
+                int driverGroupId = newlyCompletedDriverGroup.getId();
+                runningDriverGroupIdsByTask[taskByDriverGroup[driverGroupId]].remove(driverGroupId);
             }
             newDriverGroupReady = this.newDriverGroupReady;
         }
         newDriverGroupReady.set(null);
+    }
+
+    @Override
+    public void retryFailedTask(int taskId)
+    {
+        checkState(initialScheduled);
+
+        synchronized (this) {
+            this.failedTasks.add(taskId);
+            for (int driverGroupId : runningDriverGroupIdsByTask[taskId]) {
+                driverGroupQueue.enqueue(driverGroupId);
+            }
+        }
     }
 
     @Override
@@ -124,26 +155,22 @@ public class DynamicLifespanScheduler
 
         checkState(initialScheduled);
 
-        List<Lifespan> recentlyCompletedDriverGroups;
         synchronized (this) {
-            recentlyCompletedDriverGroups = ImmutableList.copyOf(this.recentlyCompletedDriverGroups);
-            this.recentlyCompletedDriverGroups.clear();
             newDriverGroupReady = SettableFuture.create();
-        }
+            for (Lifespan driverGroup : recentlyCompletedDriverGroups) {
+                if (driverGroupQueue.isEmpty()) {
+                    break;
+                }
+                int driverGroupId = driverGroupQueue.dequeueInt();
 
-        for (Lifespan driverGroup : recentlyCompletedDriverGroups) {
-            if (!driverGroups.hasNext()) {
-                break;
+                Node nodeForCompletedDriverGroup = bucketNodeMap.getAssignedNode(driverGroup.getId()).orElseThrow(IllegalStateException::new);
+                bucketNodeMap.assignOrUpdateBucketToNode(driverGroupId, nodeForCompletedDriverGroup);
+                scheduler.startLifespan(Lifespan.driverGroup(driverGroupId), partitionHandles.get(driverGroupId));
             }
-            int driverGroupId = driverGroups.nextInt();
-
-            Node nodeForCompletedDriverGroup = bucketNodeMap.getAssignedNode(driverGroup.getId()).orElseThrow(IllegalStateException::new);
-            bucketNodeMap.assignOrUpdateBucketToNode(driverGroupId, nodeForCompletedDriverGroup);
-            scheduler.startLifespan(Lifespan.driverGroup(driverGroupId), partitionHandles.get(driverGroupId));
-        }
-
-        if (!driverGroups.hasNext()) {
-            scheduler.noMoreLifespans();
+            if (driverGroupQueue.isEmpty()) {
+                scheduler.noMoreLifespans();
+            }
+            this.recentlyCompletedDriverGroups.clear();
         }
         return newDriverGroupReady;
     }

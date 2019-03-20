@@ -122,6 +122,12 @@ public class FixedLifespanScheduler
         newDriverGroupReady.set(null);
     }
 
+    @Override
+    public void retryFailedTask(int taskId)
+    {
+        throw new UnsupportedOperationException("retryFailedTask is not supported in FixedLifespanScheduler");
+    }
+
     public SettableFuture schedule(SourceScheduler scheduler)
     {
         // Return a new future even if newDriverGroupReady has not finished.

@@ -30,5 +30,7 @@ public interface LifespanScheduler
 
     void onLifespanFinished(Iterable<Lifespan> newlyCompletedDriverGroups);
 
+    void retryFailedTask(int taskId);
+
     SettableFuture schedule(SourceScheduler scheduler);
 }
