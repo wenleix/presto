@@ -96,6 +96,7 @@ public class BeginTableWrite
                     node.getId(),
                     node.getSource().accept(this, context),
                     writerTarget,
+                    node.getTableWriterContextSymbol(),
                     node.getRowCountSymbol(),
                     node.getFragmentSymbol(),
                     node.getColumns(),

@@ -671,6 +671,7 @@ public class PlanBuilder
                 idAllocator.getNextId(),
                 source,
                 new TestingWriterTarget(),
+                symbol("tablewritercontext", VARBINARY),
                 symbol("partialrows", BIGINT),
                 symbol("fragment", VARBINARY),
                 columns,

@@ -227,6 +227,7 @@ import static com.facebook.presto.operator.PipelineExecutionStrategy.GROUPED_EXE
 import static com.facebook.presto.operator.PipelineExecutionStrategy.UNGROUPED_EXECUTION;
 import static com.facebook.presto.operator.TableFinishOperator.TableFinishOperatorFactory;
 import static com.facebook.presto.operator.TableFinishOperator.TableFinisher;
+import static com.facebook.presto.operator.TableWriterOperator.CONTEXT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterOperator.FRAGMENT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterOperator.ROW_COUNT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterOperator.STATS_START_CHANNEL;
@@ -2175,8 +2176,9 @@ public class LocalExecutionPlanner
             PhysicalOperation source = node.getSource().accept(this, context);
 
             ImmutableMap.Builder<Symbol, Integer> outputMapping = ImmutableMap.builder();
-            outputMapping.put(node.getOutputSymbols().get(0), ROW_COUNT_CHANNEL);
-            outputMapping.put(node.getOutputSymbols().get(1), FRAGMENT_CHANNEL);
+            outputMapping.put(node.getOutputSymbols().get(CONTEXT_CHANNEL), CONTEXT_CHANNEL);
+            outputMapping.put(node.getOutputSymbols().get(ROW_COUNT_CHANNEL), ROW_COUNT_CHANNEL);
+            outputMapping.put(node.getOutputSymbols().get(FRAGMENT_CHANNEL), FRAGMENT_CHANNEL);
 
             OperatorFactory statisticsAggregation = node.getStatisticsAggregation().map(aggregation -> {
                 List<Symbol> groupingSymbols = aggregation.getGroupingSymbols();

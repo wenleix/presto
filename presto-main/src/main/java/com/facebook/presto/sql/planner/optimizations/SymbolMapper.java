@@ -155,6 +155,7 @@ public class SymbolMapper
                 newNodeId,
                 source,
                 node.getTarget(),
+                map(node.getTableWriterContextSymbol()),
                 map(node.getRowCountSymbol()),
                 map(node.getFragmentSymbol()),
                 columns,

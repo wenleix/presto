@@ -645,6 +645,7 @@ public class PruneUnreferencedOutputs
                     node.getId(),
                     source,
                     node.getTarget(),
+                    node.getTableWriterContextSymbol(),
                     node.getRowCountSymbol(),
                     node.getFragmentSymbol(),
                     node.getColumns(),

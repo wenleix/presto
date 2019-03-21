@@ -42,6 +42,7 @@ public class TableWriterNode
 {
     private final PlanNode source;
     private final WriterTarget target;
+    private final Symbol tableWriterContextSymbol;
     private final Symbol rowCountSymbol;
     private final Symbol fragmentSymbol;
     private final List<Symbol> columns;
@@ -56,6 +57,7 @@ public class TableWriterNode
             @JsonProperty("id") PlanNodeId id,
             @JsonProperty("source") PlanNode source,
             @JsonProperty("target") WriterTarget target,
+            @JsonProperty("tableWriterContextSymbol") Symbol tableWriterContextSymbol,
             @JsonProperty("rowCountSymbol") Symbol rowCountSymbol,
             @JsonProperty("fragmentSymbol") Symbol fragmentSymbol,
             @JsonProperty("columns") List<Symbol> columns,
@@ -72,6 +74,7 @@ public class TableWriterNode
 
         this.source = requireNonNull(source, "source is null");
         this.target = requireNonNull(target, "target is null");
+        this.tableWriterContextSymbol = requireNonNull(tableWriterContextSymbol, "tableWriterContextSymbol is null");
         this.rowCountSymbol = requireNonNull(rowCountSymbol, "rowCountSymbol is null");
         this.fragmentSymbol = requireNonNull(fragmentSymbol, "fragmentSymbol is null");
         this.columns = ImmutableList.copyOf(columns);
@@ -82,6 +85,7 @@ public class TableWriterNode
         checkArgument(statisticsAggregation.isPresent() == statisticsAggregationDescriptor.isPresent(), "statisticsAggregation and statisticsAggregationDescriptor must be either present or absent");
 
         ImmutableList.Builder<Symbol> outputs = ImmutableList.<Symbol>builder()
+                .add(tableWriterContextSymbol)
                 .add(rowCountSymbol)
                 .add(fragmentSymbol);
         statisticsAggregation.ifPresent(aggregation -> {
@@ -101,6 +105,12 @@ public class TableWriterNode
     public WriterTarget getTarget()
     {
         return target;
+    }
+
+    @JsonProperty
+    public Symbol getTableWriterContextSymbol()
+    {
+        return tableWriterContextSymbol;
     }
 
     @JsonProperty
@@ -166,7 +176,7 @@ public class TableWriterNode
     @Override
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
-        return new TableWriterNode(getId(), Iterables.getOnlyElement(newChildren), target, rowCountSymbol, fragmentSymbol, columns, columnNames, partitioningScheme, statisticsAggregation, statisticsAggregationDescriptor);
+        return new TableWriterNode(getId(), Iterables.getOnlyElement(newChildren), target, tableWriterContextSymbol, rowCountSymbol, fragmentSymbol, columns, columnNames, partitioningScheme, statisticsAggregation, statisticsAggregationDescriptor);
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "@type")

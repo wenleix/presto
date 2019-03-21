@@ -14,6 +14,8 @@
 package com.facebook.presto.operator;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.execution.Lifespan;
+import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.operator.OperationTimer.OperationTiming;
 import com.facebook.presto.spi.ConnectorPageSink;
@@ -33,6 +35,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
+import io.airlift.json.JsonCodec;
 import io.airlift.slice.Slice;
 import io.airlift.units.Duration;
 
@@ -52,6 +55,7 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.util.concurrent.Futures.allAsList;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.concurrent.MoreFutures.toListenableFuture;
+import static io.airlift.slice.Slices.wrappedBuffer;
 import static io.airlift.units.Duration.succinctNanos;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -59,9 +63,10 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 public class TableWriterOperator
         implements Operator
 {
-    public static final int ROW_COUNT_CHANNEL = 0;
-    public static final int FRAGMENT_CHANNEL = 1;
-    public static final int STATS_START_CHANNEL = 2;
+    public static final int CONTEXT_CHANNEL = 0;
+    public static final int ROW_COUNT_CHANNEL = 1;
+    public static final int FRAGMENT_CHANNEL = 2;
+    public static final int STATS_START_CHANNEL = 3;
 
     public static class TableWriterOperatorFactory
             implements OperatorFactory
@@ -154,6 +159,8 @@ public class TableWriterOperator
     private final OperationTiming statisticsTiming = new OperationTiming();
     private final boolean statisticsCpuTimerEnabled;
 
+    private final Block tableWriterContextBlock;
+
     public TableWriterOperator(
             OperatorContext operatorContext,
             ConnectorPageSink pageSink,
@@ -170,6 +177,13 @@ public class TableWriterOperator
         this.statisticAggregationOperator = requireNonNull(statisticAggregationOperator, "statisticAggregationOperator is null");
         this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
         this.statisticsCpuTimerEnabled = statisticsCpuTimerEnabled;
+
+        TaskId taskId = operatorContext.getDriverContext().getPipelineContext().getTaskId();
+        TableWriterContext tableWriterContext = new TableWriterContext(operatorContext.getDriverContext().getLifespan(), taskId.getStageId().getId(), taskId.getId());
+        Slice tableWriterContextSlice = wrappedBuffer(TableWriterContext.TABLE_WRITER_CONTEXT_JSON_CODEC.toJsonBytes(tableWriterContext));
+        BlockBuilder tableWriterContextBuilder = VARBINARY.createBlockBuilder(null, 1);
+        tableWriterContextBuilder.writeBytes(tableWriterContextSlice, 0, tableWriterContextSlice.length());
+        this.tableWriterContextBlock = tableWriterContextBuilder.build();
     }
 
     @Override
@@ -269,7 +283,10 @@ public class TableWriterOperator
         int positionCount = fragmentsPage.getPositionCount();
         Block[] outputBlocks = new Block[types.size()];
         for (int channel = 0; channel < types.size(); channel++) {
-            if (channel < STATS_START_CHANNEL) {
+            if (channel == CONTEXT_CHANNEL) {
+                outputBlocks[channel] = tableWriterContextBlock;
+            }
+            else if (channel < STATS_START_CHANNEL) {
                 outputBlocks[channel] = fragmentsPage.getBlock(channel);
             }
             else {
@@ -286,11 +303,14 @@ public class TableWriterOperator
         int positionCount = aggregationOutput.getPositionCount();
         Block[] outputBlocks = new Block[types.size()];
         for (int channel = 0; channel < types.size(); channel++) {
-            if (channel < STATS_START_CHANNEL) {
+            if (channel == CONTEXT_CHANNEL) {
+                outputBlocks[channel] = tableWriterContextBlock;
+            }
+            else if (channel < STATS_START_CHANNEL) {
                 outputBlocks[channel] = RunLengthEncodedBlock.create(types.get(channel), null, positionCount);
             }
             else {
-                outputBlocks[channel] = aggregationOutput.getBlock(channel - 2);
+                outputBlocks[channel] = aggregationOutput.getBlock(channel - STATS_START_CHANNEL + 1);
             }
         }
         return new Page(positionCount, outputBlocks);
@@ -322,6 +342,7 @@ public class TableWriterOperator
 
         return page.build();
     }
+
 
     @Override
     public void close()
@@ -439,6 +460,44 @@ public class TableWriterOperator
                     .add("statisticsCpuTime", statisticsCpuTime)
                     .add("validationCpuTime", validationCpuTime)
                     .toString();
+        }
+    }
+
+    public static class TableWriterContext
+    {
+        public static final JsonCodec<TableWriterContext> TABLE_WRITER_CONTEXT_JSON_CODEC = JsonCodec.jsonCodec(TableWriterContext.class);
+
+        private final Lifespan lifespan;
+        private final int stageId;
+        private final int taskId;
+
+        @JsonCreator
+        public TableWriterContext(
+                @JsonProperty("lifespan") Lifespan lifespan,
+                @JsonProperty("stageId") int stageId,
+                @JsonProperty("taskId") int taskId)
+        {
+            this.lifespan = requireNonNull(lifespan, "lifespan is null");
+            this.stageId = stageId;
+            this.taskId = taskId;
+        }
+
+        @JsonProperty
+        public Lifespan getLifespan()
+        {
+            return lifespan;
+        }
+
+        @JsonProperty
+        public int getStageId()
+        {
+            return stageId;
+        }
+
+        @JsonProperty
+        public int getTaskId()
+        {
+            return taskId;
         }
     }
 }
