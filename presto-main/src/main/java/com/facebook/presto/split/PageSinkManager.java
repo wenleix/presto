@@ -19,6 +19,7 @@ import com.facebook.presto.metadata.InsertTableHandle;
 import com.facebook.presto.metadata.OutputTableHandle;
 import com.facebook.presto.spi.ConnectorPageSink;
 import com.facebook.presto.spi.ConnectorSession;
+import com.facebook.presto.spi.PageSinkProperty;
 import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,7 +47,7 @@ public class PageSinkManager
     }
 
     @Override
-    public ConnectorPageSink createPageSink(Session session, OutputTableHandle tableHandle)
+    public ConnectorPageSink createPageSink(Session session, OutputTableHandle tableHandle, PageSinkProperty property)
     {
         // assumes connectorId and catalog are the same
         ConnectorSession connectorSession = session.toConnectorSession(tableHandle.getConnectorId());
@@ -54,7 +55,7 @@ public class PageSinkManager
     }
 
     @Override
-    public ConnectorPageSink createPageSink(Session session, InsertTableHandle tableHandle)
+    public ConnectorPageSink createPageSink(Session session, InsertTableHandle tableHandle, PageSinkProperty property)
     {
         // assumes connectorId and catalog are the same
         ConnectorSession connectorSession = session.toConnectorSession(tableHandle.getConnectorId());

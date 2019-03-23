@@ -20,6 +20,7 @@ import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorPageSink;
 import com.facebook.presto.spi.ConnectorSession;
+import com.facebook.presto.spi.PageSinkProperty;
 import com.facebook.presto.spi.PageSorter;
 import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
@@ -29,6 +30,7 @@ import javax.inject.Inject;
 
 import java.util.List;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
@@ -50,8 +52,10 @@ public class RaptorPageSinkProvider
     }
 
     @Override
-    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle tableHandle)
+    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle tableHandle, PageSinkProperty pageSinkProperty)
     {
+        checkArgument(!pageSinkProperty.isLifespanCommitRequired(), "Raptor connector does not support lifespan commit");
+
         RaptorOutputTableHandle handle = (RaptorOutputTableHandle) tableHandle;
         return new RaptorPageSink(
                 pageSorter,
@@ -69,8 +73,10 @@ public class RaptorPageSinkProvider
     }
 
     @Override
-    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle tableHandle)
+    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle tableHandle, PageSinkProperty pageSinkProperty)
     {
+        checkArgument(!pageSinkProperty.isLifespanCommitRequired(), "Raptor connector does not support lifespan commit");
+
         RaptorInsertTableHandle handle = (RaptorInsertTableHandle) tableHandle;
         return new RaptorPageSink(
                 pageSorter,
