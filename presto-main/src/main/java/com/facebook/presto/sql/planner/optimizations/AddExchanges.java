@@ -89,6 +89,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 import static com.facebook.presto.SystemSessionProperties.getHashPartitionCount;
 import static com.facebook.presto.SystemSessionProperties.getPartitioningProviderCatalog;
@@ -1021,6 +1022,8 @@ public class AddExchanges
         public PlanWithProperties visitUnion(UnionNode node, PreferredProperties parentPreference)
         {
             Optional<PreferredProperties.Global> parentGlobal = parentPreference.getGlobalProperties();
+
+            // parent specifies distributed partitioning
             if (parentGlobal.isPresent() && parentGlobal.get().isDistributed() && parentGlobal.get().getPartitioningProperties().isPresent()) {
                 PreferredProperties.PartitioningProperties parentPartitioningPreference = parentGlobal.get().getPartitioningProperties().get();
                 boolean nullsAndAnyReplicated = parentPartitioningPreference.isNullsAndAnyReplicated();
@@ -1070,6 +1073,25 @@ public class AddExchanges
                                 .global(partitionedOn(desiredParentPartitioning, Optional.of(desiredParentPartitioning)))
                                 .build()
                                 .withReplicatedNulls(parentPartitioningPreference.isNullsAndAnyReplicated()));
+            }
+
+            // union over table writes
+            if (node.getSources().stream().anyMatch(TableWriterNode.class::isInstance)) {
+                checkState(node.getSources().stream().allMatch(TableWriterNode.class::isInstance));
+                return new PlanWithProperties(
+                        new ExchangeNode(
+                                idAllocator.getNextId(),
+                                GATHER,
+                                REMOTE,
+                                new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), node.getOutputSymbols()),
+                                node.getSources(),
+                                node.getSources().stream()
+                                        .map(PlanNode::getOutputSymbols)
+                                        .collect(toImmutableList()),
+                                Optional.empty()),
+                        ActualProperties.builder()
+                                .global(singleStreamPartition())
+                                .build());
             }
 
             // first, classify children into partitioned and unpartitioned
