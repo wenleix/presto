@@ -110,17 +110,17 @@ public class HivePageSinkProvider
     public ConnectorPageSink createPageSink(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorOutputTableHandle tableHandle, PageSinkProperty pageSinkProperty)
     {
         HiveWritableTableHandle handle = (HiveOutputTableHandle) tableHandle;
-        return createPageSink(handle, true, session);
+        return createPageSink(handle, true, session, pageSinkProperty.isLifespanCommitRequired());
     }
 
     @Override
     public ConnectorPageSink createPageSink(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorInsertTableHandle tableHandle, PageSinkProperty pageSinkProperty)
     {
         HiveInsertTableHandle handle = (HiveInsertTableHandle) tableHandle;
-        return createPageSink(handle, false, session);
+        return createPageSink(handle, false, session, pageSinkProperty.isLifespanCommitRequired());
     }
 
-    private ConnectorPageSink createPageSink(HiveWritableTableHandle handle, boolean isCreateTable, ConnectorSession session)
+    private ConnectorPageSink createPageSink(HiveWritableTableHandle handle, boolean isCreateTable, ConnectorSession session, boolean lifespanCommitRequired)
     {
         OptionalInt bucketCount = OptionalInt.empty();
         List<SortingColumn> sortedBy = ImmutableList.of();
@@ -155,7 +155,8 @@ public class HivePageSinkProvider
                 eventClient,
                 hiveSessionProperties,
                 hiveWriterStats,
-                orcFileWriterFactory);
+                orcFileWriterFactory,
+                lifespanCommitRequired);
 
         return new HivePageSink(
                 writerFactory,

@@ -582,4 +582,28 @@ public interface ConnectorMetadata
     {
         return emptyList();
     }
+
+    /**
+     * Returns whether lifespan commit is supported by this connector.
+     */
+    default boolean supportsLifespanCommit()
+    {
+        return false;
+    }
+
+    /**
+     * Commits lifespan for table creation.
+     */
+    default void commitLifespanForCreate(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support lifespan commit");
+    }
+
+    /**
+     * Commits lifespan for table insertion.
+     */
+    default void commitLifespanForInsert(ConnectorSession session, ConnectorInsertTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support lifespan commit");
+    }
 }

@@ -14,7 +14,9 @@
 package com.facebook.presto.operator;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.operator.OperationTimer.OperationTiming;
+import com.facebook.presto.operator.TableWriterOperator.TableWriterContext;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
@@ -24,23 +26,31 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.sql.planner.plan.StatisticAggregationsDescriptor;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import static com.facebook.presto.SystemSessionProperties.isStatisticsCpuTimerEnabled;
+import static com.facebook.presto.operator.TableWriterOperator.CONTEXT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterOperator.FRAGMENT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterOperator.ROW_COUNT_CHANNEL;
+import static com.facebook.presto.operator.TableWriterOperator.TableWriterContext.TABLE_WRITER_CONTEXT_JSON_CODEC;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.units.Duration.succinctNanos;
 import static java.util.Objects.requireNonNull;
+import static org.glassfish.jersey.internal.util.collection.ImmutableCollectors.toImmutableList;
 
 public class TableFinishOperator
         implements Operator
@@ -116,6 +126,8 @@ public class TableFinishOperator
     private final OperationTiming statisticsTiming = new OperationTiming();
     private final boolean statisticsCpuTimerEnabled;
 
+    private final GroupStageStateTracker groupStageStateTracker = new GroupStageStateTracker();
+
     public TableFinishOperator(
             OperatorContext operatorContext,
             TableFinisher tableFinisher,
@@ -181,18 +193,8 @@ public class TableFinishOperator
         requireNonNull(page, "page is null");
         checkState(state == State.RUNNING, "Operator is %s", state);
 
-        Block rowCountBlock = page.getBlock(ROW_COUNT_CHANNEL);
-        Block fragmentBlock = page.getBlock(FRAGMENT_CHANNEL);
-        for (int position = 0; position < page.getPositionCount(); position++) {
-            if (!rowCountBlock.isNull(position)) {
-                rowCount += BIGINT.getLong(rowCountBlock, position);
-            }
-            if (!fragmentBlock.isNull(position)) {
-                fragmentBuilder.add(VARBINARY.getSlice(fragmentBlock, position));
-            }
-        }
-
-        extractStatisticsRows(page).ifPresent(statisticsPage -> {
+        groupStageStateTracker.update(page);
+        groupStageStateTracker.getStatisticsPagesToProcess(page).forEach(statisticsPage -> {
             OperationTimer timer = new OperationTimer(statisticsCpuTimerEnabled);
             statisticsAggregationOperator.addInput(statisticsPage);
             timer.end(statisticsTiming);
@@ -292,14 +294,15 @@ public class TableFinishOperator
             return null;
         }
         state = State.FINISHED;
+        groupStageStateTracker.finish();
 
-        outputMetadata = tableFinisher.finishTable(fragmentBuilder.build(), computedStatisticsBuilder.build());
+        outputMetadata = tableFinisher.finishTable(groupStageStateTracker.getFragments(), computedStatisticsBuilder.build());
 
         // output page will only be constructed once,
         // so a new PageBuilder is constructed (instead of using PageBuilder.reset)
         PageBuilder page = new PageBuilder(1, TYPES);
         page.declarePosition();
-        BIGINT.writeLong(page.getBlockBuilder(0), rowCount);
+        BIGINT.writeLong(page.getBlockBuilder(0), groupStageStateTracker.getRowCount());
         return page.build();
     }
 
@@ -341,5 +344,184 @@ public class TableFinishOperator
     public interface TableFinisher
     {
         Optional<ConnectorOutputMetadata> finishTable(Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics);
+    }
+
+    public interface LifespanCommitter
+    {
+        void commitLifespan(Collection<Slice> fragments);
+    }
+
+    private static class GroupStageStateTracker
+    {
+        private final Map<LifespanStage, LifespanStageState> taskWideLifespanStageStates = new HashMap<>();
+        private final Map<LifespanStage, Map<Integer, LifespanStageState>> unfinishedGroupedLifespanStageStates = new HashMap<>();
+        private final Map<LifespanStage, LifespanStageState> finishedLifespanStages = new HashMap<>();
+
+        public void update(Page page)
+        {
+            TableWriterContext tableWriterContext = getTableWriterContext(page);
+            LifespanStage lifespanStage = LifespanStage.fromTableWriterContext(tableWriterContext);
+            if (finishedLifespanStages.containsKey(lifespanStage)) {
+                return;
+            }
+
+            if (lifespanStage.getLifespan().isTaskWide()) {
+                taskWideLifespanStageStates.putIfAbsent(lifespanStage, new LifespanStageState());
+                taskWideLifespanStageStates.get(lifespanStage).update(page, false);
+            }
+            else {
+                unfinishedGroupedLifespanStageStates.putIfAbsent(lifespanStage, new HashMap<>());
+                Map<Integer, LifespanStageState> groupStageStatesPerTask = unfinishedGroupedLifespanStageStates.get(lifespanStage);
+                groupStageStatesPerTask.putIfAbsent(tableWriterContext.getTaskId(), new LifespanStageState());
+                groupStageStatesPerTask.get(tableWriterContext.getTaskId()).update(page, true);
+
+                if (isLastPageForGroupedLifespan(page)) {
+                    checkState(!finishedLifespanStages.containsKey(lifespanStage), "GroupStage already finished");
+                    finishedLifespanStages.put(lifespanStage, groupStageStatesPerTask.get(tableWriterContext.getTaskId()));
+                    unfinishedGroupedLifespanStageStates.remove(lifespanStage);
+                }
+            }
+        }
+
+        public List<Page> getStatisticsPagesToProcess(Page page)
+        {
+            LifespanStage lifespanStage = LifespanStage.fromTableWriterContext(getTableWriterContext(page));
+            if (lifespanStage.getLifespan().isTaskWide()) {
+                return extractStatisticsRows(page).map(ImmutableList::of).orElse(ImmutableList.of());
+            }
+            if (!finishedLifespanStages.containsKey(lifespanStage)) {
+                return ImmutableList.of();
+            }
+            return finishedLifespanStages.get(lifespanStage).getStatisticsPages();
+        }
+
+        public void finish()
+        {
+            for (LifespanStage lifespanStage : unfinishedGroupedLifespanStageStates.keySet()) {
+                checkState(lifespanStage.getLifespan().isTaskWide(), "Only task wide lifespan needs explicit finish");
+                finishedLifespanStages.put(lifespanStage, getOnlyElement(unfinishedGroupedLifespanStageStates.get(lifespanStage).values()));
+            }
+        }
+
+        public long getRowCount()
+        {
+            return finishedLifespanStages.values().stream()
+                    .mapToLong(LifespanStageState::getRowCount)
+                    .sum();
+        }
+
+        public List<Slice> getFragments()
+        {
+            return finishedLifespanStages.values().stream()
+                    .map(LifespanStageState::getFragments)
+                    .flatMap(List::stream)
+                    .collect(toImmutableList());
+        }
+
+        private static TableWriterContext getTableWriterContext(Page page)
+        {
+            Block tableWriterContextBlock = page.getBlock(CONTEXT_CHANNEL);
+            return TABLE_WRITER_CONTEXT_JSON_CODEC.fromJson(tableWriterContextBlock.getSlice(0, 0, tableWriterContextBlock.getSliceLength(0)).getBytes());
+        }
+
+        private static boolean isLastPageForGroupedLifespan(Page page)
+        {
+            return !page.getBlock(ROW_COUNT_CHANNEL).isNull(0);
+        }
+
+        private static class LifespanStage
+        {
+            private final Lifespan lifespan;
+            private final int stageId;
+
+            private LifespanStage(Lifespan lifespan, int stageId)
+            {
+                this.lifespan = requireNonNull(lifespan, "lifespan is null");
+                this.stageId = stageId;
+            }
+
+            public static LifespanStage fromTableWriterContext(TableWriterContext tableWriterContext)
+            {
+                return new LifespanStage(tableWriterContext.getLifespan(), tableWriterContext.getStageId());
+            }
+
+            public Lifespan getLifespan()
+            {
+                return lifespan;
+            }
+
+            public int getStageId()
+            {
+                return stageId;
+            }
+
+            @Override
+            public boolean equals(Object o)
+            {
+                if (this == o) {
+                    return true;
+                }
+                if (!(o instanceof LifespanStage)) {
+                    return false;
+                }
+                LifespanStage that = (LifespanStage) o;
+                return stageId == that.stageId &&
+                        Objects.equals(lifespan, that.lifespan);
+            }
+
+            @Override
+            public int hashCode()
+            {
+                return Objects.hash(lifespan, stageId);
+            }
+
+            @Override
+            public String toString()
+            {
+                return MoreObjects.toStringHelper(this)
+                        .add("lifespan", lifespan)
+                        .add("stageId", stageId)
+                        .toString();
+            }
+        }
+
+        private static class LifespanStageState
+        {
+            private long rowCount;
+            private ImmutableList.Builder<Slice> fragmentBuilder = ImmutableList.builder();
+            private ImmutableList.Builder<Page> statisticsPages = ImmutableList.builder();
+
+            public void update(Page page, boolean storeStatisticPages)
+            {
+                Block rowCountBlock = page.getBlock(ROW_COUNT_CHANNEL);
+                Block fragmentBlock = page.getBlock(FRAGMENT_CHANNEL);
+                for (int position = 0; position < page.getPositionCount(); position++) {
+                    if (!rowCountBlock.isNull(position)) {
+                        rowCount += BIGINT.getLong(rowCountBlock, position);
+                    }
+                    if (!fragmentBlock.isNull(position)) {
+                        fragmentBuilder.add(VARBINARY.getSlice(fragmentBlock, position));
+                    }
+                }
+                if (storeStatisticPages) {
+                    extractStatisticsRows(page).ifPresent(statisticsPages::add);
+                }
+            }
+
+            public long getRowCount()
+            {
+                return rowCount;
+            }
+
+            public List<Slice> getFragments()
+            {
+                return fragmentBuilder.build();
+            }
+
+            public List<Page> getStatisticsPages()
+            {
+                return statisticsPages.build();
+            }
+        }
     }
 }

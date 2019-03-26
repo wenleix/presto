@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.execution.scheduler;
 
+import com.facebook.presto.execution.TaskId;
+
 import java.io.Closeable;
 
 public interface StageScheduler
@@ -26,6 +28,11 @@ public interface StageScheduler
      * scheduler may call the schedule method at any time.
      */
     ScheduleResult schedule();
+
+    default void recover(TaskId taskId)
+    {
+        throw new UnsupportedOperationException("recover is not supported in this StageScheduler");
+    }
 
     @Override
     default void close() {}

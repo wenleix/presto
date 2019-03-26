@@ -1082,6 +1082,36 @@ public class MetadataManager
     }
 
     @Override
+    public boolean supportsLifespanCommit(Session session, ConnectorId connectorId)
+    {
+        CatalogMetadata catalogMetadata = getCatalogMetadata(session, connectorId);
+        ConnectorMetadata metadata = catalogMetadata.getMetadata();
+        return metadata.supportsLifespanCommit();
+    }
+
+    @Override
+    public void commitLifespanForCreate(Session session, OutputTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        ConnectorId connectorId = tableHandle.getConnectorId();
+        CatalogMetadata catalogMetadata = getCatalogMetadata(session, connectorId);
+        ConnectorMetadata metadata = catalogMetadata.getMetadata();
+        ConnectorSession connectorSession = session.toConnectorSession(connectorId);
+
+        metadata.commitLifespanForCreate(connectorSession, tableHandle.getConnectorHandle(), fragments);
+    }
+
+    @Override
+    public void commitLifespanForInsert(Session session, InsertTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        ConnectorId connectorId = tableHandle.getConnectorId();
+        CatalogMetadata catalogMetadata = getCatalogMetadata(session, connectorId);
+        ConnectorMetadata metadata = catalogMetadata.getMetadata();
+        ConnectorSession connectorSession = session.toConnectorSession(connectorId);
+
+        metadata.commitLifespanForInsert(connectorSession, tableHandle.getConnectorHandle(), fragments);
+    }
+
+    @Override
     public FunctionManager getFunctionManager()
     {
         // TODO: transactional when FunctionManager is made transactional

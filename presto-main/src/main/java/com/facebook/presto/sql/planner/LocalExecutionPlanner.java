@@ -69,6 +69,7 @@ import com.facebook.presto.operator.SpatialJoinOperator.SpatialJoinOperatorFacto
 import com.facebook.presto.operator.StageExecutionDescriptor;
 import com.facebook.presto.operator.StatisticsWriterOperator.StatisticsWriterOperatorFactory;
 import com.facebook.presto.operator.StreamingAggregationOperator.StreamingAggregationOperatorFactory;
+import com.facebook.presto.operator.TableFinishOperator.LifespanCommitter;
 import com.facebook.presto.operator.TableScanOperator.TableScanOperatorFactory;
 import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.operator.TaskOutputOperator.TaskOutputFactory;
@@ -2814,6 +2815,11 @@ public class LocalExecutionPlanner
                 throw new AssertionError("Unhandled target type: " + target.getClass().getName());
             }
         };
+    }
+
+    private static LifespanCommitter createLifespanCommitter(Session session, TableFinishNode node, Metadata metadata)
+    {
+        return fragments -> metadata.commitLifespanForCreate(session, fragments);
     }
 
     private static Function<Page, Page> enforceLayoutProcessor(List<Symbol> expectedLayout, Map<Symbol, Integer> inputLayout)

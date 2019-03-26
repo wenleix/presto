@@ -17,6 +17,7 @@ import com.facebook.presto.Session;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.execution.scheduler.SplitSchedulerStats;
+import com.facebook.presto.execution.scheduler.group.StageTaskRecoveryCallback;
 import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.metadata.RemoteTransactionHandle;
 import com.facebook.presto.metadata.Split;
@@ -65,6 +66,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
+import static com.google.common.collect.Sets.union;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static java.util.Objects.requireNonNull;
 
@@ -89,6 +91,8 @@ public final class SqlStageExecution
     @GuardedBy("this")
     private final Set<TaskId> finishedTasks = newConcurrentHashSet();
     @GuardedBy("this")
+    private final Set<TaskId> failedTasks = newConcurrentHashSet();
+    @GuardedBy("this")
     private final Set<TaskId> tasksWithFinalInfo = newConcurrentHashSet();
     @GuardedBy("this")
     private final AtomicBoolean splitsScheduled = new AtomicBoolean();
@@ -103,6 +107,8 @@ public final class SqlStageExecution
     private final AtomicReference<OutputBuffers> outputBuffers = new AtomicReference<>();
 
     private final ListenerManager<Set<Lifespan>> completedLifespansChangeListeners = new ListenerManager<>();
+
+    private Optional<StageTaskRecoveryCallback> stageTaskRecoveryCallback = Optional.empty();
 
     public static SqlStageExecution createSqlStageExecution(
             StageId stageId,
@@ -194,6 +200,12 @@ public final class SqlStageExecution
     public void addCompletedDriverGroupsChangedListener(Consumer<Set<Lifespan>> newlyCompletedDriverGroupConsumer)
     {
         completedLifespansChangeListeners.addListener(newlyCompletedDriverGroupConsumer);
+    }
+
+    public void registerStageTaskRecoveryCallback(StageTaskRecoveryCallback stageTaskRecoveryCallback)
+    {
+        checkState(this.stageTaskRecoveryCallback.isPresent(), "stageTaskRecoveryCallback should only be registered once");
+        this.stageTaskRecoveryCallback = Optional.of(stageTaskRecoveryCallback);
     }
 
     public PlanFragment getFragment()
@@ -488,7 +500,13 @@ public final class SqlStageExecution
                         .map(this::rewriteTransportFailure)
                         .map(ExecutionFailureInfo::toException)
                         .orElse(new PrestoException(GENERIC_INTERNAL_ERROR, "A task failed for an unknown reason"));
-                stateMachine.transitionToFailed(failure);
+                if (stageTaskRecoveryCallback.isPresent() && taskStatus.getFailures().stream().allMatch(SqlStageExecution::isRecoverableFailure)) {
+                    failedTasks.add(taskStatus.getTaskId());
+                    stageTaskRecoveryCallback.get().recover(taskStatus.getTaskId());
+                }
+                else {
+                    stateMachine.transitionToFailed(failure);
+                }
             }
             else if (taskState == TaskState.ABORTED) {
                 // A task should only be in the aborted state if the STAGE is done (ABORTED or FAILED)
@@ -502,7 +520,7 @@ public final class SqlStageExecution
                 if (taskState == TaskState.RUNNING) {
                     stateMachine.transitionToRunning();
                 }
-                if (finishedTasks.containsAll(allTasks)) {
+                if (union(finishedTasks, failedTasks).containsAll(allTasks)) {
                     stateMachine.transitionToFinished();
                 }
             }
@@ -511,6 +529,11 @@ public final class SqlStageExecution
             // after updating state, check if all tasks have final status information
             checkAllTaskFinal();
         }
+    }
+
+    private static boolean isRecoverableFailure(ExecutionFailureInfo executionFailureInfo)
+    {
+        return true;
     }
 
     private synchronized void updateFinalTaskInfo(TaskInfo finalTaskInfo)

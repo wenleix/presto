@@ -2051,6 +2051,26 @@ public class HiveMetadata
         return result.build();
     }
 
+    @Override
+    public boolean supportsLifespanCommit()
+    {
+        return true;
+    }
+
+    @Override
+    public void commitLifespanForCreate(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        HiveOutputTableHandle handle = (HiveOutputTableHandle) tableHandle;
+        stagingFileCommitter.commitFiles(session, handle.getSchemaName(), handle.getTableName(), getPartitionUpdates(fragments));
+    }
+
+    @Override
+    public void commitLifespanForInsert(ConnectorSession session, ConnectorInsertTableHandle tableHandle, Collection<Slice> fragments)
+    {
+        HiveInsertTableHandle handle = (HiveInsertTableHandle) tableHandle;
+        stagingFileCommitter.commitFiles(session, handle.getSchemaName(), handle.getTableName(), getPartitionUpdates(fragments));
+    }
+
     private List<GrantInfo> buildGrants(SchemaTableName tableName, PrestoPrincipal principal)
     {
         ImmutableList.Builder<GrantInfo> result = ImmutableList.builder();

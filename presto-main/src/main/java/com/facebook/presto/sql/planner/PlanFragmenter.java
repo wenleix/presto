@@ -108,7 +108,7 @@ public class PlanFragmenter
         this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
     }
 
-    public SubPlan createSubPlans(Session session, Plan plan, boolean forceSingleNode, WarningCollector warningCollector)
+    public SubPlan createSubPlans(Session session, Plan plan, boolean forceSingleNode, WarningCollector warningCollector, boolean preferRecoverableGroupedExecution)
     {
         Fragmenter fragmenter = new Fragmenter(
                 session,
@@ -127,7 +127,7 @@ public class PlanFragmenter
 
         SubPlan subPlan = fragmenter.buildRootFragment(root, properties);
         subPlan = reassignPartitioningHandleIfNecessary(session, subPlan);
-        subPlan = analyzeGroupedExecution(session, subPlan);
+        subPlan = analyzeGroupedExecution(session, subPlan, preferRecoverableGroupedExecution);
 
         checkState(!isForceSingleNodeOutput(session) || subPlan.getFragment().getPartitioning().isSingleNode(), "Root of PlanFragment is not single node");
 
@@ -153,7 +153,7 @@ public class PlanFragmenter
         }
     }
 
-    private SubPlan analyzeGroupedExecution(Session session, SubPlan subPlan)
+    private SubPlan analyzeGroupedExecution(Session session, SubPlan subPlan, boolean preferRecoverableGroupedExecution)
     {
         PlanFragment fragment = subPlan.getFragment();
         GroupedExecutionProperties properties = fragment.getRoot().accept(new GroupedExecutionTagger(session, metadata, nodePartitioningManager), null);
@@ -170,7 +170,7 @@ public class PlanFragmenter
         }
         ImmutableList.Builder<SubPlan> result = ImmutableList.builder();
         for (SubPlan child : subPlan.getChildren()) {
-            result.add(analyzeGroupedExecution(session, child));
+            result.add(analyzeGroupedExecution(session, child, preferRecoverableGroupedExecution));
         }
         return new SubPlan(fragment, result.build());
     }

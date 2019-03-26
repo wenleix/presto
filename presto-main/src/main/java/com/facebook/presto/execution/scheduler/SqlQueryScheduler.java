@@ -26,6 +26,7 @@ import com.facebook.presto.execution.SqlStageExecution;
 import com.facebook.presto.execution.StageId;
 import com.facebook.presto.execution.StageInfo;
 import com.facebook.presto.execution.StageState;
+import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskStatus;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
@@ -43,7 +44,6 @@ import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -96,6 +96,7 @@ import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
@@ -191,7 +192,7 @@ public class SqlQueryScheduler
         // Only fetch a distribution once per query to assure all stages see the same machine assignments
         Map<PartitioningHandle, NodePartitionMap> partitioningCache = new HashMap<>();
 
-        OutputBufferId rootBufferId = Iterables.getOnlyElement(rootOutputBuffers.getBuffers().keySet());
+        OutputBufferId rootBufferId = getOnlyElement(rootOutputBuffers.getBuffers().keySet());
         List<SqlStageExecution> stages = createStages(
                 (fragmentId, tasks, noMoreExchangeLocations) -> updateQueryOutputLocations(queryStateMachine, rootBufferId, tasks, noMoreExchangeLocations),
                 new AtomicInteger(),
@@ -208,7 +209,8 @@ public class SqlQueryScheduler
                 failureDetector,
                 nodeTaskMap,
                 stageSchedulers,
-                stageLinkages);
+                stageLinkages,
+                Optional.empty());
 
         SqlStageExecution rootStage = stages.get(0);
         rootStage.setOutputBuffers(rootOutputBuffers);
@@ -294,7 +296,8 @@ public class SqlQueryScheduler
             FailureDetector failureDetector,
             NodeTaskMap nodeTaskMap,
             ImmutableMap.Builder<StageId, StageScheduler> stageSchedulers,
-            ImmutableMap.Builder<StageId, StageLinkage> stageLinkages)
+            ImmutableMap.Builder<StageId, StageLinkage> stageLinkages,
+            Optional<StageWithNodeList> parentStage)
     {
         ImmutableList.Builder<SqlStageExecution> stages = ImmutableList.builder();
 
@@ -317,7 +320,7 @@ public class SqlQueryScheduler
         PartitioningHandle partitioningHandle = plan.getFragment().getPartitioning();
         if (partitioningHandle.equals(SOURCE_DISTRIBUTION)) {
             // nodes are selected dynamically based on the constraints of the splits and the system load
-            Entry<PlanNodeId, SplitSource> entry = Iterables.getOnlyElement(plan.getSplitSources().entrySet());
+            Entry<PlanNodeId, SplitSource> entry = getOnlyElement(plan.getSplitSources().entrySet());
             PlanNodeId planNodeId = entry.getKey();
             SplitSource splitSource = entry.getValue();
             ConnectorId connectorId = splitSource.getConnectorId();
@@ -378,7 +381,7 @@ public class SqlQueryScheduler
                     bucketToPartition = Optional.of(nodePartitionMap.getBucketToPartition());
                 }
 
-                stageSchedulers.put(stageId, new FixedSourcePartitionedScheduler(
+                StageScheduler stageScheduler = new FixedSourcePartitionedScheduler(
                         stage,
                         splitSources,
                         plan.getFragment().getStageExecutionDescriptor(),
@@ -388,7 +391,19 @@ public class SqlQueryScheduler
                         splitBatchSize,
                         getConcurrentLifespansPerNode(session),
                         nodeScheduler.createNodeSelector(connectorId),
-                        connectorPartitionHandles));
+                        connectorPartitionHandles);
+                stageSchedulers.put(stageId, stageScheduler);
+                stage.registerStageTaskRecoveryCallback(taskId -> {
+                    checkArgument(taskId.getStageId() == stageId, "The task did not execute this stage");
+                    // TODO: Remove failed task from parent's remote source list
+                    if (stageId.getId() > 0) {
+                        checkState(parentStage.isPresent() && parentStage.get().getNodeList().size() == 1, "Expects only 1 parent node");
+                        locationFactory.createTaskLocation(
+                                getOnlyElement(parentStage.get().getNodeList()),
+                                new TaskId(parentStage.get().getStageId(), 0));
+                    }
+                    stageScheduler.recover(taskId);
+                });
             }
             else {
                 // all sources are remote
@@ -419,7 +434,8 @@ public class SqlQueryScheduler
                     failureDetector,
                     nodeTaskMap,
                     stageSchedulers,
-                    stageLinkages);
+                    stageLinkages,
+                    Optional.of(new StageWithNodeList(stageId, nodePartitioningManager.getNodePartitioningMap(session, partitioningHandle).getPartitionToNode())));
             stages.addAll(subTree);
 
             SqlStageExecution childStage = subTree.get(0);
@@ -736,6 +752,28 @@ public class SqlQueryScheduler
                     child.addOutputBuffers(newOutputBuffers, noMoreTasks);
                 }
             }
+        }
+    }
+
+    private static class StageWithNodeList
+    {
+        private final StageId stageId;
+        private final List<Node> nodeList;
+
+        public StageWithNodeList(StageId stageId, List<Node> nodeList)
+        {
+            this.stageId = requireNonNull(stageId, "stageId is null");
+            this.nodeList = ImmutableList.copyOf(requireNonNull(nodeList, "nodeList is null"));
+        }
+
+        public StageId getStageId()
+        {
+            return stageId;
+        }
+
+        public List<Node> getNodeList()
+        {
+            return nodeList;
         }
     }
 }

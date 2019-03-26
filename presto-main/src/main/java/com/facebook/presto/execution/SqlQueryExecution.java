@@ -80,6 +80,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import static com.facebook.presto.SystemSessionProperties.isRecoverableGroupedExecutionEnabled;
 import static com.facebook.presto.execution.buffer.OutputBuffers.BROADCAST_PARTITION_ID;
 import static com.facebook.presto.execution.buffer.OutputBuffers.createInitialEmptyOutputBuffers;
 import static com.facebook.presto.execution.scheduler.SqlQueryScheduler.createSqlQueryScheduler;
@@ -434,7 +435,12 @@ public class SqlQueryExecution
         stateMachine.setOutput(output);
 
         // fragment the plan
-        SubPlan fragmentedPlan = planFragmenter.createSubPlans(stateMachine.getSession(), plan, false, stateMachine.getWarningCollector());
+        SubPlan fragmentedPlan = planFragmenter.createSubPlans(
+                stateMachine.getSession(),
+                plan,
+                false,
+                stateMachine.getWarningCollector(),
+                isRecoverableGroupedExecutionEnabled(getSession()) && output.map(Output::getConnectorId).map(connectorId -> metadata.supportsLifespanCommit(getSession(), connectorId)).orElse(false));
 
         // record analysis time
         stateMachine.endAnalysis();

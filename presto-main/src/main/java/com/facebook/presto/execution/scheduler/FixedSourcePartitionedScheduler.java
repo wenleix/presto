@@ -16,6 +16,7 @@ package com.facebook.presto.execution.scheduler;
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.RemoteTask;
 import com.facebook.presto.execution.SqlStageExecution;
+import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.scheduler.ScheduleResult.BlockedReason;
 import com.facebook.presto.execution.scheduler.group.DynamicLifespanScheduler;
 import com.facebook.presto.execution.scheduler.group.FixedLifespanScheduler;
@@ -61,6 +62,7 @@ public class FixedSourcePartitionedScheduler
     private final List<SourceScheduler> sourceSchedulers;
     private final List<ConnectorPartitionHandle> partitionHandles;
     private boolean scheduledTasks;
+    private boolean anySourceSchedulingFinished;
     private final Optional<LifespanScheduler> groupedLifespanScheduler;
 
     public FixedSourcePartitionedScheduler(
@@ -161,7 +163,7 @@ public class FixedSourcePartitionedScheduler
     }
 
     @Override
-    public ScheduleResult schedule()
+    public synchronized ScheduleResult schedule()
     {
         // schedule a task on every node in the distribution
         List<RemoteTask> newTasks = ImmutableList.of();
@@ -220,6 +222,7 @@ public class FixedSourcePartitionedScheduler
                 stage.schedulingComplete(sourceScheduler.getPlanNodeId());
                 schedulerIterator.remove();
                 sourceScheduler.close();
+                anySourceSchedulingFinished = true;
                 shouldInvokeNoMoreDriverGroups = true;
             }
             else {
@@ -233,6 +236,21 @@ public class FixedSourcePartitionedScheduler
         else {
             return new ScheduleResult(sourceSchedulers.isEmpty(), newTasks, splitsScheduled);
         }
+    }
+
+    @Override
+    public synchronized void recover(TaskId taskId)
+    {
+        checkState(groupedLifespanScheduler.isPresent(), "Non grouped execution is not recoverable");
+        // TODO: Support recoverablity after any source scheduling finished. We might need to differentiate two different states:
+        //       - FINISHING: Scheduler finished scheduling all the existing lifespans, but the execution has not finished yet. This is the current definition of FINISHED, but if
+        //         we want to support recoverablity in this case, we might reschedule lifespans, which defeat the meaning of FINISHED state.
+        //       - FINISHED: The scheduled execution finished. At this state, no more lifespan would be scheduled.
+        if (anySourceSchedulingFinished) {
+            throw new UnsupportedOperationException("Recover after any source scheduling finished is not supported");
+        }
+
+        groupedLifespanScheduler.get().retryFailedTask(taskId.getId());
     }
 
     @Override
@@ -334,6 +352,12 @@ public class FixedSourcePartitionedScheduler
             started = true;
             sourceScheduler.startLifespan(Lifespan.taskWide(), NOT_PARTITIONED);
             sourceScheduler.noMoreLifespans();
+        }
+
+        @Override
+        public void rewindLifespan(Lifespan lifespan, ConnectorPartitionHandle partitionHandle)
+        {
+            throw new UnsupportedOperationException("rewindLifespan is not supported in AsGroupedSourceScheduler");
         }
 
         @Override

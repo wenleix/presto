@@ -68,6 +68,7 @@ public class FeaturesConfig
     private boolean colocatedJoinsEnabled;
     private boolean groupedExecutionForAggregationEnabled;
     private boolean dynamicScheduleForGroupedExecution;
+    private boolean recoverableGroupedExecutionEnabled;
     private int concurrentLifespansPerTask;
     private boolean spatialJoinsEnabled = true;
     private boolean fastInequalityJoins = true;
@@ -331,6 +332,19 @@ public class FeaturesConfig
     public FeaturesConfig setDynamicScheduleForGroupedExecutionEnabled(boolean dynamicScheduleForGroupedExecution)
     {
         this.dynamicScheduleForGroupedExecution = dynamicScheduleForGroupedExecution;
+        return this;
+    }
+
+    public boolean isRecoverableGroupedExecutionEnabled()
+    {
+        return recoverableGroupedExecutionEnabled;
+    }
+
+    @Config("recoverable-grouped-execution-enabled")
+    @ConfigDescription("Use recoverable grouped execution when possible")w
+    public FeaturesConfig setRecoverableGroupedExecutionEnabled(boolean recoverableGroupedExecutionEnabled)
+    {
+        this.recoverableGroupedExecutionEnabled = recoverableGroupedExecutionEnabled;
         return this;
     }
 

@@ -187,6 +187,14 @@ public class SourcePartitionedScheduler
     }
 
     @Override
+    public void rewindLifespan(Lifespan lifespan, ConnectorPartitionHandle partitionHandle)
+    {
+        checkState(state == State.INITIALIZED || state == State.SPLITS_ADDED);
+        scheduleGroups.put(lifespan, new ScheduleGroup(partitionHandle));
+        splitSource.rewind(partitionHandle);
+    }
+
+    @Override
     public synchronized void noMoreLifespans()
     {
         checkState(state == State.INITIALIZED || state == State.SPLITS_ADDED);

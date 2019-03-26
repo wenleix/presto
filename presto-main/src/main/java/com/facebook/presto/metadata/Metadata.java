@@ -369,6 +369,21 @@ public interface Metadata
      */
     List<GrantInfo> listTablePrivileges(Session session, QualifiedTablePrefix prefix);
 
+    /**
+     * Returns whether lifespan commit is supported by the specified connector id.
+     */
+    boolean supportsLifespanCommit(Session session, ConnectorId connectorId);
+
+    /**
+     * Commits lifespan for table creation.
+     */
+    void commitLifespanForCreate(Session session, OutputTableHandle tableHandle, Collection<Slice> fragments);
+
+    /**
+     * Commits lifespan for table insertion.
+     */
+    void commitLifespanForInsert(Session session, InsertTableHandle tableHandle, Collection<Slice> fragments);
+
     FunctionManager getFunctionManager();
 
     ProcedureRegistry getProcedureRegistry();

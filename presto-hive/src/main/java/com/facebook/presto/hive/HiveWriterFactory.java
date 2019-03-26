@@ -70,7 +70,6 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_PARTITION_SCHEMA_MISMA
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_PATH_ALREADY_EXISTS;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_UNSUPPORTED_FORMAT;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITER_OPEN_ERROR;
-import static com.facebook.presto.hive.HiveSessionProperties.isWritingStagingFilesEnabled;
 import static com.facebook.presto.hive.HiveType.toHiveTypes;
 import static com.facebook.presto.hive.HiveWriteUtils.createPartitionValues;
 import static com.facebook.presto.hive.LocationHandle.WriteMode.DIRECT_TO_TARGET_EXISTING_DIRECTORY;
@@ -139,6 +138,8 @@ public class HiveWriterFactory
 
     private final OrcFileWriterFactory orcFileWriterFactory;
 
+    private final boolean lifespanCommitRequired;
+
     public HiveWriterFactory(
             Set<HiveFileWriterFactory> fileWriterFactories,
             String schemaName,
@@ -164,7 +165,8 @@ public class HiveWriterFactory
             EventClient eventClient,
             HiveSessionProperties hiveSessionProperties,
             HiveWriterStats hiveWriterStats,
-            OrcFileWriterFactory orcFileWriterFactory)
+            OrcFileWriterFactory orcFileWriterFactory,
+            boolean lifespanCommitRequired)
     {
         this.fileWriterFactories = ImmutableSet.copyOf(requireNonNull(fileWriterFactories, "fileWriterFactories is null"));
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
@@ -255,6 +257,8 @@ public class HiveWriterFactory
         this.hiveWriterStats = requireNonNull(hiveWriterStats, "hiveWriterStats is null");
 
         this.orcFileWriterFactory = requireNonNull(orcFileWriterFactory, "orcFileWriterFactory is null");
+
+        this.lifespanCommitRequired = lifespanCommitRequired;
     }
 
     public HiveWriter createWriter(Page partitionColumns, int position, OptionalInt bucketNumber)
@@ -427,7 +431,7 @@ public class HiveWriterFactory
         }
 
         String writeFileName;
-        if (isWritingStagingFilesEnabled(session)) {
+        if (lifespanCommitRequired) {
             writeFileName = ".tmp.presto." + filePrefix + "_" + randomUUID() + extension;
         }
         else {
