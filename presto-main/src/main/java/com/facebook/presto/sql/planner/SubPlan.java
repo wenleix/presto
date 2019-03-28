@@ -70,7 +70,7 @@ public class SubPlan
         return fragments.build();
     }
 
-    public void sanityCheck()
+    public void sanityCheck(boolean forceSingleNode)
     {
         Multiset<PlanFragmentId> exchangeIds = fragment.getRemoteSourceNodes().stream()
                 .map(RemoteSourceNode::getSourceFragmentIds)
@@ -83,13 +83,16 @@ public class SubPlan
                 .collect(toImmutableMultiset());
 
         checkState(exchangeIds.equals(childrenIds), "Subplan exchange ids don't match child fragment ids (%s vs %s)", exchangeIds, childrenIds);
-        checkState(
-                Streams.stream(Traverser.forTree(PlanNode::getSources).depthFirstPreOrder(fragment.getRoot()))
-                        .filter(node -> node instanceof TableWriterNode)
-                        .count() <= 1, "Each fragment cannot have multiple TableWriterNode");
+        long tableWriteCount = Streams.stream(Traverser.forTree(PlanNode::getSources).depthFirstPreOrder(fragment.getRoot()))
+                .filter(node -> node instanceof TableWriterNode)
+                .count();
+        checkState(tableWriteCount <= 1, "Each fragment cannot have multiple TableWriterNode");
+        if (tableWriteCount == 1 && !forceSingleNode) {
+            checkState(fragment.getRoot() instanceof TableWriterNode, "TableWriterNode can only be the root of a fragment");
+        }
 
         for (SubPlan child : children) {
-            child.sanityCheck();
+            child.sanityCheck(forceSingleNode);
         }
     }
 }
