@@ -398,9 +398,13 @@ public class SqlQueryScheduler
                     // TODO: Remove failed task from parent's remote source list
                     if (stageId.getId() > 0) {
                         checkState(parentStage.isPresent() && parentStage.get().getNodeList().size() == 1, "Expects only 1 parent node");
+
+                        TaskId parentTaskId = new TaskId(parentStage.get().getStageId(), 0);
+                        stage.getTask(parentTaskId).removeRemoteSource(taskId); // Assume this method exists...
+
                         locationFactory.createTaskLocation(
                                 getOnlyElement(parentStage.get().getNodeList()),
-                                new TaskId(parentStage.get().getStageId(), 0));
+                                parentTaskId);
                     }
                     stageScheduler.recover(taskId);
                 });

@@ -84,6 +84,8 @@ public final class SqlStageExecution
 
     private final Map<Node, Set<RemoteTask>> tasks = new ConcurrentHashMap<>();
 
+    private final Map<TaskId, RemoteTask> remoteTaskByTaskId = new ConcurrentHashMap<>();
+
     @GuardedBy("this")
     private final AtomicInteger nextTaskId = new AtomicInteger();
     @GuardedBy("this")
@@ -371,6 +373,11 @@ public final class SqlStageExecution
                 .collect(toImmutableList());
     }
 
+    public RemoteTask getTask(TaskId taskId)
+    {
+        return remoteTaskByTaskId.get(taskId);
+    }
+
     public synchronized Optional<RemoteTask> scheduleTask(Node node, int partition, OptionalInt totalPartitions)
     {
         requireNonNull(node, "node is null");
@@ -451,6 +458,7 @@ public final class SqlStageExecution
         completeSources.forEach(task::noMoreSplits);
 
         allTasks.add(taskId);
+        remoteTaskByTaskId.put(taskId, task);
         tasks.computeIfAbsent(node, key -> newConcurrentHashSet()).add(task);
         nodeTaskMap.addTask(node, task);
 
