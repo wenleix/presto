@@ -202,7 +202,7 @@ class HiveSplitSource
                 new PerBucket()
                 {
                     private final Map<Integer, BucketedSplits> buckets = new ConcurrentHashMap<>();
-                    private final Map<Integer, AsyncQueue<InternalHiveSplit>> queues = new ConcurrentHashMap<>();
+
                     private final AtomicBoolean finished = new AtomicBoolean();
                     private final boolean preloadSplitsForGroupedExecution = isPreloadSplitsForGroupedExecution(session);
                     private final SettableFuture<?> allSplitsLoaded = SettableFuture.create();
@@ -252,22 +252,6 @@ class HiveSplitSource
                     {
                         checkArgument(bucketNumber.isPresent());
                         return buckets.computeIfAbsent(bucketNumber.getAsInt(), ignored -> new BucketedSplits(estimatedOutstandingSplitsPerBucket, executor));
-                    }
-
-                    private AsyncQueue<InternalHiveSplit> queueFor(OptionalInt bucketNumber)
-                    {
-                        checkArgument(bucketNumber.isPresent());
-                        AtomicBoolean isNew = new AtomicBoolean();
-                        AsyncQueue<InternalHiveSplit> queue = queues.computeIfAbsent(bucketNumber.getAsInt(), ignored -> {
-                            isNew.set(true);
-                            return new AsyncQueue<>(estimatedOutstandingSplitsPerBucket, executor);
-                        });
-                        if (isNew.get() && finished.get()) {
-                            // Check `finished` and invoke `queue.finish` after the `queue` is added to the map.
-                            // Otherwise, `queue.finish` may not be invoked if `finished` is set while the lambda above is being evaluated.
-                            queue.finish();
-                        }
-                        return queue;
                     }
                 },
                 maxInitialSplits,
@@ -528,8 +512,8 @@ class HiveSplitSource
 
     private static class BucketedSplits
     {
-        private final List<InternalHiveSplit> discoveredHiveSplits;
-        private final AsyncQueue<InternalHiveSplit> queue;
+        public List<InternalHiveSplit> discoveredHiveSplits;
+        public AsyncQueue<InternalHiveSplit> queue;
 
         public BucketedSplits(int estimatedQueueSize, Executor executor)
         {
