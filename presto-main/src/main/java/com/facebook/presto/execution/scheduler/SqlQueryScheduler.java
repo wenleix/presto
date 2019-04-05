@@ -399,8 +399,12 @@ public class SqlQueryScheduler
                     if (stageId.getId() > 0) {
                         checkState(parentStage.isPresent() && parentStage.get().getNodeList().size() == 1, "Expects only 1 parent node");
 
+                        /*
                         TaskId parentTaskId = new TaskId(parentStage.get().getStageId(), 0);
-                        stage.getTask(parentTaskId).removeRemoteSource(taskId); // Assume this method exists...
+                        parentStage.get().stageExecution.getTask(parentTaskId).removeRemoteSource(taskId); // Assume this method exists...
+                        */
+
+                        parentStage.get().stageExecution.removeRemoteSource(taskId);
 
                         locationFactory.createTaskLocation(
                                 getOnlyElement(parentStage.get().getNodeList()),
@@ -763,6 +767,7 @@ public class SqlQueryScheduler
     {
         private final StageId stageId;
         private final List<Node> nodeList;
+        public SqlStageExecution stageExecution;
 
         public StageWithNodeList(StageId stageId, List<Node> nodeList)
         {

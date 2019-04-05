@@ -65,6 +65,7 @@ import static com.facebook.presto.spi.StandardErrorCode.REMOTE_HOST_GONE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
 import static com.google.common.collect.Sets.union;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
@@ -376,6 +377,15 @@ public final class SqlStageExecution
     public RemoteTask getTask(TaskId taskId)
     {
         return remoteTaskByTaskId.get(taskId);
+    }
+
+    public void removeRemoteSource(TaskId remoteSourceTaskId)
+    {
+        // There can only be one task for the stage becuase:
+        //  1. This method is designed for recoverable grouped execution TableFinish stage, there should only be one coordinator only task.
+        //  2. For stages with many tasks, it introduced too many coordinator to worker HTTP requests in a bursty manner, see https://github.com/prestodb/presto/pull/11065 for a similar issue.
+        RemoteTask onlyTaskInStage = getOnlyElement(remoteTaskByTaskId.values());
+        onlyTaskInStage.removeRemoteSource(remoteSourceTaskId); // Assume this method exists...
     }
 
     public synchronized Optional<RemoteTask> scheduleTask(Node node, int partition, OptionalInt totalPartitions)
