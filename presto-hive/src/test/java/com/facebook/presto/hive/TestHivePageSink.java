@@ -250,6 +250,7 @@ public class TestHivePageSink
                 config.getHiveStorageFormat(),
                 ImmutableList.of(),
                 Optional.empty(),
+                false,
                 "test",
                 ImmutableMap.of());
         JsonCodec<PartitionUpdate> partitionUpdateCodec = JsonCodec.jsonCodec(PartitionUpdate.class);

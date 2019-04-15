@@ -46,6 +46,7 @@ public class HiveOutputTableHandle
             @JsonProperty("partitionStorageFormat") HiveStorageFormat partitionStorageFormat,
             @JsonProperty("partitionedBy") List<String> partitionedBy,
             @JsonProperty("bucketProperty") Optional<HiveBucketProperty> bucketProperty,
+            @JsonProperty("temporaryTable") boolean temporaryTable,
             @JsonProperty("tableOwner") String tableOwner,
             @JsonProperty("additionalTableParameters") Map<String, String> additionalTableParameters)
     {
@@ -57,6 +58,7 @@ public class HiveOutputTableHandle
                 pageSinkMetadata,
                 locationHandle,
                 bucketProperty,
+                temporaryTable,
                 tableStorageFormat,
                 partitionStorageFormat);
 

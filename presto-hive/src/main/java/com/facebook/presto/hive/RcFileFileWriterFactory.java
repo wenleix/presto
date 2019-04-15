@@ -47,6 +47,7 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITER_OPEN_ERROR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITE_VALIDATION_FAILED;
 import static com.facebook.presto.hive.HiveType.toHiveTypes;
 import static com.facebook.presto.hive.rcfile.RcFilePageSourceFactory.createTextVectorEncoding;
+import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_COLUMNS;
@@ -89,12 +90,15 @@ public class RcFileFileWriterFactory
     @Override
     public Optional<HiveFileWriter> createFileWriter(
             Path path,
+            boolean temporaryTable,
             List<String> inputColumnNames,
             StorageFormat storageFormat,
             Properties schema,
             JobConf configuration,
             ConnectorSession session)
     {
+        checkArgument(!temporaryTable);
+
         if (!HiveSessionProperties.isRcfileOptimizedWriterEnabled(session)) {
             return Optional.empty();
         }

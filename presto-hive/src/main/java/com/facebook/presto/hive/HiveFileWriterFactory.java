@@ -26,6 +26,7 @@ public interface HiveFileWriterFactory
 {
     Optional<HiveFileWriter> createFileWriter(
             Path path,
+            boolean temporaryTable,
             List<String> inputColumnNames,
             StorageFormat storageFormat,
             Properties schema,

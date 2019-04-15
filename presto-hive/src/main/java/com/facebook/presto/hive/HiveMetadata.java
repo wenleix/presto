@@ -1122,6 +1122,7 @@ public class HiveMetadata
                 partitionStorageFormat,
                 partitionedBy,
                 bucketProperty,
+                false,
                 session.getUser(),
                 tableProperties);
 
@@ -1382,6 +1383,7 @@ public class HiveMetadata
                 metastore.generatePageSinkMetadata(tableName),
                 locationHandle,
                 table.get().getStorage().getBucketProperty(),
+                table.get().getTableType().equals(TEMPORARY_TABLE),
                 tableStorageFormat,
                 isRespectTableFormat(session) ? tableStorageFormat : HiveSessionProperties.getHiveStorageFormat(session));
 

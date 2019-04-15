@@ -34,6 +34,7 @@ public class HiveInsertTableHandle
             @JsonProperty("pageSinkMetadata") HivePageSinkMetadata pageSinkMetadata,
             @JsonProperty("locationHandle") LocationHandle locationHandle,
             @JsonProperty("bucketProperty") Optional<HiveBucketProperty> bucketProperty,
+            @JsonProperty("temporaryTable") boolean temporaryTable,
             @JsonProperty("tableStorageFormat") HiveStorageFormat tableStorageFormat,
             @JsonProperty("partitionStorageFormat") HiveStorageFormat partitionStorageFormat)
     {
@@ -45,6 +46,7 @@ public class HiveInsertTableHandle
                 pageSinkMetadata,
                 locationHandle,
                 bucketProperty,
+                temporaryTable,
                 tableStorageFormat,
                 partitionStorageFormat);
     }

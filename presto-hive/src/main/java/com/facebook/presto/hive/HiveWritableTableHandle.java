@@ -31,6 +31,7 @@ public class HiveWritableTableHandle
     private HivePageSinkMetadata pageSinkMetadata;
     private final LocationHandle locationHandle;
     private final Optional<HiveBucketProperty> bucketProperty;
+    private final boolean temporaryTable;
     private final HiveStorageFormat tableStorageFormat;
     private final HiveStorageFormat partitionStorageFormat;
 
@@ -42,6 +43,7 @@ public class HiveWritableTableHandle
             HivePageSinkMetadata pageSinkMetadata,
             LocationHandle locationHandle,
             Optional<HiveBucketProperty> bucketProperty,
+            boolean temporaryTable,
             HiveStorageFormat tableStorageFormat,
             HiveStorageFormat partitionStorageFormat)
     {
@@ -52,6 +54,7 @@ public class HiveWritableTableHandle
         this.pageSinkMetadata = requireNonNull(pageSinkMetadata, "pageSinkMetadata is null");
         this.locationHandle = requireNonNull(locationHandle, "locationHandle is null");
         this.bucketProperty = requireNonNull(bucketProperty, "bucketProperty is null");
+        this.temporaryTable = temporaryTable;
         this.tableStorageFormat = requireNonNull(tableStorageFormat, "tableStorageFormat is null");
         this.partitionStorageFormat = requireNonNull(partitionStorageFormat, "partitionStorageFormat is null");
     }
@@ -96,6 +99,12 @@ public class HiveWritableTableHandle
     public Optional<HiveBucketProperty> getBucketProperty()
     {
         return bucketProperty;
+    }
+
+    @JsonProperty
+    public boolean isTemporaryTable()
+    {
+        return temporaryTable;
     }
 
     @JsonProperty

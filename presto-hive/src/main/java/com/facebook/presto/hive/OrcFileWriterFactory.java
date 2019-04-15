@@ -123,6 +123,7 @@ public class OrcFileWriterFactory
     @Override
     public Optional<HiveFileWriter> createFileWriter(
             Path path,
+            boolean temporaryTable,
             List<String> inputColumnNames,
             StorageFormat storageFormat,
             Properties schema,
@@ -144,7 +145,7 @@ public class OrcFileWriterFactory
             return Optional.empty();
         }
 
-        CompressionKind compression = getCompression(schema, configuration, orcEncoding);
+        CompressionKind compression = getCompression(schema, configuration, orcEncoding, temporaryTable);
 
         // existing tables and partitions may have columns in a different order than the writer is providing, so build
         // an index to rearrange columns in the proper order
@@ -223,8 +224,12 @@ public class OrcFileWriterFactory
         return new OutputStreamOrcDataSink(fileSystem.create(path));
     }
 
-    private static CompressionKind getCompression(Properties schema, JobConf configuration, OrcEncoding orcEncoding)
+    private static CompressionKind getCompression(Properties schema, JobConf configuration, OrcEncoding orcEncoding, boolean temporaryTable)
     {
+        if (temporaryTable) {
+            return CompressionKind.SNAPPY;
+        }
+
         String compressionName = schema.getProperty(OrcTableProperties.COMPRESSION.getPropName());
         if (compressionName == null) {
             compressionName = configuration.get("hive.exec.orc.default.compress");

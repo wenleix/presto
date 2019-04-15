@@ -70,6 +70,7 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_PARTITION_SCHEMA_MISMA
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_PATH_ALREADY_EXISTS;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_UNSUPPORTED_FORMAT;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITER_OPEN_ERROR;
+import static com.facebook.presto.hive.HiveSessionProperties.isTemporaryStagingDirectoryEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isWritingStagingFilesEnabled;
 import static com.facebook.presto.hive.HiveType.toHiveTypes;
 import static com.facebook.presto.hive.HiveWriteUtils.createPartitionValues;
@@ -104,6 +105,7 @@ public class HiveWriterFactory
     private final Set<HiveFileWriterFactory> fileWriterFactories;
     private final String schemaName;
     private final String tableName;
+    private final boolean temporaryTable;
 
     private final List<DataColumn> dataColumns;
 
@@ -145,6 +147,7 @@ public class HiveWriterFactory
             String schemaName,
             String tableName,
             boolean isCreateTable,
+            boolean isTemporaryTable,
             List<HiveColumnHandle> inputColumns,
             HiveStorageFormat tableStorageFormat,
             HiveStorageFormat partitionStorageFormat,
@@ -256,6 +259,7 @@ public class HiveWriterFactory
         this.hiveWriterStats = requireNonNull(hiveWriterStats, "hiveWriterStats is null");
 
         this.orcFileWriterFactory = requireNonNull(orcFileWriterFactory, "orcFileWriterFactory is null");
+        this.temporaryTable = isTemporaryTable;
     }
 
     public HiveWriter createWriter(Page partitionColumns, int position, OptionalInt bucketNumber)
@@ -446,6 +450,7 @@ public class HiveWriterFactory
         for (HiveFileWriterFactory fileWriterFactory : fileWriterFactories) {
             Optional<HiveFileWriter> fileWriter = fileWriterFactory.createFileWriter(
                     path,
+                    temporaryTable,
                     dataColumns.stream()
                             .map(DataColumn::getName)
                             .collect(toList()),
@@ -460,6 +465,8 @@ public class HiveWriterFactory
         }
 
         if (hiveFileWriter == null) {
+            checkArgument(!this.temporaryTable);
+
             hiveFileWriter = new RecordFileWriter(
                     path,
                     dataColumns.stream()

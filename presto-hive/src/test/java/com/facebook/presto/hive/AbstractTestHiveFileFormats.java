@@ -533,6 +533,7 @@ public abstract class AbstractTestHiveFileFormats
 
         Optional<HiveFileWriter> fileWriter = fileWriterFactory.createFileWriter(
                 new Path(filePath),
+                false,
                 testColumns.stream()
                         .map(TestColumn::getName)
                         .collect(toList()),
