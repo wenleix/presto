@@ -17,6 +17,9 @@ import com.facebook.presto.metadata.BoundVariables;
 import com.facebook.presto.metadata.FunctionManager;
 import com.facebook.presto.metadata.SqlAggregationFunction;
 import com.facebook.presto.operator.aggregation.AggregationMetadata.AccumulatorStateDescriptor;
+import com.facebook.presto.operator.aggregation.arbitrary.ArbitraryAggregationState;
+import com.facebook.presto.operator.aggregation.arbitrary.ArbitraryAggregationStateFactory;
+import com.facebook.presto.operator.aggregation.arbitrary.ArbitraryAggregationStateSerializer;
 import com.facebook.presto.operator.aggregation.state.BlockPositionState;
 import com.facebook.presto.operator.aggregation.state.BlockPositionStateSerializer;
 import com.facebook.presto.operator.aggregation.state.NullableBooleanState;
@@ -26,6 +29,7 @@ import com.facebook.presto.operator.aggregation.state.StateCompiler;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.function.AccumulatorState;
+import com.facebook.presto.spi.function.AccumulatorStateFactory;
 import com.facebook.presto.spi.function.AccumulatorStateSerializer;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -54,17 +58,17 @@ public class ArbitraryAggregationFunction
     private static final MethodHandle LONG_INPUT_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "input", Type.class, NullableLongState.class, Block.class, int.class);
     private static final MethodHandle DOUBLE_INPUT_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "input", Type.class, NullableDoubleState.class, Block.class, int.class);
     private static final MethodHandle BOOLEAN_INPUT_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "input", Type.class, NullableBooleanState.class, Block.class, int.class);
-    private static final MethodHandle BLOCK_POSITION_INPUT_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "input", Type.class, BlockPositionState.class, Block.class, int.class);
+    private static final MethodHandle BLOCK_POSITION_INPUT_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "input", Type.class, ArbitraryAggregationState.class, Block.class, int.class);
 
     private static final MethodHandle LONG_OUTPUT_FUNCTION = methodHandle(NullableLongState.class, "write", Type.class, NullableLongState.class, BlockBuilder.class);
     private static final MethodHandle DOUBLE_OUTPUT_FUNCTION = methodHandle(NullableDoubleState.class, "write", Type.class, NullableDoubleState.class, BlockBuilder.class);
     private static final MethodHandle BOOLEAN_OUTPUT_FUNCTION = methodHandle(NullableBooleanState.class, "write", Type.class, NullableBooleanState.class, BlockBuilder.class);
-    private static final MethodHandle BLOCK_POSITION_OUTPUT_FUNCTION = methodHandle(BlockPositionState.class, "write", Type.class, BlockPositionState.class, BlockBuilder.class);
+    private static final MethodHandle BLOCK_POSITION_OUTPUT_FUNCTION = methodHandle(ArbitraryAggregationState.class, "write", Type.class, ArbitraryAggregationState.class, BlockBuilder.class);
 
     private static final MethodHandle LONG_COMBINE_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "combine", NullableLongState.class, NullableLongState.class);
     private static final MethodHandle DOUBLE_COMBINE_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "combine", NullableDoubleState.class, NullableDoubleState.class);
     private static final MethodHandle BOOLEAN_COMBINE_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "combine", NullableBooleanState.class, NullableBooleanState.class);
-    private static final MethodHandle BLOCK_POSITION_COMBINE_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "combine", BlockPositionState.class, BlockPositionState.class);
+    private static final MethodHandle BLOCK_POSITION_COMBINE_FUNCTION = methodHandle(ArbitraryAggregationFunction.class, "combine", ArbitraryAggregationState.class, ArbitraryAggregationState.class);
 
     protected ArbitraryAggregationFunction()
     {
@@ -99,10 +103,12 @@ public class ArbitraryAggregationFunction
         MethodHandle outputFunction;
         Class<? extends AccumulatorState> stateInterface;
         AccumulatorStateSerializer<?> stateSerializer;
+        AccumulatorStateFactory<?> stateFactory;
 
         if (type.getJavaType() == long.class) {
             stateInterface = NullableLongState.class;
             stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
+            stateFactory = StateCompiler.generateStateFactory(stateInterface, classLoader);
             inputFunction = LONG_INPUT_FUNCTION;
             combineFunction = LONG_COMBINE_FUNCTION;
             outputFunction = LONG_OUTPUT_FUNCTION;
@@ -110,6 +116,7 @@ public class ArbitraryAggregationFunction
         else if (type.getJavaType() == double.class) {
             stateInterface = NullableDoubleState.class;
             stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
+            stateFactory = StateCompiler.generateStateFactory(stateInterface, classLoader);
             inputFunction = DOUBLE_INPUT_FUNCTION;
             combineFunction = DOUBLE_COMBINE_FUNCTION;
             outputFunction = DOUBLE_OUTPUT_FUNCTION;
@@ -117,14 +124,16 @@ public class ArbitraryAggregationFunction
         else if (type.getJavaType() == boolean.class) {
             stateInterface = NullableBooleanState.class;
             stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
+            stateFactory = StateCompiler.generateStateFactory(stateInterface, classLoader);
             inputFunction = BOOLEAN_INPUT_FUNCTION;
             combineFunction = BOOLEAN_COMBINE_FUNCTION;
             outputFunction = BOOLEAN_OUTPUT_FUNCTION;
         }
         else {
             //  native container type is Slice or Block
-            stateInterface = BlockPositionState.class;
-            stateSerializer = new BlockPositionStateSerializer(type);
+            stateInterface = ArbitraryAggregationState.class;
+            stateSerializer = new ArbitraryAggregationStateSerializer(type);
+            stateFactory = new ArbitraryAggregationStateFactory(type);
             inputFunction = BLOCK_POSITION_INPUT_FUNCTION;
             combineFunction = BLOCK_POSITION_COMBINE_FUNCTION;
             outputFunction = BLOCK_POSITION_OUTPUT_FUNCTION;
@@ -142,7 +151,7 @@ public class ArbitraryAggregationFunction
                 ImmutableList.of(new AccumulatorStateDescriptor(
                         stateInterface,
                         stateSerializer,
-                        StateCompiler.generateStateFactory(stateInterface, classLoader))),
+                        stateFactory)),
                 type);
 
         GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);
@@ -181,13 +190,9 @@ public class ArbitraryAggregationFunction
         state.setBoolean(type.getBoolean(block, position));
     }
 
-    public static void input(Type type, BlockPositionState state, Block block, int position)
+    public static void input(Type type, ArbitraryAggregationState state, Block block, int position)
     {
-        if (state.getBlock() != null) {
-            return;
-        }
-        state.setBlock(block);
-        state.setPosition(position);
+        state.add(block, position);
     }
 
     public static void combine(NullableLongState state, NullableLongState otherState)
@@ -217,12 +222,8 @@ public class ArbitraryAggregationFunction
         state.setBoolean(otherState.getBoolean());
     }
 
-    public static void combine(BlockPositionState state, BlockPositionState otherState)
+    public static void combine(ArbitraryAggregationState state, ArbitraryAggregationState otherState)
     {
-        if (state.getBlock() != null) {
-            return;
-        }
-        state.setBlock(otherState.getBlock());
-        state.setPosition(otherState.getPosition());
+        state.merge(otherState);
     }
 }
