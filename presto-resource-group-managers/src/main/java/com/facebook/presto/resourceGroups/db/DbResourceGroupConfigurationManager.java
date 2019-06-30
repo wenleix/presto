@@ -63,6 +63,7 @@ import static com.facebook.presto.spi.StandardErrorCode.CONFIGURATION_UNAVAILABL
 import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.units.Duration.succinctNanos;
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 
@@ -159,6 +160,15 @@ public class DbResourceGroupConfigurationManager
         if (lastRefresh.get() == 0) {
             throw new PrestoException(CONFIGURATION_UNAVAILABLE, "Selectors cannot be fetched from database");
         }
+
+        if (System.nanoTime() - lastRefresh.get() > maxRefreshInterval.toMillis() * 1_000_000) {
+            // TODO: consider not throwing exception but only have a warning in this case
+            throw new PrestoException(
+                    CONFIGURATION_UNAVAILABLE,
+                    format("Selectors cannot be fetched from database. Current selectors are loaded %s ago",
+                            succinctNanos(System.nanoTime() - lastRefresh.get()).toString()));
+        }
+
         if (selectors.get().isEmpty()) {
             throw new PrestoException(CONFIGURATION_INVALID, "No selectors are configured");
         }
@@ -176,6 +186,15 @@ public class DbResourceGroupConfigurationManager
         if (lastRefresh.get() == 0) {
             throw new PrestoException(CONFIGURATION_UNAVAILABLE, "Selectors cannot be fetched from database");
         }
+
+        if (System.nanoTime() - lastRefresh.get() > maxRefreshInterval.toMillis() * 1_000_000) {
+            // TODO: consider not throwing exception but only have a warning in this case
+            throw new PrestoException(
+                    CONFIGURATION_UNAVAILABLE,
+                    format("Selectors cannot be fetched from database. Current selectors are loaded %s ago",
+                            succinctNanos(System.nanoTime() - lastRefresh.get()).toString()));
+        }
+
         if (selectors.get().isEmpty()) {
             throw new PrestoException(CONFIGURATION_INVALID, "No selectors are configured");
         }
@@ -237,11 +256,11 @@ public class DbResourceGroupConfigurationManager
             lastRefresh.set(System.nanoTime());
         }
         catch (Throwable e) {
-            if (succinctNanos(System.nanoTime() - lastRefresh.get()).compareTo(maxRefreshInterval) > 0) {
-                lastRefresh.set(0);
-            }
             refreshFailures.update(1);
             log.error(e, "Error loading configuration from db");
+            if (lastRefresh.get() != 0) {
+                log.debug("Last successful configuration loading was %s ago", succinctNanos(System.nanoTime() - lastRefresh.get()).toString());
+            }
         }
     }
 
