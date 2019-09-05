@@ -74,7 +74,7 @@ class SimpleSparkServerTest extends POSUnitTestSpec {
     val plan = queryRunner.getLocalExecutionPlan(sql)
     val sources = queryRunner.getTaskSources(sql)
 
-    val holderBcast = sc.broadcast(new MapperHolder())
+    val holderBcast = sc broadcast new MapperHolder()
 
 
     val sourcesJson = sources.asScala.map(source => write(sources))
