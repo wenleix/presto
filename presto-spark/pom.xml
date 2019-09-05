@@ -17,8 +17,11 @@
         <gatling-plugin.version>3.0.3</gatling-plugin.version>
         <scala-maven-plugin.version>4.1.1</scala-maven-plugin.version>
 
-<!--        <dep.jackson.version>2.9.7</dep.jackson.version>-->
-        <air.check.skip-all>true</air.check.skip-all>
+        <air.check.fail-enforcer>false</air.check.fail-enforcer>
+        <air.check.fail-license>false</air.check.fail-license>
+        <air.check.fail-dependency>false</air.check.fail-dependency>
+        <air.check.fail-duplicate-finder>false</air.check.fail-duplicate-finder>
+        <air.check.skip-modernizer>true</air.check.skip-modernizer>
     </properties>
 
     <dependencies>

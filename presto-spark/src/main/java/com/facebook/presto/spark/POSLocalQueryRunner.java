@@ -707,9 +707,6 @@ public class POSLocalQueryRunner
         return createDrivers(session, plan, outputFactory, taskContext);
     }
 
-
-
-
     public LocalExecutionPlan getLocalExecutionPlan(String sql)
     {
         return inTransaction(defaultSession, session -> createLocalExecutionPlan(sql, session));
@@ -720,10 +717,8 @@ public class POSLocalQueryRunner
         return inTransaction(defaultSession, session -> createTaskSources(sql, session));
     }
 
-
     private LocalExecutionPlan createLocalExecutionPlan(String sql, Session session)
     {
-
         AtomicReference<MaterializedResult.Builder> builder = new AtomicReference<>();
         PageConsumerOutputFactory outputFactory = new PageConsumerOutputFactory(types -> {
             builder.compareAndSet(null, MaterializedResult.resultBuilder(session, types));
@@ -793,7 +788,6 @@ public class POSLocalQueryRunner
 
     private List<TaskSource> createTaskSources(String sql, Session session)
     {
-
         AtomicReference<MaterializedResult.Builder> builder = new AtomicReference<>();
         PageConsumerOutputFactory outputFactory = new PageConsumerOutputFactory(types -> {
             builder.compareAndSet(null, MaterializedResult.resultBuilder(session, types));
