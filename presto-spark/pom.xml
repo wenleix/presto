@@ -78,7 +78,9 @@
         <dependency>
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-spi</artifactId>
+            <!--
             <scope>provided</scope>
+            -->
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
@@ -90,7 +92,9 @@
         <dependency>
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-main</artifactId>
+            <!--
             <scope>provided</scope>
+            -->
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
@@ -114,7 +118,9 @@
         <dependency>
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-tpch</artifactId>
+            <!--
             <scope>provided</scope>
+            -->
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
