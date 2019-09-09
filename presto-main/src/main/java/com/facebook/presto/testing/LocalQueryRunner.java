@@ -258,6 +258,8 @@ public class LocalQueryRunner
     private final boolean alwaysRevokeMemory;
     private final NodeSpillConfig nodeSpillConfig;
     private final NodeSchedulerConfig nodeSchedulerConfig;
+    private final HandleResolver handleResolver
+            ;
     private boolean printPlan;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -338,6 +340,7 @@ public class LocalQueryRunner
         this.joinFilterFunctionCompiler = new JoinFilterFunctionCompiler(metadata);
 
         NodeInfo nodeInfo = new NodeInfo("test");
+        this.handleResolver = new HandleResolver();
         this.connectorManager = new ConnectorManager(
                 metadata,
                 catalogManager,
@@ -348,7 +351,7 @@ public class LocalQueryRunner
                 partitioningProviderManager,
                 planOptimizerManager,
                 pageSinkManager,
-                new HandleResolver(),
+                handleResolver,
                 nodeManager,
                 nodeInfo,
                 typeRegistry,
@@ -938,5 +941,10 @@ public class LocalQueryRunner
         return searchFrom(node)
                 .where(TableScanNode.class::isInstance)
                 .findAll();
+    }
+
+    public HandleResolver getHandleResolver()
+    {
+        return handleResolver;
     }
 }

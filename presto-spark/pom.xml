@@ -12,16 +12,12 @@
     <artifactId>presto-spark</artifactId>
 
     <properties>
-        <scala.version>2.11.7</scala.version>
-        <scala.compat.version>2.11</scala.compat.version>
-        <gatling-plugin.version>3.0.3</gatling-plugin.version>
-        <scala-maven-plugin.version>4.1.1</scala-maven-plugin.version>
-
         <air.check.fail-enforcer>false</air.check.fail-enforcer>
-        <air.check.fail-license>false</air.check.fail-license>
         <air.check.fail-dependency>false</air.check.fail-dependency>
         <air.check.fail-duplicate-finder>false</air.check.fail-duplicate-finder>
         <air.check.skip-modernizer>true</air.check.skip-modernizer>
+
+        <spark.jersey.version>2.22.2</spark.jersey.version>
     </properties>
 
     <dependencies>
@@ -51,6 +47,35 @@
             <groupId>com.fasterxml.jackson.module</groupId>
             <artifactId>jackson-module-scala_2.11</artifactId>
             <version>${dep.jackson.version}</version>
+        </dependency>
+
+        <!-- Jersey (Spark depends on different version than Presto) -->
+        <dependency>
+            <groupId>org.glassfish.jersey.containers</groupId>
+            <artifactId>jersey-container-servlet</artifactId>
+            <version>${spark.jersey.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.glassfish.jersey.containers</groupId>
+            <artifactId>jersey-container-servlet-core</artifactId>
+            <version>${spark.jersey.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.glassfish.jersey.core</groupId>
+            <artifactId>jersey-server</artifactId>
+            <version>${spark.jersey.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.glassfish.jersey.core</groupId>
+            <artifactId>jersey-common</artifactId>
+            <version>${spark.jersey.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Presto -->
