@@ -137,6 +137,7 @@ import com.facebook.presto.sql.planner.LogicalPlanner;
 import com.facebook.presto.sql.planner.NodePartitioningManager;
 import com.facebook.presto.sql.planner.PartitioningProviderManager;
 import com.facebook.presto.sql.planner.Plan;
+import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.PlanFragmenter;
 import com.facebook.presto.sql.planner.PlanOptimizers;
 import com.facebook.presto.sql.planner.SubPlan;
@@ -710,19 +711,7 @@ public class LocalQueryRunner
             System.out.println(PlanPrinter.textLogicalPlan(plan.getRoot(), plan.getTypes(), metadata.getFunctionManager(), plan.getStatsAndCosts(), session, 0, false));
         }
 
-        SubPlan subplan = planFragmenter.createSubPlans(
-                session,
-                plan,
-                true,
-                new PlanNodeIdAllocator()
-                {
-                    @Override
-                    public PlanNodeId getNextId()
-                    {
-                        throw new UnsupportedOperationException();
-                    }
-                },
-                WarningCollector.NOOP);
+        SubPlan subplan = createSubPlan(session, plan);
         if (!subplan.getChildren().isEmpty()) {
             throw new AssertionError("Expected subplan to have no children");
         }
@@ -766,23 +755,7 @@ public class LocalQueryRunner
                 }));
 
         // generate sources
-        List<TaskSource> sources = new ArrayList<>();
-        long sequenceId = 0;
-        for (TableScanNode tableScan : findTableScanNodes(subplan.getFragment().getRoot())) {
-            SplitSource splitSource = splitManager.getSplits(
-                    session,
-                    tableScan.getTable(),
-                    getSplitSchedulingStrategy(stageExecutionDescriptor, tableScan.getId()));
-
-            ImmutableSet.Builder<ScheduledSplit> scheduledSplits = ImmutableSet.builder();
-            while (!splitSource.isFinished()) {
-                for (Split split : getNextBatch(splitSource)) {
-                    scheduledSplits.add(new ScheduledSplit(sequenceId++, tableScan.getId(), split));
-                }
-            }
-
-            sources.add(new TaskSource(tableScan.getId(), scheduledSplits.build(), true));
-        }
+        List<TaskSource> sources = getTaskSources(session, subplan.getFragment());
 
         // create drivers
         List<Driver> drivers = new ArrayList<>();
@@ -821,6 +794,57 @@ public class LocalQueryRunner
         return ImmutableList.copyOf(drivers);
     }
 
+    public SubPlan createSubPlan(Plan plan)
+    {
+        return createSubPlan(defaultSession, plan);
+    }
+
+    public SubPlan createSubPlan(Session session, Plan plan)
+    {
+        return planFragmenter.createSubPlans(
+                    session,
+                    plan,
+                    true,
+                    new PlanNodeIdAllocator()
+                    {
+                        @Override
+                        public PlanNodeId getNextId()
+                        {
+                            throw new UnsupportedOperationException();
+                        }
+                    },
+                    WarningCollector.NOOP);
+    }
+
+    public List<TaskSource> getTaskSources(PlanFragment fragment)
+    {
+        return getTaskSources(defaultSession, fragment);
+    }
+
+    public List<TaskSource> getTaskSources(Session session, PlanFragment fragment)
+    {
+        StageExecutionDescriptor stageExecutionDescriptor = fragment.getStageExecutionDescriptor();
+
+        List<TaskSource> sources = new ArrayList<>();
+        long sequenceId = 0;
+        for (TableScanNode tableScan : findTableScanNodes(fragment.getRoot())) {
+            SplitSource splitSource = splitManager.getSplits(
+                    session,
+                    tableScan.getTable(),
+                    getSplitSchedulingStrategy(stageExecutionDescriptor, tableScan.getId()));
+
+            ImmutableSet.Builder<ScheduledSplit> scheduledSplits = ImmutableSet.builder();
+            while (!splitSource.isFinished()) {
+                for (Split split : getNextBatch(splitSource)) {
+                    scheduledSplits.add(new ScheduledSplit(sequenceId++, tableScan.getId(), split));
+                }
+            }
+
+            sources.add(new TaskSource(tableScan.getId(), scheduledSplits.build(), true));
+        }
+        return sources;
+    }
+
     private static SplitSchedulingStrategy getSplitSchedulingStrategy(StageExecutionDescriptor stageExecutionDescriptor, PlanNodeId scanNodeId)
     {
         if (stageExecutionDescriptor.isRecoverableGroupedExecution()) {
@@ -830,6 +854,11 @@ public class LocalQueryRunner
             return GROUPED_SCHEDULING;
         }
         return UNGROUPED_SCHEDULING;
+    }
+
+    public Plan createPlan(@Language("SQL") String sql, WarningCollector warningCollector)
+    {
+        return createPlan(defaultSession, sql, warningCollector);
     }
 
     @Override
