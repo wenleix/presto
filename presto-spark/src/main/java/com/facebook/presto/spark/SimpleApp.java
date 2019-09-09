@@ -16,14 +16,35 @@ package com.facebook.presto.spark;
 import com.facebook.presto.Session;
 import com.facebook.presto.execution.TaskSource;
 import com.facebook.presto.execution.warnings.WarningCollector;
+import com.facebook.presto.index.IndexHandleJacksonModule;
+import com.facebook.presto.metadata.ColumnHandleJacksonModule;
+import com.facebook.presto.metadata.FunctionHandleJacksonModule;
+import com.facebook.presto.metadata.HandleResolver;
+import com.facebook.presto.metadata.InsertTableHandleJacksonModule;
+import com.facebook.presto.metadata.OutputTableHandleJacksonModule;
+import com.facebook.presto.metadata.PartitioningHandleJacksonModule;
+import com.facebook.presto.metadata.SplitJacksonModule;
+import com.facebook.presto.metadata.TableHandleJacksonModule;
+import com.facebook.presto.metadata.TableLayoutHandleJacksonModule;
+import com.facebook.presto.metadata.TransactionHandleJacksonModule;
+import com.facebook.presto.spi.relation.VariableReferenceExpression;
+import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.TypeManager;
+import com.facebook.presto.sql.Serialization.VariableReferenceExpressionDeserializer;
+import com.facebook.presto.sql.Serialization.VariableReferenceExpressionSerializer;
 import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.testing.LocalQueryRunner;
 import com.facebook.presto.tpch.TpchConnectorFactory;
+import com.facebook.presto.type.TypeDeserializer;
+import com.facebook.presto.type.TypeRegistry;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import io.airlift.json.JsonCodec;
+import io.airlift.json.JsonCodecFactory;
+import io.airlift.json.ObjectMapperProvider;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 
@@ -38,8 +59,6 @@ public class SimpleApp
 {
     private SimpleApp() {}
 
-    private static final JsonCodec<SparkTaskRequest> SPARK_TASK_REQUEST_JSON_CODEC = JsonCodec.jsonCodec(SparkTaskRequest.class);
-
     public static void main(String[] args)
     {
         SparkConf conf = new SparkConf()
@@ -51,15 +70,9 @@ public class SimpleApp
         // === Create LocalQueryRunner ===
 
         // TODO: QueryRunner is originally designed for test purpose. Rethink about the abstraction
-        Session session = testSessionBuilder()
-                .setCatalog("tpch")
-                .setSchema(TINY_SCHEMA_NAME)
-                .build();
+        Session session = createSession();
 
-        LocalQueryRunner localQueryRunner = LocalQueryRunner.queryRunnerWithInitialTransaction(session);
-
-        // add tpch
-        localQueryRunner.createCatalog("tpch", new TpchConnectorFactory(1), ImmutableMap.of());
+        LocalQueryRunner localQueryRunner = createLocalQueryRunner(session);
 
         // do some interesting work...
         String sql = "select * from tpch.sf1.lineitem";
@@ -76,20 +89,70 @@ public class SimpleApp
                 .collect(toImmutableList());
 
         // Similar to  https://github.com/prestodb/presto/blob/67ee4c09a2549c22fd208ab8140ef1a86a9c953f/presto-main/src/main/java/com/facebook/presto/server/remotetask/HttpRemoteTask.java#L621
+        JsonCodec<SparkTaskRequest> jsonCodec = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver());
         List<String> serializedRequests = taskRequests.stream()
-                .map(SPARK_TASK_REQUEST_JSON_CODEC::toJson)
+                .map(jsonCodec::toJson)
                 .collect(toImmutableList());
-
-        SparkTaskRequest request = SPARK_TASK_REQUEST_JSON_CODEC.fromJson(serializedRequests.get(0));
 
         jsc.parallelize(serializedRequests)
                 .foreach(serializedRequest -> {
-                    System.out.println(serializedRequest);
-                    SparkTaskRequest request2 = JsonCodec.jsonCodec(SparkTaskRequest.class).fromJson(serializedRequest);
-                    System.out.println(request.getFragment());
-                    System.out.println(request.getSources());
+                    handleSparkWorkerRequest(serializedRequest);
                 });
 
         jsc.stop();
+    }
+
+    private static void handleSparkWorkerRequest(String serializedRequest)
+    {
+        LocalQueryRunner localQueryRunnerRemote = createLocalQueryRunner(createSession());
+        System.out.println(serializedRequest);
+        SparkTaskRequest request2 = createJsonCodec(SparkTaskRequest.class, localQueryRunnerRemote.getHandleResolver()).fromJson(serializedRequest);
+        System.out.println(request2.getFragment());
+        System.out.println(request2.getSources());
+    }
+
+    private static Session createSession()
+    {
+        return testSessionBuilder()
+                .setCatalog("tpch")
+                .setSchema(TINY_SCHEMA_NAME)
+                .build();
+    }
+
+    private static LocalQueryRunner createLocalQueryRunner(Session session)
+    {
+        LocalQueryRunner localQueryRunner = LocalQueryRunner.queryRunnerWithInitialTransaction(session);
+
+        // add tpch
+        localQueryRunner.createCatalog("tpch", new TpchConnectorFactory(1), ImmutableMap.of());
+        return localQueryRunner;
+    }
+
+    private static <T> JsonCodec<T> createJsonCodec(Class<T> clazz, HandleResolver handleResolver)
+    {
+        TypeManager typeManager = new TypeRegistry();
+        ObjectMapperProvider provider = new ObjectMapperProvider();
+        provider.setKeySerializers(ImmutableMap.of(
+                VariableReferenceExpression.class, new VariableReferenceExpressionSerializer()
+        ));
+        provider.setKeyDeserializers(ImmutableMap.of(
+                VariableReferenceExpression.class, new VariableReferenceExpressionDeserializer(typeManager)
+        ));
+        provider.setJsonDeserializers(ImmutableMap.of(
+                Type.class, new TypeDeserializer(typeManager)
+        ));
+        provider.setModules(ImmutableSet.of(
+                new TableHandleJacksonModule(handleResolver),
+                new TableLayoutHandleJacksonModule(handleResolver),
+                new ColumnHandleJacksonModule(handleResolver),
+                new SplitJacksonModule(handleResolver),
+                new OutputTableHandleJacksonModule(handleResolver),
+                new InsertTableHandleJacksonModule(handleResolver),
+                new IndexHandleJacksonModule(handleResolver),
+                new TransactionHandleJacksonModule(handleResolver),
+                new PartitioningHandleJacksonModule(handleResolver),
+                new FunctionHandleJacksonModule(handleResolver)));
+        JsonCodecFactory factory = new JsonCodecFactory(provider);
+        return factory.jsonCodec(clazz);
     }
 }
