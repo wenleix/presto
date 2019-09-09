@@ -14,23 +14,23 @@
 package com.facebook.presto.spark;
 
 import com.facebook.presto.execution.TaskSource;
-import com.facebook.presto.hadoop.$internal.com.google.common.collect.ImmutableList;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner;
 import io.airlift.json.JsonCodec;
-import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.SparkSession;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 
-public class SimpleApp {
+public class SimpleApp
+{
+    private SimpleApp() {}
+
     private static final JsonCodec<TaskSource> TASK_SOURCE_JSON_CODEC = JsonCodec.jsonCodec(TaskSource.class);
 
-    public static void main(String[] args) {
-
+    public static void main(String[] args)
+    {
         /*
         SparkConf conf = new SparkConf()
                 .setMaster("local[4]")
