@@ -377,6 +377,20 @@ public class LocalExecutionPlanner
             OutputBuffer outputBuffer,
             TaskExchangeClientManager taskExchangeClientManager)
     {
+        return plan(taskContext, plan, types, partitioningScheme, stageExecutionDescriptor, partitionedSourceOrder, outputBuffer, taskExchangeClientManager, ImmutableMap.of());
+    }
+
+    public LocalExecutionPlan plan(
+            TaskContext taskContext,
+            PlanNode plan,
+            TypeProvider types,
+            PartitioningScheme partitioningScheme,
+            StageExecutionDescriptor stageExecutionDescriptor,
+            List<PlanNodeId> partitionedSourceOrder,
+            OutputBuffer outputBuffer,
+            TaskExchangeClientManager taskExchangeClientManager,
+            Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources)
+    {
         List<VariableReferenceExpression> outputLayout = partitioningScheme.getOutputLayout();
 
         if (partitioningScheme.getPartitioning().getHandle().equals(FIXED_BROADCAST_DISTRIBUTION) ||
@@ -393,7 +407,7 @@ public class LocalExecutionPlanner
                     partitionedSourceOrder,
                     new TaskOutputFactory(outputBuffer),
                     taskExchangeClientManager,
-                    ImmutableMap.of());
+                    sparkShuffledSources);
         }
 
         // We can convert the variables directly into channels, because the root must be a sink and therefore the layout is fixed
@@ -456,7 +470,7 @@ public class LocalExecutionPlanner
                         outputBuffer,
                         maxPagePartitioningBufferSize),
                 taskExchangeClientManager,
-                ImmutableMap.of());
+                sparkShuffledSources);
     }
 
     @VisibleForTesting

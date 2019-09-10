@@ -68,11 +68,11 @@ import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterators;
 import io.airlift.json.JsonCodec;
 import io.airlift.json.JsonCodecFactory;
 import io.airlift.json.ObjectMapperProvider;
 import io.airlift.slice.DynamicSliceOutput;
-import io.airlift.slice.SliceInput;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 import io.airlift.stats.TestingGcMonitor;
@@ -99,6 +99,7 @@ import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static java.util.stream.Collectors.toList;
@@ -222,8 +223,6 @@ public class SimpleApp
 
     private static Iterator<Tuple2<Integer, byte[]>> handleSparkWorkerRequest(String serializedRequest, Map<PlanNodeId, Iterator<Tuple2<Integer, byte[]>>> inputs)
     {
-        checkArgument(inputs.isEmpty(), "inputs not supported");
-
         LocalQueryRunner localQueryRunner = createLocalQueryRunner(createSession());
         SparkTaskRequest request = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver()).fromJson(serializedRequest);
         System.out.println(request.getFragment());
@@ -251,7 +250,12 @@ public class SimpleApp
                         false);
 
         SparkOutputBuffer outputBuffer = new SparkOutputBuffer();
-        LocalExecutionPlan localExecutionPlan = localQueryRunner.createLocalExecutionPlan(outputBuffer, taskContext, request.getFragment());
+        LocalExecutionPlan localExecutionPlan = localQueryRunner.createLocalExecutionPlan(
+                outputBuffer,
+                taskContext,
+                request.getFragment(),
+                inputs.entrySet().stream()
+                        .collect(toImmutableMap(Map.Entry::getKey, entry -> Iterators.transform(entry.getValue(), tupple -> deserializeSerializedPage(tupple._2)))));
         List<Driver> drivers = localQueryRunner.createDrivers(
                 localExecutionPlan,
                 taskContext,
@@ -374,9 +378,12 @@ public class SimpleApp
 
     private static Page deserializePage(PagesSerde pagesSerde, byte[] data)
     {
-        SliceInput sliceInput = Slices.wrappedBuffer(data).getInput();
-        SerializedPage serializedPage = PagesSerdeUtil.readSerializedPages(sliceInput).next();
-        return pagesSerde.deserialize(serializedPage);
+        return pagesSerde.deserialize(deserializeSerializedPage(data));
+    }
+
+    private static SerializedPage deserializeSerializedPage(byte[] data)
+    {
+        return PagesSerdeUtil.readSerializedPages(Slices.wrappedBuffer(data).getInput()).next();
     }
 
     private static List<List<Object>> getPageValues(Page page, List<Type> types)

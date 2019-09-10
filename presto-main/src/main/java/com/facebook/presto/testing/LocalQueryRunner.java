@@ -58,6 +58,7 @@ import com.facebook.presto.execution.StartTransactionTask;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.TaskSource;
 import com.facebook.presto.execution.buffer.OutputBuffer;
+import com.facebook.presto.execution.buffer.SerializedPage;
 import com.facebook.presto.execution.resourceGroups.NoOpResourceGroupManager;
 import com.facebook.presto.execution.scheduler.LegacyNetworkTopology;
 import com.facebook.presto.execution.scheduler.NodeScheduler;
@@ -182,6 +183,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -768,6 +770,11 @@ public class LocalQueryRunner
 
     public LocalExecutionPlan createLocalExecutionPlan(OutputBuffer outputBuffer, TaskContext taskContext, PlanFragment fragment)
     {
+        return createLocalExecutionPlan(outputBuffer, taskContext, fragment, ImmutableMap.of());
+    }
+
+    public LocalExecutionPlan createLocalExecutionPlan(OutputBuffer outputBuffer, TaskContext taskContext, PlanFragment fragment, Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources)
+    {
         LocalExecutionPlanner localExecutionPlanner = createLocalExecutionPlanner();
         return localExecutionPlanner.plan(
                 taskContext,
@@ -779,7 +786,8 @@ public class LocalQueryRunner
                 outputBuffer,
                 new TaskExchangeClientManager(ignored -> {
                     throw new UnsupportedOperationException();
-                }));
+                }),
+                sparkShuffledSources);
     }
 
     public List<Driver> createDrivers(LocalExecutionPlan localExecutionPlan, TaskContext taskContext, PlanFragment fragment, List<TaskSource> sources)

@@ -50,7 +50,7 @@ public class SparkExchangeSource
     @Override
     public SerializedPage pollPage()
     {
-        if (iterator.hasNext()) {
+        if (!iterator.hasNext()) {
             return null;
         }
         else {
