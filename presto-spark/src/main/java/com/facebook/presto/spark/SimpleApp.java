@@ -58,6 +58,7 @@ import com.facebook.presto.testing.PageConsumerOperator;
 import com.facebook.presto.tpch.TpchConnectorFactory;
 import com.facebook.presto.type.TypeDeserializer;
 import com.facebook.presto.type.TypeRegistry;
+import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -78,9 +79,11 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Queue;
 
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
@@ -109,7 +112,7 @@ public class SimpleApp
         LocalQueryRunner localQueryRunner = createLocalQueryRunner(session);
 
         // do some interesting work...
-        String sql = "select * from tpch.tiny.lineitem where orderkey = 14983 OR orderkey = 15009";
+        String sql = "select * from tpch.tiny.lineitem";
         Plan plan = localQueryRunner.createPlan(sql, WarningCollector.NOOP);
         SubPlan subPlan = localQueryRunner.createSubPlan(plan);
         checkState(subPlan.getChildren().isEmpty());
@@ -186,42 +189,54 @@ public class SimpleApp
                         false);
 
         // Use NullOutputFactory to avoid coping out results to avoid affecting benchmark results
-        ImmutableList.Builder<Page> outputBuilder = ImmutableList.builder();
+        Queue<Page> outputBuffer = new LinkedList<>();
 
         List<Driver> drivers = localQueryRunner.createDrivers(
-                new PageConsumerOperator.PageConsumerOutputFactory(types -> outputBuilder::add),
+                new PageConsumerOperator.PageConsumerOutputFactory(types -> outputBuffer::add),
                 taskContext,
                 request.getFragment(),
                 request.getSources());
 
-        boolean done = false;
-        while (!done) {
-            boolean processed = false;
-            for (Driver driver : drivers) {
-                if (!driver.isFinished()) {
-                    driver.process();
-                    processed = true;
-                }
-            }
-            done = !processed;
+        return new SparkDriverProcessor(drivers, outputBuffer, createPagesSerde());
+    }
+
+    private static class SparkDriverProcessor
+            extends AbstractIterator<byte[]>
+    {
+        private final List<Driver> drivers;
+        private final Queue<Page> outputBuffer;
+        private final PagesSerde serde;
+
+        private SparkDriverProcessor(List<Driver> drivers, Queue<Page> outputBuffer, PagesSerde serde)
+        {
+            this.drivers = drivers;
+            this.outputBuffer = outputBuffer;
+            this.serde = serde;
         }
 
-        List<Page> output = outputBuilder.build();
+        @Override
+        protected byte[] computeNext()
+        {
+            boolean done = false;
+            while (!done && outputBuffer.isEmpty()) {
+                boolean processed = false;
+                for (Driver driver : drivers) {
+                    if (!driver.isFinished()) {
+                        driver.process();
+                        processed = true;
+                    }
+                }
+                done = !processed;
+            }
 
-        long rowsCount = output.stream()
-                .mapToLong(Page::getPositionCount)
-                .sum();
-        long columnsCount = output.stream()
-                .mapToLong(Page::getChannelCount)
-                .max()
-                .orElse(0);
+            if (done && outputBuffer.isEmpty()) {
+                return endOfData();
+            }
 
-        System.err.printf("Rows: %s, Columns: %s \n", rowsCount, columnsCount);
-        PagesSerde pagesSerde = createPagesSerde();
-        List<byte[]> serializedPages = output.stream()
-                .map(page -> serializePage(pagesSerde, page))
-                .collect(toList());
-        return serializedPages.iterator();
+            Page page = outputBuffer.poll();
+            System.out.printf("Rows: %s, Columns: %s \n", page.getPositionCount(), page.getChannelCount());
+            return serializePage(serde, page);
+        }
     }
 
     private static Session createSession()
