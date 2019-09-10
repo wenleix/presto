@@ -17,11 +17,14 @@ import com.facebook.presto.execution.buffer.PagesSerde;
 import com.facebook.presto.execution.buffer.PagesSerdeFactory;
 import com.facebook.presto.execution.buffer.SerializedPage;
 import com.facebook.presto.metadata.Split;
+import com.facebook.presto.operator.exchange.ExchangeSource;
+import com.facebook.presto.operator.exchange.SparkExchangeSource;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.UpdatablePageSource;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.split.RemoteSplit;
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.Closeable;
@@ -44,19 +47,29 @@ public class ExchangeOperator
         private final PlanNodeId sourceId;
         private final TaskExchangeClientManager taskExchangeClientManager;
         private final PagesSerdeFactory serdeFactory;
-        private ExchangeClient exchangeClient;
+        private ExchangeSource exchangeSource;
+        private final Optional<SparkExchangeSource> sparkExchangeSource;
+
         private boolean closed;
 
         public ExchangeOperatorFactory(
                 int operatorId,
                 PlanNodeId sourceId,
                 TaskExchangeClientManager taskExchangeClientManager,
-                PagesSerdeFactory serdeFactory)
+                PagesSerdeFactory serdeFactory,
+                // !@#$%^&*
+                Optional<SparkExchangeSource> sparkExchangeSource)
         {
             this.operatorId = operatorId;
             this.sourceId = sourceId;
             this.taskExchangeClientManager = requireNonNull(taskExchangeClientManager, "taskExchangeClientManager is null");
+            this.sparkExchangeSource = requireNonNull(sparkExchangeSource, "sparkExchangeSource is null");
             this.serdeFactory = serdeFactory;
+
+            if (sparkExchangeSource.isPresent()) {
+                taskExchangeClientManager = null;
+                exchangeSource = sparkExchangeSource.get();
+            }
         }
 
         @Override
@@ -70,15 +83,16 @@ public class ExchangeOperator
         {
             checkState(!closed, "Factory is already closed");
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, ExchangeOperator.class.getSimpleName());
-            if (exchangeClient == null) {
-                exchangeClient = taskExchangeClientManager.createExchangeClient(driverContext.getPipelineContext().localSystemMemoryContext());
+
+            if (exchangeSource == null) {
+                exchangeSource = taskExchangeClientManager.createExchangeClient(driverContext.getPipelineContext().localSystemMemoryContext());
             }
 
             return new ExchangeOperator(
                     operatorContext,
                     sourceId,
                     serdeFactory.createPagesSerde(),
-                    exchangeClient);
+                    exchangeSource);
         }
 
         @Override
@@ -90,21 +104,22 @@ public class ExchangeOperator
 
     private final OperatorContext operatorContext;
     private final PlanNodeId sourceId;
-    private final ExchangeClient exchangeClient;
+    private final ExchangeSource exchangeSource;
     private final PagesSerde serde;
 
     public ExchangeOperator(
             OperatorContext operatorContext,
             PlanNodeId sourceId,
             PagesSerde serde,
-            ExchangeClient exchangeClient)
+            ExchangeSource exchangeSource)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.sourceId = requireNonNull(sourceId, "sourceId is null");
-        this.exchangeClient = requireNonNull(exchangeClient, "exchangeClient is null");
+        this.exchangeSource = requireNonNull(exchangeSource, "exchangeSource is null");
         this.serde = requireNonNull(serde, "serde is null");
 
-        operatorContext.setInfoSupplier(exchangeClient::getStatus);
+        // !@#$%^&&
+        operatorContext.setInfoSupplier(() -> new ExchangeClientStatus(0, 0, 0, 0, 0, false, ImmutableList.of()));
     }
 
     @Override
@@ -117,10 +132,7 @@ public class ExchangeOperator
     public Supplier<Optional<UpdatablePageSource>> addSplit(Split split)
     {
         requireNonNull(split, "split is null");
-        checkArgument(split.getConnectorId().equals(REMOTE_CONNECTOR_ID), "split is not a remote split");
-
-        RemoteSplit remoteSplit = (RemoteSplit) split.getConnectorSplit();
-        exchangeClient.addLocation(remoteSplit.getLocation(), remoteSplit.getRemoteSourceTaskId());
+        exchangeSource.addSplit(split);
 
         return Optional::empty;
     }
@@ -128,7 +140,7 @@ public class ExchangeOperator
     @Override
     public void noMoreSplits()
     {
-        exchangeClient.noMoreLocations();
+        exchangeSource.noMoreSplits();
     }
 
     @Override
@@ -146,13 +158,13 @@ public class ExchangeOperator
     @Override
     public boolean isFinished()
     {
-        return exchangeClient.isFinished();
+        return exchangeSource.isFinished();
     }
 
     @Override
     public ListenableFuture<?> isBlocked()
     {
-        ListenableFuture<?> blocked = exchangeClient.isBlocked();
+        ListenableFuture<?> blocked = exchangeSource.isBlocked();
         if (blocked.isDone()) {
             return NOT_BLOCKED;
         }
@@ -174,7 +186,7 @@ public class ExchangeOperator
     @Override
     public Page getOutput()
     {
-        SerializedPage page = exchangeClient.pollPage();
+        SerializedPage page = exchangeSource.pollPage();
         if (page == null) {
             return null;
         }
@@ -190,6 +202,6 @@ public class ExchangeOperator
     @Override
     public void close()
     {
-        exchangeClient.close();
+        exchangeSource.close();
     }
 }
