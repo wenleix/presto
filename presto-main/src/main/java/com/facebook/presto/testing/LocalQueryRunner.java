@@ -58,6 +58,7 @@ import com.facebook.presto.execution.SetSessionTask;
 import com.facebook.presto.execution.StartTransactionTask;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.TaskSource;
+import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.execution.resourceGroups.NoOpResourceGroupManager;
 import com.facebook.presto.execution.scheduler.LegacyNetworkTopology;
 import com.facebook.presto.execution.scheduler.NodeScheduler;
@@ -722,12 +723,13 @@ public class LocalQueryRunner
         // generate sources
         List<TaskSource> sources = getTaskSources(session, subplan.getFragment());
 
-        return createDrivers(outputFactory, taskContext, subplan.getFragment(), sources);
+        LocalExecutionPlan localExecutionPlan = createLocalExecutionPlan(outputFactory, taskContext, subplan.getFragment());
+        return createDrivers(localExecutionPlan, taskContext, subplan.getFragment(), sources);
     }
 
-    public List<Driver> createDrivers(OutputFactory outputFactory, TaskContext taskContext, PlanFragment fragment, List<TaskSource> sources)
+    private LocalExecutionPlanner createLocalExecutionPlanner()
     {
-        LocalExecutionPlanner executionPlanner = new LocalExecutionPlanner(
+        return new LocalExecutionPlanner(
                 metadata,
                 sqlParser,
                 Optional.empty(),
@@ -750,12 +752,14 @@ public class LocalQueryRunner
                 new LookupJoinOperators(),
                 new OrderingCompiler(),
                 jsonCodec(TableCommitContext.class));
+    }
 
-        // plan query
-        StageExecutionDescriptor stageExecutionDescriptor = fragment.getStageExecutionDescriptor();
-        LocalExecutionPlan localExecutionPlan = executionPlanner.plan(
+    public LocalExecutionPlan createLocalExecutionPlan(OutputFactory outputFactory, TaskContext taskContext, PlanFragment fragment)
+    {
+        LocalExecutionPlanner localExecutionPlanner = createLocalExecutionPlanner();
+        return localExecutionPlanner.plan(
                 taskContext,
-                stageExecutionDescriptor,
+                fragment.getStageExecutionDescriptor(),
                 fragment.getRoot(),
                 fragment.getPartitioningScheme().getOutputLayout(),
                 TypeProvider.fromVariables(fragment.getVariables()),
@@ -764,7 +768,26 @@ public class LocalQueryRunner
                 new TaskExchangeClientManager(ignored -> {
                     throw new UnsupportedOperationException();
                 }));
+    }
 
+    public LocalExecutionPlan createLocalExecutionPlan(OutputBuffer outputBuffer, TaskContext taskContext, PlanFragment fragment)
+    {
+        LocalExecutionPlanner localExecutionPlanner = createLocalExecutionPlanner();
+        return localExecutionPlanner.plan(
+                taskContext,
+                fragment.getRoot(),
+                TypeProvider.fromVariables(fragment.getVariables()),
+                fragment.getPartitioningScheme(),
+                fragment.getStageExecutionDescriptor(),
+                fragment.getTableScanSchedulingOrder(),
+                outputBuffer,
+                new TaskExchangeClientManager(ignored -> {
+                    throw new UnsupportedOperationException();
+                }));
+    }
+
+    public List<Driver> createDrivers(LocalExecutionPlan localExecutionPlan, TaskContext taskContext, PlanFragment fragment, List<TaskSource> sources)
+    {
         // create drivers
         List<Driver> drivers = new ArrayList<>();
         Map<PlanNodeId, DriverFactory> driverFactoriesBySource = new HashMap<>();

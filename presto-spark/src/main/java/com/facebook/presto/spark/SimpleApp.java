@@ -38,6 +38,7 @@ import com.facebook.presto.metadata.TableLayoutHandleJacksonModule;
 import com.facebook.presto.metadata.TransactionHandleJacksonModule;
 import com.facebook.presto.operator.Driver;
 import com.facebook.presto.operator.TaskContext;
+import com.facebook.presto.spark.SparkOutputBuffer.PageWithPartition;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.QueryId;
@@ -50,11 +51,11 @@ import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spiller.SpillSpaceTracker;
 import com.facebook.presto.sql.Serialization.VariableReferenceExpressionDeserializer;
 import com.facebook.presto.sql.Serialization.VariableReferenceExpressionSerializer;
+import com.facebook.presto.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.testing.LocalQueryRunner;
-import com.facebook.presto.testing.PageConsumerOperator;
 import com.facebook.presto.tpch.TpchConnectorFactory;
 import com.facebook.presto.type.TypeDeserializer;
 import com.facebook.presto.type.TypeRegistry;
@@ -73,17 +74,16 @@ import io.airlift.stats.TestingGcMonitor;
 import io.airlift.units.DataSize;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
+import scala.Tuple2;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.Queue;
 
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
@@ -112,7 +112,7 @@ public class SimpleApp
         LocalQueryRunner localQueryRunner = createLocalQueryRunner(session);
 
         // do some interesting work...
-        String sql = "select * from tpch.tiny.lineitem";
+        String sql = "select * from tpch.tiny.lineitem where orderkey = 14983 OR orderkey = 15009";
         Plan plan = localQueryRunner.createPlan(sql, WarningCollector.NOOP);
         SubPlan subPlan = localQueryRunner.createSubPlan(plan);
         checkState(subPlan.getChildren().isEmpty());
@@ -141,7 +141,8 @@ public class SimpleApp
                 .collect(toImmutableList());
 
         List<byte[]> serializedResult = jsc.parallelize(serializedRequests)
-                .flatMap(request -> handleSparkWorkerRequest(request))
+                .flatMapToPair(request -> handleSparkWorkerRequest(request))
+                .map(tupple -> tupple._2)
                 .collect();
 
         PagesSerde pagesSerde = createPagesSerde();
@@ -160,7 +161,7 @@ public class SimpleApp
         jsc.stop();
     }
 
-    private static Iterator<byte[]> handleSparkWorkerRequest(String serializedRequest)
+    private static Iterator<Tuple2<Integer, byte[]>> handleSparkWorkerRequest(String serializedRequest)
     {
         LocalQueryRunner localQueryRunner = createLocalQueryRunner(createSession());
         SparkTaskRequest request = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver()).fromJson(serializedRequest);
@@ -188,11 +189,10 @@ public class SimpleApp
                         OptionalInt.empty(),
                         false);
 
-        // Use NullOutputFactory to avoid coping out results to avoid affecting benchmark results
-        Queue<Page> outputBuffer = new LinkedList<>();
-
+        SparkOutputBuffer outputBuffer = new SparkOutputBuffer();
+        LocalExecutionPlan localExecutionPlan = localQueryRunner.createLocalExecutionPlan(outputBuffer, taskContext, request.getFragment());
         List<Driver> drivers = localQueryRunner.createDrivers(
-                new PageConsumerOperator.PageConsumerOutputFactory(types -> outputBuffer::add),
+                localExecutionPlan,
                 taskContext,
                 request.getFragment(),
                 request.getSources());
@@ -201,13 +201,13 @@ public class SimpleApp
     }
 
     private static class SparkDriverProcessor
-            extends AbstractIterator<byte[]>
+            extends AbstractIterator<Tuple2<Integer, byte[]>>
     {
         private final List<Driver> drivers;
-        private final Queue<Page> outputBuffer;
+        private final SparkOutputBuffer outputBuffer;
         private final PagesSerde serde;
 
-        private SparkDriverProcessor(List<Driver> drivers, Queue<Page> outputBuffer, PagesSerde serde)
+        private SparkDriverProcessor(List<Driver> drivers, SparkOutputBuffer outputBuffer, PagesSerde serde)
         {
             this.drivers = drivers;
             this.outputBuffer = outputBuffer;
@@ -215,10 +215,10 @@ public class SimpleApp
         }
 
         @Override
-        protected byte[] computeNext()
+        protected Tuple2<Integer, byte[]> computeNext()
         {
             boolean done = false;
-            while (!done && outputBuffer.isEmpty()) {
+            while (!done && !outputBuffer.hasPagesBuffered()) {
                 boolean processed = false;
                 for (Driver driver : drivers) {
                     if (!driver.isFinished()) {
@@ -229,13 +229,13 @@ public class SimpleApp
                 done = !processed;
             }
 
-            if (done && outputBuffer.isEmpty()) {
+            if (done && !outputBuffer.hasPagesBuffered()) {
                 return endOfData();
             }
 
-            Page page = outputBuffer.poll();
-            System.out.printf("Rows: %s, Columns: %s \n", page.getPositionCount(), page.getChannelCount());
-            return serializePage(serde, page);
+            PageWithPartition pageWithPartition = outputBuffer.getNext();
+            SerializedPage serializedPage = pageWithPartition.getPage();
+            return new Tuple2<>(pageWithPartition.getPartition(), serializePage(serializedPage));
         }
     }
 
@@ -295,16 +295,20 @@ public class SimpleApp
 
     private static byte[] serializePage(PagesSerde pagesSerde, Page page)
     {
-        SerializedPage serializedPage = pagesSerde.serialize(page);
+        return serializePage(pagesSerde.serialize(page));
+    }
+
+    private static byte[] serializePage(SerializedPage page)
+    {
+        SliceOutput sliceOutput = new DynamicSliceOutput(page.getUncompressedSizeInBytes());
+        PagesSerdeUtil.writeSerializedPage(sliceOutput, page);
         try {
-            SliceOutput sliceOutput = new DynamicSliceOutput(serializedPage.getUncompressedSizeInBytes());
-            PagesSerdeUtil.writeSerializedPage(sliceOutput, serializedPage);
             sliceOutput.close();
-            return sliceOutput.getUnderlyingSlice().getBytes();
         }
         catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        return sliceOutput.getUnderlyingSlice().getBytes();
     }
 
     private static Page deserializePage(PagesSerde pagesSerde, byte[] data)
