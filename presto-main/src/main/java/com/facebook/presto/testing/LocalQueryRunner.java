@@ -141,6 +141,7 @@ import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.PlanFragmenter;
 import com.facebook.presto.sql.planner.PlanOptimizers;
 import com.facebook.presto.sql.planner.SubPlan;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.planPrinter.PlanPrinter;
 import com.facebook.presto.sql.planner.sanity.PlanSanityChecker;
@@ -260,8 +261,7 @@ public class LocalQueryRunner
     private final boolean alwaysRevokeMemory;
     private final NodeSpillConfig nodeSpillConfig;
     private final NodeSchedulerConfig nodeSchedulerConfig;
-    private final HandleResolver handleResolver
-            ;
+    private final HandleResolver handleResolver;
     private boolean printPlan;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -719,6 +719,14 @@ public class LocalQueryRunner
             throw new AssertionError("Expected subplan to have no children");
         }
 
+        // generate sources
+        List<TaskSource> sources = getTaskSources(session, subplan.getFragment());
+
+        return createDrivers(outputFactory, taskContext, subplan.getFragment(), sources);
+    }
+
+    public List<Driver> createDrivers(OutputFactory outputFactory, TaskContext taskContext, PlanFragment fragment, List<TaskSource> sources)
+    {
         LocalExecutionPlanner executionPlanner = new LocalExecutionPlanner(
                 metadata,
                 sqlParser,
@@ -744,21 +752,18 @@ public class LocalQueryRunner
                 jsonCodec(TableCommitContext.class));
 
         // plan query
-        StageExecutionDescriptor stageExecutionDescriptor = subplan.getFragment().getStageExecutionDescriptor();
+        StageExecutionDescriptor stageExecutionDescriptor = fragment.getStageExecutionDescriptor();
         LocalExecutionPlan localExecutionPlan = executionPlanner.plan(
                 taskContext,
                 stageExecutionDescriptor,
-                subplan.getFragment().getRoot(),
-                subplan.getFragment().getPartitioningScheme().getOutputLayout(),
-                plan.getTypes(),
-                subplan.getFragment().getTableScanSchedulingOrder(),
+                fragment.getRoot(),
+                fragment.getPartitioningScheme().getOutputLayout(),
+                TypeProvider.fromVariables(fragment.getVariables()),
+                fragment.getTableScanSchedulingOrder(),
                 outputFactory,
                 new TaskExchangeClientManager(ignored -> {
                     throw new UnsupportedOperationException();
                 }));
-
-        // generate sources
-        List<TaskSource> sources = getTaskSources(session, subplan.getFragment());
 
         // create drivers
         List<Driver> drivers = new ArrayList<>();
@@ -777,7 +782,7 @@ public class LocalQueryRunner
         }
 
         // add sources to the drivers
-        Set<PlanNodeId> tableScanPlanNodeIds = ImmutableSet.copyOf(subplan.getFragment().getTableScanSchedulingOrder());
+        Set<PlanNodeId> tableScanPlanNodeIds = ImmutableSet.copyOf(fragment.getTableScanSchedulingOrder());
         for (TaskSource source : sources) {
             DriverFactory driverFactory = driverFactoriesBySource.get(source.getPlanNodeId());
             checkState(driverFactory != null);
