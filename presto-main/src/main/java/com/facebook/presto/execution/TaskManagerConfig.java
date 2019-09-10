@@ -69,7 +69,7 @@ public class TaskManagerConfig
 
     private int writerCount = 1;
     private Integer partitionedWriterCount;
-    private int taskConcurrency = 16;
+    private int taskConcurrency = 1;
     private int httpResponseThreads = 100;
     private int httpTimeoutThreads = 3;
 

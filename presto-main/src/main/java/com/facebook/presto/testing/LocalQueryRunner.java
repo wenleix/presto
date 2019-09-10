@@ -737,7 +737,7 @@ public class LocalQueryRunner
                 pageFunctionCompiler,
                 joinFilterFunctionCompiler,
                 new IndexJoinLookupStats(),
-                new TaskManagerConfig().setTaskConcurrency(4),
+                new TaskManagerConfig().setTaskConcurrency(1),
                 spillerFactory,
                 singleStreamSpillerFactory,
                 partitioningSpillerFactory,

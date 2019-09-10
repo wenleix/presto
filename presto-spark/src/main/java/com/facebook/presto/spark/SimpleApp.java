@@ -45,6 +45,7 @@ import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
 import com.facebook.presto.spi.memory.MemoryPoolId;
+import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -52,9 +53,13 @@ import com.facebook.presto.spiller.SpillSpaceTracker;
 import com.facebook.presto.sql.Serialization.VariableReferenceExpressionDeserializer;
 import com.facebook.presto.sql.Serialization.VariableReferenceExpressionSerializer;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
+import com.facebook.presto.sql.planner.LogicalPlanner;
+import com.facebook.presto.sql.planner.PartitioningHandle;
 import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.SubPlan;
+import com.facebook.presto.sql.planner.plan.PlanFragmentId;
+import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
 import com.facebook.presto.testing.LocalQueryRunner;
 import com.facebook.presto.tpch.TpchConnectorFactory;
 import com.facebook.presto.type.TypeDeserializer;
@@ -73,6 +78,7 @@ import io.airlift.slice.Slices;
 import io.airlift.stats.TestingGcMonitor;
 import io.airlift.units.DataSize;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import scala.Tuple2;
 
@@ -82,13 +88,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 
+import static com.facebook.presto.sql.planner.SystemPartitioningHandle.COORDINATOR_DISTRIBUTION;
+import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
+import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
-import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static java.util.stream.Collectors.toList;
 
@@ -113,35 +124,10 @@ public class SimpleApp
 
         // do some interesting work...
         String sql = "select * from tpch.tiny.lineitem where orderkey = 14983 OR orderkey = 15009";
-        Plan plan = localQueryRunner.createPlan(sql, WarningCollector.NOOP);
+        Plan plan = localQueryRunner.createPlan(localQueryRunner.getDefaultSession(), sql, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED, false, WarningCollector.NOOP);
         SubPlan subPlan = localQueryRunner.createSubPlan(plan);
-        checkState(subPlan.getChildren().isEmpty());
 
-        PlanFragment planFragment = subPlan.getFragment();
-        List<TaskSource> taskSources = localQueryRunner.getTaskSources(subPlan.getFragment());
-
-        List<SparkTaskRequest> taskRequests = taskSources.stream()
-                // TODO: Now it's a simple "one split per Spark worker" model
-                .flatMap(taskSource -> taskSource.getSplits().stream()
-                        .map(split -> new SparkTaskRequest(
-                                planFragment,
-                                ImmutableList.of(
-                                        new TaskSource(
-                                                taskSource.getPlanNodeId(),
-                                                ImmutableSet.of(split),
-                                                taskSource.getNoMoreSplitsForLifespan(),
-                                                taskSource.isNoMoreSplits())))))
-                // .map(taskSource -> new SparkTaskRequest(planFragment, ImmutableList.of(taskSource)))
-                .collect(toImmutableList());
-
-        // Similar to  https://github.com/prestodb/presto/blob/67ee4c09a2549c22fd208ab8140ef1a86a9c953f/presto-main/src/main/java/com/facebook/presto/server/remotetask/HttpRemoteTask.java#L621
-        JsonCodec<SparkTaskRequest> jsonCodec = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver());
-        List<String> serializedRequests = taskRequests.stream()
-                .map(jsonCodec::toJson)
-                .collect(toImmutableList());
-
-        List<byte[]> serializedResult = jsc.parallelize(serializedRequests)
-                .flatMapToPair(request -> handleSparkWorkerRequest(request))
+        List<byte[]> serializedResult = createSparkRdd(localQueryRunner, jsc, subPlan)
                 .map(tupple -> tupple._2)
                 .collect();
 
@@ -154,15 +140,90 @@ public class SimpleApp
         System.out.println("Results: " + result.size());
 
         result.stream()
-                .map(page -> getPageValues(page, planFragment.getTypes()))
+                .map(page -> getPageValues(page, subPlan.getFragment().getTypes()))
                 .flatMap(List::stream)
                 .forEach(System.out::println);
 
         jsc.stop();
     }
 
-    private static Iterator<Tuple2<Integer, byte[]>> handleSparkWorkerRequest(String serializedRequest)
+    private static JavaPairRDD<Integer, byte[]> createSparkRdd(LocalQueryRunner localQueryRunner, JavaSparkContext jsc, SubPlan subPlan)
     {
+        PlanFragment fragment = subPlan.getFragment();
+        checkArgument(!fragment.getStageExecutionDescriptor().isStageGroupedExecution(), "unexpected grouped execution fragment: %s", fragment.getId());
+
+        // scans
+        List<PlanNodeId> tableScans = fragment.getTableScanSchedulingOrder();
+
+        // source stages
+        List<RemoteSourceNode> remoteSources = fragment.getRemoteSourceNodes();
+        checkArgument(tableScans.isEmpty() || remoteSources.isEmpty(), "stage has both, remote sources and table scans");
+
+        JsonCodec<SparkTaskRequest> jsonCodec = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver());
+
+        if (!tableScans.isEmpty()) {
+            // checkArgument(fragment.getPartitioning().equals(SOURCE_DISTRIBUTION), "unexpected table scan partitioning: %s", fragment.getPartitioning());
+
+            List<TaskSource> taskSources = localQueryRunner.getTaskSources(subPlan.getFragment());
+            List<SparkTaskRequest> taskRequests = taskSources.stream()
+                    .flatMap(taskSource -> taskSource.getSplits().stream()
+                            .map(split -> new SparkTaskRequest(
+                                    fragment,
+                                    ImmutableList.of(
+                                            new TaskSource(
+                                                    taskSource.getPlanNodeId(),
+                                                    ImmutableSet.of(split),
+                                                    taskSource.getNoMoreSplitsForLifespan(),
+                                                    taskSource.isNoMoreSplits())))))
+                    .collect(toImmutableList());
+            List<String> serializedRequests = taskRequests.stream()
+                    .map(jsonCodec::toJson)
+                    .collect(toImmutableList());
+            return jsc.parallelize(serializedRequests)
+                    .flatMapToPair(request -> handleSparkWorkerRequest(request, ImmutableMap.of()));
+        }
+
+        List<SubPlan> children = subPlan.getChildren();
+        checkArgument(
+                remoteSources.size() == children.size(),
+                "number of remote sources doesn't match the number of child stages: %s != %s",
+                remoteSources.size(),
+                children.size());
+        checkArgument(children.size() == 1, "expected to have exactly single children");
+        SubPlan childSubPlan = getOnlyElement(children);
+        JavaPairRDD<Integer, byte[]> childRdd = createSparkRdd(localQueryRunner, jsc, childSubPlan);
+
+        PlanFragment childFragment = childSubPlan.getFragment();
+        RemoteSourceNode remoteSource = getOnlyElement(remoteSources);
+        List<PlanFragmentId> sourceFragmentIds = remoteSource.getSourceFragmentIds();
+        checkArgument(sourceFragmentIds.size() == 1, "expected to have exactly only a single source fragment");
+        checkArgument(childFragment.getId().equals(getOnlyElement(sourceFragmentIds)));
+
+        SparkTaskRequest sparkTaskRequest = new SparkTaskRequest(fragment, ImmutableList.of());
+        String serializedRequest = jsonCodec.toJson(sparkTaskRequest);
+
+        PartitioningHandle partitioning = fragment.getPartitioning();
+        if (partitioning.equals(COORDINATOR_DISTRIBUTION)) {
+            List<Tuple2<Integer, byte[]>> collect = childRdd.collect();
+            List<Tuple2<Integer, byte[]>> result = ImmutableList.copyOf(handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(remoteSource.getId(), collect.iterator())));
+            return jsc.parallelizePairs(result);
+        }
+        else if (partitioning.equals(FIXED_HASH_DISTRIBUTION) ||
+                // when single distribution - there will be a single partition 0
+                partitioning.equals(SINGLE_DISTRIBUTION)) {
+            String planNodeId = remoteSource.getId().toString();
+            return childRdd.mapPartitionsToPair(iterator -> handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(new PlanNodeId(planNodeId), iterator)));
+        }
+        else {
+            // SOURCE_DISTRIBUTION || FIXED_PASSTHROUGH_DISTRIBUTION || ARBITRARY_DISTRIBUTION || SCALED_WRITER_DISTRIBUTION || FIXED_BROADCAST_DISTRIBUTION || FIXED_ARBITRARY_DISTRIBUTION
+            throw new IllegalArgumentException("Unsupported fragment partitioning: " + partitioning);
+        }
+    }
+
+    private static Iterator<Tuple2<Integer, byte[]>> handleSparkWorkerRequest(String serializedRequest, Map<PlanNodeId, Iterator<Tuple2<Integer, byte[]>>> inputs)
+    {
+        checkArgument(inputs.isEmpty(), "inputs not supported");
+
         LocalQueryRunner localQueryRunner = createLocalQueryRunner(createSession());
         SparkTaskRequest request = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver()).fromJson(serializedRequest);
         System.out.println(request.getFragment());
