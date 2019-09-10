@@ -792,6 +792,9 @@ public class LocalQueryRunner
 
     public List<Driver> createDrivers(LocalExecutionPlan localExecutionPlan, TaskContext taskContext, PlanFragment fragment, List<TaskSource> sources)
     {
+        // add sources to the drivers
+        Set<PlanNodeId> tableScanPlanNodeIds = ImmutableSet.copyOf(fragment.getTableScanSchedulingOrder());
+
         // create drivers
         List<Driver> drivers = new ArrayList<>();
         Map<PlanNodeId, DriverFactory> driverFactoriesBySource = new HashMap<>();
@@ -799,6 +802,12 @@ public class LocalQueryRunner
             for (int i = 0; i < driverFactory.getDriverInstances().orElse(1); i++) {
                 if (driverFactory.getSourceId().isPresent()) {
                     checkState(driverFactoriesBySource.put(driverFactory.getSourceId().get(), driverFactory) == null);
+                    boolean partitioned = tableScanPlanNodeIds.contains(driverFactory.getSourceId().get());
+                    if (!partitioned) {
+                        DriverContext driverContext = taskContext.addPipelineContext(driverFactory.getPipelineId(), driverFactory.isInputDriver(), driverFactory.isOutputDriver(), false).addDriverContext();
+                        Driver driver = driverFactory.createDriver(driverContext);
+                        drivers.add(driver);
+                    }
                 }
                 else {
                     DriverContext driverContext = taskContext.addPipelineContext(driverFactory.getPipelineId(), driverFactory.isInputDriver(), driverFactory.isOutputDriver(), false).addDriverContext();
@@ -808,8 +817,6 @@ public class LocalQueryRunner
             }
         }
 
-        // add sources to the drivers
-        Set<PlanNodeId> tableScanPlanNodeIds = ImmutableSet.copyOf(fragment.getTableScanSchedulingOrder());
         for (TaskSource source : sources) {
             DriverFactory driverFactory = driverFactoriesBySource.get(source.getPlanNodeId());
             checkState(driverFactory != null);
