@@ -767,7 +767,8 @@ public class LocalQueryRunner
                 outputFactory,
                 new TaskExchangeClientManager(ignored -> {
                     throw new UnsupportedOperationException();
-                }));
+                }),
+                ImmutableMap.of());
     }
 
     public LocalExecutionPlan createLocalExecutionPlan(OutputBuffer outputBuffer, TaskContext taskContext, PlanFragment fragment)
