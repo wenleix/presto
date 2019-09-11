@@ -79,6 +79,7 @@ import io.airlift.stats.TestingGcMonitor;
 import io.airlift.units.DataSize;
 import org.apache.spark.HashPartitioner;
 import org.apache.spark.SparkConf;
+import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import scala.Tuple2;
@@ -114,13 +115,13 @@ import static java.util.stream.Collectors.toList;
 public class SparkQueryRunner
 {
     private final PrestoConfiguration prestoConfiguration;
-    private final SparkConf sparkConfiguration;
+    private final SparkContext sparkContext;
     private final int partitions;
 
-    public SparkQueryRunner(PrestoConfiguration prestoConfiguration, SparkConf sparkConfiguration, int partitions)
+    public SparkQueryRunner(PrestoConfiguration prestoConfiguration, SparkContext sparkContext, int partitions)
     {
         this.prestoConfiguration = requireNonNull(prestoConfiguration, "prestoConfiguration is null");
-        this.sparkConfiguration = requireNonNull(sparkConfiguration, "sparkConfiguration is null");
+        this.sparkContext = requireNonNull(sparkContext, "sparkContext is null");
         this.partitions = partitions;
     }
 
@@ -133,18 +134,22 @@ public class SparkQueryRunner
                 .setMaster(format("local[%s]", workers))
                 .setAppName("Simple Query");
 
+        SparkContext sparkContext = new SparkContext(sparkConfiguration);
+
         PrestoConfiguration prestoConfiguration = new PrestoConfiguration(
                 ImmutableList.of("com.facebook.presto.tpch.TpchPlugin"),
                 ImmutableList.of(
                         new CatalogConfiguration("tpch", "tpch", ImmutableMap.of())));
 
-        new SparkQueryRunner(prestoConfiguration, sparkConfiguration, partitions)
+        new SparkQueryRunner(prestoConfiguration, sparkContext, partitions)
                 .run("select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42");
+
+        sparkContext.stop();
     }
 
     public void run(String query)
     {
-        JavaSparkContext jsc = new JavaSparkContext(sparkConfiguration);
+        JavaSparkContext jsc = new JavaSparkContext(sparkContext);
 
         // === Create LocalQueryRunner ===
         LocalQueryRunner localQueryRunner = createLocalQueryRunner(prestoConfiguration);
@@ -169,8 +174,6 @@ public class SparkQueryRunner
                 .map(page -> getPageValues(page, subPlan.getFragment().getTypes()))
                 .flatMap(List::stream)
                 .forEach(System.out::println);
-
-        jsc.stop();
     }
 
     private static JavaPairRDD<Integer, byte[]> createSparkRdd(LocalQueryRunner localQueryRunner, JavaSparkContext jsc, SubPlan subPlan, PrestoConfiguration prestoConfiguration, int partitions)
