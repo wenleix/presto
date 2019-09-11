@@ -15,11 +15,13 @@ package com.facebook.presto.spark;
 
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.StateMachine;
+import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.buffer.BufferResult;
 import com.facebook.presto.execution.buffer.BufferState;
 import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.execution.buffer.OutputBufferInfo;
 import com.facebook.presto.execution.buffer.OutputBuffers;
+import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.buffer.SerializedPage;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -28,7 +30,6 @@ import io.airlift.units.DataSize;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import static com.facebook.presto.execution.buffer.BufferState.FINISHED;
@@ -38,7 +39,6 @@ import static com.facebook.presto.execution.buffer.BufferState.TERMINAL_BUFFER_S
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
-import static java.util.Objects.requireNonNull;
 
 public class SparkOutputBuffer
         implements OutputBuffer
@@ -46,9 +46,6 @@ public class SparkOutputBuffer
     private static final ListenableFuture<?> NON_BLOCKED = immediateFuture(null);
 
     private final StateMachine<BufferState> state = new StateMachine<>("spark buffer", directExecutor(), NO_MORE_BUFFERS, TERMINAL_BUFFER_STATES);
-
-    private final AtomicLong totalPagesAdded = new AtomicLong();
-    private final AtomicLong totalRowsAdded = new AtomicLong();
 
     private final Queue<PageWithPartition> bufferedPages = new ConcurrentLinkedQueue<>();
 
@@ -64,8 +61,8 @@ public class SparkOutputBuffer
                 state.canAddPages(),
                 0,
                 0,
-                totalRowsAdded.get(),
-                totalPagesAdded.get(),
+                0,
+                0,
                 ImmutableList.of());
     }
 
@@ -114,36 +111,14 @@ public class SparkOutputBuffer
         return state.get() == FINISHED;
     }
 
-    public static class PageWithPartition
-    {
-        private final SerializedPage page;
-        private final int partition;
-
-        public PageWithPartition(SerializedPage page, int partition)
-        {
-            this.page = requireNonNull(page, "page is null");
-            this.partition = partition;
-        }
-
-        public SerializedPage getPage()
-        {
-            return page;
-        }
-
-        public int getPartition()
-        {
-            return partition;
-        }
-    }
-
     @Override
-    public ListenableFuture<BufferResult> get(OutputBuffers.OutputBufferId bufferId, long token, DataSize maxSize)
+    public ListenableFuture<BufferResult> get(OutputBufferId bufferId, long token, DataSize maxSize)
     {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void addStateChangeListener(StateMachine.StateChangeListener<BufferState> stateChangeListener)
+    public void addStateChangeListener(StateChangeListener<BufferState> stateChangeListener)
     {
         throw new UnsupportedOperationException();
     }
@@ -155,13 +130,13 @@ public class SparkOutputBuffer
     }
 
     @Override
-    public void acknowledge(OutputBuffers.OutputBufferId bufferId, long token)
+    public void acknowledge(OutputBufferId bufferId, long token)
     {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void abort(OutputBuffers.OutputBufferId bufferId)
+    public void abort(OutputBufferId bufferId)
     {
         throw new UnsupportedOperationException();
     }

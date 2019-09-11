@@ -38,7 +38,6 @@ import com.facebook.presto.metadata.TableLayoutHandleJacksonModule;
 import com.facebook.presto.metadata.TransactionHandleJacksonModule;
 import com.facebook.presto.operator.Driver;
 import com.facebook.presto.operator.TaskContext;
-import com.facebook.presto.spark.SparkOutputBuffer.PageWithPartition;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.Plugin;
