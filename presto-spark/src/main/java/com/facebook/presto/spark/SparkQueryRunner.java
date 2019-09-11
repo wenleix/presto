@@ -113,21 +113,24 @@ import static java.util.stream.Collectors.toList;
 
 public class SparkQueryRunner
 {
-    private static final int PARTITIONS = 40;
-
     private final PrestoConfiguration prestoConfiguration;
     private final SparkConf sparkConfiguration;
+    private final int partitions;
 
-    public SparkQueryRunner(PrestoConfiguration prestoConfiguration, SparkConf sparkConfiguration)
+    public SparkQueryRunner(PrestoConfiguration prestoConfiguration, SparkConf sparkConfiguration, int partitions)
     {
         this.prestoConfiguration = requireNonNull(prestoConfiguration, "prestoConfiguration is null");
         this.sparkConfiguration = requireNonNull(sparkConfiguration, "sparkConfiguration is null");
+        this.partitions = partitions;
     }
 
     public static void main(String[] args)
     {
+        int workers = 3;
+        int partitions = 6;
+
         SparkConf sparkConfiguration = new SparkConf()
-                .setMaster("local[4]")
+                .setMaster(format("local[%s]", workers))
                 .setAppName("Simple Query");
 
         PrestoConfiguration prestoConfiguration = new PrestoConfiguration(
@@ -135,7 +138,7 @@ public class SparkQueryRunner
                 ImmutableList.of(
                         new CatalogConfiguration("tpch", "tpch", ImmutableMap.of())));
 
-        new SparkQueryRunner(prestoConfiguration, sparkConfiguration)
+        new SparkQueryRunner(prestoConfiguration, sparkConfiguration, partitions)
                 .run("select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42");
     }
 
@@ -150,7 +153,7 @@ public class SparkQueryRunner
         Plan plan = localQueryRunner.createPlan(localQueryRunner.getDefaultSession(), query, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED, false, WarningCollector.NOOP);
         SubPlan subPlan = localQueryRunner.createDistributedSubPlan(plan);
 
-        List<byte[]> serializedResult = createSparkRdd(localQueryRunner, jsc, subPlan, prestoConfiguration)
+        List<byte[]> serializedResult = createSparkRdd(localQueryRunner, jsc, subPlan, prestoConfiguration, partitions)
                 .map(tupple -> tupple._2)
                 .collect();
 
@@ -170,11 +173,11 @@ public class SparkQueryRunner
         jsc.stop();
     }
 
-    private static JavaPairRDD<Integer, byte[]> createSparkRdd(LocalQueryRunner localQueryRunner, JavaSparkContext jsc, SubPlan subPlan, PrestoConfiguration prestoConfiguration)
+    private static JavaPairRDD<Integer, byte[]> createSparkRdd(LocalQueryRunner localQueryRunner, JavaSparkContext jsc, SubPlan subPlan, PrestoConfiguration prestoConfiguration, int partitions)
     {
         PlanFragment fragment;
         if (subPlan.getFragment().getPartitioningScheme().getPartitioning().getHandle().equals(FIXED_HASH_DISTRIBUTION)) {
-            fragment = subPlan.getFragment().withBucketToPartition(Optional.of(IntStream.range(0, PARTITIONS).toArray()));
+            fragment = subPlan.getFragment().withBucketToPartition(Optional.of(IntStream.range(0, partitions).toArray()));
         }
         else {
             fragment = subPlan.getFragment();
@@ -221,7 +224,7 @@ public class SparkQueryRunner
                 children.size());
         checkArgument(children.size() == 1, "expected to have exactly single children");
         SubPlan childSubPlan = getOnlyElement(children);
-        JavaPairRDD<Integer, byte[]> childRdd = createSparkRdd(localQueryRunner, jsc, childSubPlan, prestoConfiguration);
+        JavaPairRDD<Integer, byte[]> childRdd = createSparkRdd(localQueryRunner, jsc, childSubPlan, prestoConfiguration, partitions);
 
         PlanFragment childFragment = childSubPlan.getFragment();
         RemoteSourceNode remoteSource = getOnlyElement(remoteSources);
@@ -247,7 +250,7 @@ public class SparkQueryRunner
                 partitioning.equals(SINGLE_DISTRIBUTION)) {
             String planNodeId = remoteSource.getId().toString();
             return childRdd
-                    .partitionBy(new HashPartitioner(PARTITIONS))
+                    .partitionBy(partitioning.equals(FIXED_HASH_DISTRIBUTION) ? new HashPartitioner(partitions) : new HashPartitioner(1))
                     .mapPartitionsToPair(iterator -> handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(new PlanNodeId(planNodeId), iterator), prestoConfiguration));
         }
         else {
