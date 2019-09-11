@@ -858,6 +858,23 @@ public class LocalQueryRunner
                     WarningCollector.NOOP);
     }
 
+    public SubPlan createDistributedSubPlan(Plan plan)
+    {
+        return planFragmenter.createSubPlans(
+                defaultSession,
+                plan,
+                false,
+                new PlanNodeIdAllocator()
+                {
+                    @Override
+                    public PlanNodeId getNextId()
+                    {
+                        throw new UnsupportedOperationException();
+                    }
+                },
+                WarningCollector.NOOP);
+    }
+
     public List<TaskSource> getTaskSources(PlanFragment fragment)
     {
         return getTaskSources(defaultSession, fragment);

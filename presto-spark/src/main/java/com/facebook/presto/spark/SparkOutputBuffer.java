@@ -199,7 +199,7 @@ public class SparkOutputBuffer
     @Override
     public long getPeakMemoryUsage()
     {
-        throw new UnsupportedOperationException();
+        return 0;
     }
 
     @Override

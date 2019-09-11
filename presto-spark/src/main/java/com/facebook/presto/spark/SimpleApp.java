@@ -77,6 +77,7 @@ import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 import io.airlift.stats.TestingGcMonitor;
 import io.airlift.units.DataSize;
+import org.apache.spark.HashPartitioner;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -91,10 +92,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.UUID;
+import java.util.stream.IntStream;
 
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.COORDINATOR_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
+import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SOURCE_DISTRIBUTION;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -102,10 +106,13 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
+import static java.lang.String.format;
 import static java.util.stream.Collectors.toList;
 
 public class SimpleApp
 {
+    private static final int PARTITIONS = 40;
+
     private SimpleApp() {}
 
     public static void main(String[] args)
@@ -124,9 +131,9 @@ public class SimpleApp
         LocalQueryRunner localQueryRunner = createLocalQueryRunner(session);
 
         // do some interesting work...
-        String sql = "select * from tpch.tiny.lineitem where orderkey = 14983 OR orderkey = 15009";
+        String sql = "select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42";
         Plan plan = localQueryRunner.createPlan(localQueryRunner.getDefaultSession(), sql, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED, false, WarningCollector.NOOP);
-        SubPlan subPlan = localQueryRunner.createSubPlan(plan);
+        SubPlan subPlan = localQueryRunner.createDistributedSubPlan(plan);
 
         List<byte[]> serializedResult = createSparkRdd(localQueryRunner, jsc, subPlan)
                 .map(tupple -> tupple._2)
@@ -150,7 +157,14 @@ public class SimpleApp
 
     private static JavaPairRDD<Integer, byte[]> createSparkRdd(LocalQueryRunner localQueryRunner, JavaSparkContext jsc, SubPlan subPlan)
     {
-        PlanFragment fragment = subPlan.getFragment();
+        PlanFragment fragment;
+        if (subPlan.getFragment().getPartitioningScheme().getPartitioning().getHandle().equals(FIXED_HASH_DISTRIBUTION)) {
+            fragment = subPlan.getFragment().withBucketToPartition(Optional.of(IntStream.range(0, PARTITIONS).toArray()));
+        }
+        else {
+            fragment = subPlan.getFragment();
+        }
+
         checkArgument(!fragment.getStageExecutionDescriptor().isStageGroupedExecution(), "unexpected grouped execution fragment: %s", fragment.getId());
 
         // scans
@@ -163,7 +177,7 @@ public class SimpleApp
         JsonCodec<SparkTaskRequest> jsonCodec = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver());
 
         if (!tableScans.isEmpty()) {
-            // checkArgument(fragment.getPartitioning().equals(SOURCE_DISTRIBUTION), "unexpected table scan partitioning: %s", fragment.getPartitioning());
+            checkArgument(fragment.getPartitioning().equals(SOURCE_DISTRIBUTION), "unexpected table scan partitioning: %s", fragment.getPartitioning());
 
             List<TaskSource> taskSources = localQueryRunner.getTaskSources(subPlan.getFragment());
             List<SparkTaskRequest> taskRequests = taskSources.stream()
@@ -213,7 +227,9 @@ public class SimpleApp
                 // when single distribution - there will be a single partition 0
                 partitioning.equals(SINGLE_DISTRIBUTION)) {
             String planNodeId = remoteSource.getId().toString();
-            return childRdd.mapPartitionsToPair(iterator -> handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(new PlanNodeId(planNodeId), iterator)));
+            return childRdd
+                    .partitionBy(new HashPartitioner(PARTITIONS))
+                    .mapPartitionsToPair(iterator -> handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(new PlanNodeId(planNodeId), iterator)));
         }
         else {
             // SOURCE_DISTRIBUTION || FIXED_PASSTHROUGH_DISTRIBUTION || ARBITRARY_DISTRIBUTION || SCALED_WRITER_DISTRIBUTION || FIXED_BROADCAST_DISTRIBUTION || FIXED_ARBITRARY_DISTRIBUTION
@@ -262,18 +278,21 @@ public class SimpleApp
                 request.getFragment(),
                 request.getSources());
 
-        return new SparkDriverProcessor(drivers, outputBuffer, createPagesSerde());
+        String description = format("fragment: %s, processor: %s", request.getFragment().getId(), UUID.randomUUID().toString());
+        return new SparkDriverProcessor(description, drivers, outputBuffer, createPagesSerde());
     }
 
     private static class SparkDriverProcessor
             extends AbstractIterator<Tuple2<Integer, byte[]>>
     {
+        private final String description;
         private final List<Driver> drivers;
         private final SparkOutputBuffer outputBuffer;
         private final PagesSerde serde;
 
-        private SparkDriverProcessor(List<Driver> drivers, SparkOutputBuffer outputBuffer, PagesSerde serde)
+        private SparkDriverProcessor(String description, List<Driver> drivers, SparkOutputBuffer outputBuffer, PagesSerde serde)
         {
+            this.description = description;
             this.drivers = drivers;
             this.outputBuffer = outputBuffer;
             this.serde = serde;
@@ -300,6 +319,7 @@ public class SimpleApp
 
             PageWithPartition pageWithPartition = outputBuffer.getNext();
             SerializedPage serializedPage = pageWithPartition.getPage();
+            System.out.printf("Producing page for partition: %s (%s)\n", pageWithPartition.getPartition(), description);
             return new Tuple2<>(pageWithPartition.getPartition(), serializePage(serializedPage));
         }
     }
@@ -317,7 +337,7 @@ public class SimpleApp
         LocalQueryRunner localQueryRunner = LocalQueryRunner.queryRunnerWithInitialTransaction(session);
 
         // add tpch
-        localQueryRunner.createCatalog("tpch", new TpchConnectorFactory(4), ImmutableMap.of());
+        localQueryRunner.createCatalog("tpch", new TpchConnectorFactory(4, false, false), ImmutableMap.of());
         return localQueryRunner;
     }
 

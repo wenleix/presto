@@ -96,7 +96,7 @@ public class FeaturesConfig
     private boolean optimizeMixedDistinctAggregations;
     private boolean forceSingleNodeOutput = true;
     private boolean pagesIndexEagerCompactionEnabled;
-    private boolean distributedSort = true;
+    private boolean distributedSort;
 
     private boolean dictionaryAggregation;
 
