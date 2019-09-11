@@ -219,9 +219,11 @@ public class SimpleApp
 
         PartitioningHandle partitioning = fragment.getPartitioning();
         if (partitioning.equals(COORDINATOR_DISTRIBUTION)) {
-            List<Tuple2<Integer, byte[]>> collect = childRdd.collect();
-            List<Tuple2<Integer, byte[]>> result = ImmutableList.copyOf(handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(remoteSource.getId(), collect.iterator())));
-            return jsc.parallelizePairs(result);
+            // TODO: We assume COORDINATOR_DISTRIBUTION always means OutputNode
+            // But it could also be TableFinishNode, in that case we should do collect and table commit on coordinator.
+
+            // TODO: Do we want to return an RDD for root stage? -- or we should consider the result will not be large? 
+            return childRdd;
         }
         else if (partitioning.equals(FIXED_HASH_DISTRIBUTION) ||
                 // when single distribution - there will be a single partition 0
