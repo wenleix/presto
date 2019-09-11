@@ -23,6 +23,6 @@ public class TpchPlugin
     @Override
     public Iterable<ConnectorFactory> getConnectorFactories()
     {
-        return ImmutableList.of(new TpchConnectorFactory());
+        return ImmutableList.of(new TpchConnectorFactory(Runtime.getRuntime().availableProcessors(), false, false));
     }
 }

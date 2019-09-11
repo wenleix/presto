@@ -41,6 +41,7 @@ import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.spark.SparkOutputBuffer.PageWithPartition;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
+import com.facebook.presto.spi.Plugin;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
@@ -61,7 +62,6 @@ import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
 import com.facebook.presto.testing.LocalQueryRunner;
-import com.facebook.presto.tpch.TpchConnectorFactory;
 import com.facebook.presto.type.TypeDeserializer;
 import com.facebook.presto.type.TypeRegistry;
 import com.google.common.collect.AbstractIterator;
@@ -84,6 +84,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 import scala.Tuple2;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -107,35 +108,49 @@ import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
-public class SimpleApp
+public class SparkQueryRunner
 {
     private static final int PARTITIONS = 40;
 
-    private SimpleApp() {}
+    private final PrestoConfiguration prestoConfiguration;
+    private final SparkConf sparkConfiguration;
+
+    public SparkQueryRunner(PrestoConfiguration prestoConfiguration, SparkConf sparkConfiguration)
+    {
+        this.prestoConfiguration = requireNonNull(prestoConfiguration, "prestoConfiguration is null");
+        this.sparkConfiguration = requireNonNull(sparkConfiguration, "sparkConfiguration is null");
+    }
 
     public static void main(String[] args)
     {
-        SparkConf conf = new SparkConf()
+        SparkConf sparkConfiguration = new SparkConf()
                 .setMaster("local[4]")
                 .setAppName("Simple Query");
 
-        JavaSparkContext jsc = new JavaSparkContext(conf);
+        PrestoConfiguration prestoConfiguration = new PrestoConfiguration(
+                ImmutableList.of("com.facebook.presto.tpch.TpchPlugin"),
+                ImmutableList.of(
+                        new CatalogConfiguration("tpch", "tpch", ImmutableMap.of())));
+
+        new SparkQueryRunner(prestoConfiguration, sparkConfiguration)
+                .run("select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42");
+    }
+
+    public void run(String query)
+    {
+        JavaSparkContext jsc = new JavaSparkContext(sparkConfiguration);
 
         // === Create LocalQueryRunner ===
-
-        // TODO: QueryRunner is originally designed for test purpose. Rethink about the abstraction
-        Session session = createSession();
-
-        LocalQueryRunner localQueryRunner = createLocalQueryRunner(session);
+        LocalQueryRunner localQueryRunner = createLocalQueryRunner(prestoConfiguration);
 
         // do some interesting work...
-        String sql = "select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42";
-        Plan plan = localQueryRunner.createPlan(localQueryRunner.getDefaultSession(), sql, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED, false, WarningCollector.NOOP);
+        Plan plan = localQueryRunner.createPlan(localQueryRunner.getDefaultSession(), query, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED, false, WarningCollector.NOOP);
         SubPlan subPlan = localQueryRunner.createDistributedSubPlan(plan);
 
-        List<byte[]> serializedResult = createSparkRdd(localQueryRunner, jsc, subPlan)
+        List<byte[]> serializedResult = createSparkRdd(localQueryRunner, jsc, subPlan, prestoConfiguration)
                 .map(tupple -> tupple._2)
                 .collect();
 
@@ -155,7 +170,7 @@ public class SimpleApp
         jsc.stop();
     }
 
-    private static JavaPairRDD<Integer, byte[]> createSparkRdd(LocalQueryRunner localQueryRunner, JavaSparkContext jsc, SubPlan subPlan)
+    private static JavaPairRDD<Integer, byte[]> createSparkRdd(LocalQueryRunner localQueryRunner, JavaSparkContext jsc, SubPlan subPlan, PrestoConfiguration prestoConfiguration)
     {
         PlanFragment fragment;
         if (subPlan.getFragment().getPartitioningScheme().getPartitioning().getHandle().equals(FIXED_HASH_DISTRIBUTION)) {
@@ -195,7 +210,7 @@ public class SimpleApp
                     .map(jsonCodec::toJson)
                     .collect(toImmutableList());
             return jsc.parallelize(serializedRequests)
-                    .flatMapToPair(request -> handleSparkWorkerRequest(request, ImmutableMap.of()));
+                    .flatMapToPair(request -> handleSparkWorkerRequest(request, ImmutableMap.of(), prestoConfiguration));
         }
 
         List<SubPlan> children = subPlan.getChildren();
@@ -206,7 +221,7 @@ public class SimpleApp
                 children.size());
         checkArgument(children.size() == 1, "expected to have exactly single children");
         SubPlan childSubPlan = getOnlyElement(children);
-        JavaPairRDD<Integer, byte[]> childRdd = createSparkRdd(localQueryRunner, jsc, childSubPlan);
+        JavaPairRDD<Integer, byte[]> childRdd = createSparkRdd(localQueryRunner, jsc, childSubPlan, prestoConfiguration);
 
         PlanFragment childFragment = childSubPlan.getFragment();
         RemoteSourceNode remoteSource = getOnlyElement(remoteSources);
@@ -222,8 +237,10 @@ public class SimpleApp
             // TODO: We assume COORDINATOR_DISTRIBUTION always means OutputNode
             // But it could also be TableFinishNode, in that case we should do collect and table commit on coordinator.
 
-            // TODO: Do we want to return an RDD for root stage? -- or we should consider the result will not be large? 
-            return childRdd;
+            // TODO: Do we want to return an RDD for root stage? -- or we should consider the result will not be large?
+            List<Tuple2<Integer, byte[]>> collect = childRdd.collect();
+            List<Tuple2<Integer, byte[]>> result = ImmutableList.copyOf(handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(remoteSource.getId(), collect.iterator()), prestoConfiguration));
+            return jsc.parallelizePairs(result);
         }
         else if (partitioning.equals(FIXED_HASH_DISTRIBUTION) ||
                 // when single distribution - there will be a single partition 0
@@ -231,7 +248,7 @@ public class SimpleApp
             String planNodeId = remoteSource.getId().toString();
             return childRdd
                     .partitionBy(new HashPartitioner(PARTITIONS))
-                    .mapPartitionsToPair(iterator -> handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(new PlanNodeId(planNodeId), iterator)));
+                    .mapPartitionsToPair(iterator -> handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(new PlanNodeId(planNodeId), iterator), prestoConfiguration));
         }
         else {
             // SOURCE_DISTRIBUTION || FIXED_PASSTHROUGH_DISTRIBUTION || ARBITRARY_DISTRIBUTION || SCALED_WRITER_DISTRIBUTION || FIXED_BROADCAST_DISTRIBUTION || FIXED_ARBITRARY_DISTRIBUTION
@@ -239,9 +256,9 @@ public class SimpleApp
         }
     }
 
-    private static Iterator<Tuple2<Integer, byte[]>> handleSparkWorkerRequest(String serializedRequest, Map<PlanNodeId, Iterator<Tuple2<Integer, byte[]>>> inputs)
+    private static Iterator<Tuple2<Integer, byte[]>> handleSparkWorkerRequest(String serializedRequest, Map<PlanNodeId, Iterator<Tuple2<Integer, byte[]>>> inputs, PrestoConfiguration prestoConfiguration)
     {
-        LocalQueryRunner localQueryRunner = createLocalQueryRunner(createSession());
+        LocalQueryRunner localQueryRunner = createLocalQueryRunner(prestoConfiguration);
         SparkTaskRequest request = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver()).fromJson(serializedRequest);
         System.out.println(request.getFragment());
         System.out.println(request.getSources());
@@ -334,12 +351,23 @@ public class SimpleApp
                 .build();
     }
 
-    private static LocalQueryRunner createLocalQueryRunner(Session session)
+    private static LocalQueryRunner createLocalQueryRunner(PrestoConfiguration prestoConfiguration)
     {
-        LocalQueryRunner localQueryRunner = LocalQueryRunner.queryRunnerWithInitialTransaction(session);
+        LocalQueryRunner localQueryRunner = LocalQueryRunner.queryRunnerWithInitialTransaction(createSession());
 
-        // add tpch
-        localQueryRunner.createCatalog("tpch", new TpchConnectorFactory(4, false, false), ImmutableMap.of());
+        for (String plugin : prestoConfiguration.getPlugins()) {
+            try {
+                localQueryRunner.installPlugin((Plugin) Class.forName(plugin).newInstance());
+            }
+            catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        for (CatalogConfiguration catalog : prestoConfiguration.getCatalogs()) {
+            localQueryRunner.createCatalog(catalog.getCatalogName(), catalog.getPluginName(), catalog.getCatalogConfiguration());
+        }
+
         return localQueryRunner;
     }
 
@@ -423,5 +451,58 @@ public class SimpleApp
             result.add(Collections.unmodifiableList(values));
         }
         return Collections.unmodifiableList(result);
+    }
+
+    public static class PrestoConfiguration
+            implements Serializable
+    {
+        private final List<String> plugins;
+        private final List<CatalogConfiguration> catalogs;
+
+        public PrestoConfiguration(List<String> plugins, List<CatalogConfiguration> catalogs)
+        {
+            this.plugins = ImmutableList.copyOf(plugins);
+            this.catalogs = ImmutableList.copyOf(catalogs);
+        }
+
+        public List<String> getPlugins()
+        {
+            return plugins;
+        }
+
+        public List<CatalogConfiguration> getCatalogs()
+        {
+            return catalogs;
+        }
+    }
+
+    public static class CatalogConfiguration
+            implements Serializable
+    {
+        private final String pluginName;
+        private final String catalogName;
+        private final Map<String, String> catalogConfiguration;
+
+        public CatalogConfiguration(String pluginName, String catalogName, Map<String, String> catalogConfiguration)
+        {
+            this.pluginName = pluginName;
+            this.catalogName = catalogName;
+            this.catalogConfiguration = ImmutableMap.copyOf(catalogConfiguration);
+        }
+
+        public String getPluginName()
+        {
+            return pluginName;
+        }
+
+        public String getCatalogName()
+        {
+            return catalogName;
+        }
+
+        public Map<String, String> getCatalogConfiguration()
+        {
+            return catalogConfiguration;
+        }
     }
 }
