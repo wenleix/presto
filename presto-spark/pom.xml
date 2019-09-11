@@ -49,35 +49,6 @@
             <version>${dep.jackson.version}</version>
         </dependency>
 
-        <!-- Jersey (Spark depends on different version than Presto) -->
-        <dependency>
-            <groupId>org.glassfish.jersey.containers</groupId>
-            <artifactId>jersey-container-servlet</artifactId>
-            <version>${spark.jersey.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.glassfish.jersey.containers</groupId>
-            <artifactId>jersey-container-servlet-core</artifactId>
-            <version>${spark.jersey.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.glassfish.jersey.core</groupId>
-            <artifactId>jersey-server</artifactId>
-            <version>${spark.jersey.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.glassfish.jersey.core</groupId>
-            <artifactId>jersey-common</artifactId>
-            <version>${spark.jersey.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
         <!-- Presto -->
         <dependency>
             <groupId>com.facebook.presto</groupId>
