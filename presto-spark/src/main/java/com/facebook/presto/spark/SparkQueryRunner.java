@@ -80,7 +80,9 @@ import org.apache.spark.HashPartitioner;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.spark_project.guava.collect.Iterables;
 import scala.Tuple2;
 
 import java.io.IOException;
@@ -140,8 +142,16 @@ public class SparkQueryRunner
                 ImmutableList.of(
                         new CatalogConfiguration("tpch", "tpch", ImmutableMap.of())));
 
+        /*
         new SparkQueryRunner(prestoConfiguration, sparkContext, partitions)
                 .run("select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42");
+         */
+
+        new SparkQueryRunner(prestoConfiguration, sparkContext, partitions)
+                .run("SELECT lineitem.orderkey, lineitem.linenumber, orders.orderstatus\n" +
+                        "FROM tpch.tiny.lineitem JOIN tpch.tiny.orders\n" +
+                        "    ON lineitem.orderkey = orders.orderkey\n" +
+                        "   WHERE lineitem.orderkey % 223 = 42 AND lineitem.linenumber = 4 and orders.orderstatus = 'O'");
 
         sparkContext.stop();
     }
@@ -224,44 +234,104 @@ public class SparkQueryRunner
                 "number of remote sources doesn't match the number of child stages: %s != %s",
                 remoteSources.size(),
                 children.size());
-        checkArgument(children.size() == 1, "expected to have exactly single children");
-        SubPlan childSubPlan = getOnlyElement(children);
-        JavaPairRDD<Integer, byte[]> childRdd = createSparkRdd(localQueryRunner, jsc, childSubPlan, prestoConfiguration, partitions);
 
-        PlanFragment childFragment = childSubPlan.getFragment();
-        RemoteSourceNode remoteSource = getOnlyElement(remoteSources);
-        List<PlanFragmentId> sourceFragmentIds = remoteSource.getSourceFragmentIds();
-        checkArgument(sourceFragmentIds.size() == 1, "expected to have exactly only a single source fragment");
-        checkArgument(childFragment.getId().equals(getOnlyElement(sourceFragmentIds)));
+        if (children.size() == 1) {
+            // Single remote source
+            SubPlan childSubPlan = getOnlyElement(children);
+            JavaPairRDD<Integer, byte[]> childRdd = createSparkRdd(localQueryRunner, jsc, childSubPlan, prestoConfiguration, partitions);
 
-        SparkTaskRequest sparkTaskRequest = new SparkTaskRequest(fragment, ImmutableList.of());
-        String serializedRequest = jsonCodec.toJson(sparkTaskRequest);
+            PlanFragment childFragment = childSubPlan.getFragment();
+            RemoteSourceNode remoteSource = getOnlyElement(remoteSources);
+            List<PlanFragmentId> sourceFragmentIds = remoteSource.getSourceFragmentIds();
+            checkArgument(sourceFragmentIds.size() == 1, "expected to have exactly only a single source fragment");
+            checkArgument(childFragment.getId().equals(getOnlyElement(sourceFragmentIds)));
 
-        PartitioningHandle partitioning = fragment.getPartitioning();
-        if (partitioning.equals(COORDINATOR_DISTRIBUTION)) {
-            // TODO: We assume COORDINATOR_DISTRIBUTION always means OutputNode
-            // But it could also be TableFinishNode, in that case we should do collect and table commit on coordinator.
+            SparkTaskRequest sparkTaskRequest = new SparkTaskRequest(fragment, ImmutableList.of());
+            String serializedRequest = jsonCodec.toJson(sparkTaskRequest);
 
-            // TODO: Do we want to return an RDD for root stage? -- or we should consider the result will not be large?
-            List<Tuple2<Integer, byte[]>> collect = childRdd.collect();
-            List<Tuple2<Integer, byte[]>> result = ImmutableList.copyOf(handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(remoteSource.getId(), collect.iterator()), prestoConfiguration));
-            return jsc.parallelizePairs(result);
+            PartitioningHandle partitioning = fragment.getPartitioning();
+            if (partitioning.equals(COORDINATOR_DISTRIBUTION)) {
+                // TODO: We assume COORDINATOR_DISTRIBUTION always means OutputNode
+                // But it could also be TableFinishNode, in that case we should do collect and table commit on coordinator.
+
+                // TODO: Do we want to return an RDD for root stage? -- or we should consider the result will not be large?
+                List<Tuple2<Integer, byte[]>> collect = childRdd.collect();
+                List<Tuple2<Integer, byte[]>> result = ImmutableList.copyOf(handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(remoteSource.getId(), collect.iterator()), prestoConfiguration));
+                return jsc.<Integer, byte[]>parallelizePairs(result);
+            }
+            else if (partitioning.equals(FIXED_HASH_DISTRIBUTION) ||
+                    // when single distribution - there will be a single partition 0
+                    partitioning.equals(SINGLE_DISTRIBUTION)) {
+                String planNodeId = remoteSource.getId().toString();
+                return childRdd
+                        // TODO: What's the difference of using
+                        //  partitionBy/mapPartitionsToPair vs. groupBy vs. mapToPair ???
+                        .partitionBy(partitioning.equals(FIXED_HASH_DISTRIBUTION) ? new HashPartitioner(partitions) : new HashPartitioner(1))
+                        .mapPartitionsToPair(iterator -> handleSparkWorkerRequest(
+                                serializedRequest,
+                                ImmutableMap.of(
+                                        new PlanNodeId(planNodeId), iterator),
+                                prestoConfiguration));
+            }
+            else {
+                // SOURCE_DISTRIBUTION || FIXED_PASSTHROUGH_DISTRIBUTION || ARBITRARY_DISTRIBUTION || SCALED_WRITER_DISTRIBUTION || FIXED_BROADCAST_DISTRIBUTION || FIXED_ARBITRARY_DISTRIBUTION
+                throw new IllegalArgumentException("Unsupported fragment partitioning: " + partitioning);
+            }
         }
-        else if (partitioning.equals(FIXED_HASH_DISTRIBUTION) ||
-                // when single distribution - there will be a single partition 0
-                partitioning.equals(SINGLE_DISTRIBUTION)) {
-            String planNodeId = remoteSource.getId().toString();
-            return childRdd
-                    .partitionBy(partitioning.equals(FIXED_HASH_DISTRIBUTION) ? new HashPartitioner(partitions) : new HashPartitioner(1))
-                    .mapPartitionsToPair(iterator -> handleSparkWorkerRequest(serializedRequest, ImmutableMap.of(new PlanNodeId(planNodeId), iterator), prestoConfiguration));
+        else if (children.size() == 2) {
+            // handle simple two-way join
+            SubPlan leftSubPlan = children.get(0);
+            SubPlan rightSubPlan = children.get(1);
+
+            RemoteSourceNode leftRemoteSource = remoteSources.get(0);
+            RemoteSourceNode rightRemoteSource = remoteSources.get(1);
+
+            // We need String representation since PlanNodeId is not serializable...
+            String leftRemoteSourcePlanId = leftRemoteSource.getId().toString();
+            String rightRemoteSourcePlanId = rightRemoteSource.getId().toString();
+
+            JavaPairRDD<Integer, byte[]> leftChildRdd = createSparkRdd(localQueryRunner, jsc, leftSubPlan, prestoConfiguration, partitions);
+            JavaPairRDD<Integer, byte[]> rightChildRdd = createSparkRdd(localQueryRunner, jsc, rightSubPlan, prestoConfiguration, partitions);
+
+            PlanFragment leftFragment = leftSubPlan.getFragment();
+            PlanFragment rightFragment = rightSubPlan.getFragment();
+
+            List<PlanFragmentId> leftFragmentIds = leftRemoteSource.getSourceFragmentIds();
+            checkArgument(leftFragmentIds.size() == 1, "expected to have exactly only a single source fragment");
+            checkArgument(leftFragment.getId().equals(getOnlyElement(leftFragmentIds)));
+            List<PlanFragmentId> rightFragmentIds = rightRemoteSource.getSourceFragmentIds();
+            checkArgument(rightFragmentIds.size() == 1, "expected to have exactly only a single source fragment");
+            checkArgument(rightFragment.getId().equals(getOnlyElement(rightFragmentIds)));
+
+            // This fragment only contains remote source, thus there is no splits
+            SparkTaskRequest sparkTaskRequest = new SparkTaskRequest(fragment, ImmutableList.of());
+            String serializedRequest = jsonCodec.toJson(sparkTaskRequest);
+
+            PartitioningHandle partitioning = fragment.getPartitioning();
+            checkArgument(partitioning.equals(FIXED_HASH_DISTRIBUTION));
+
+            JavaPairRDD<Integer, byte[]> shuffledLeftChildRdd = leftChildRdd.partitionBy(new HashPartitioner(partitions));
+            JavaPairRDD<Integer, byte[]> shuffledRightChildRdd = rightChildRdd.partitionBy(new HashPartitioner(partitions));
+
+            return JavaPairRDD.fromJavaRDD(
+                    shuffledLeftChildRdd.<Tuple2<Integer, byte[]>, Tuple2<Integer, byte[]>>zipPartitions (
+                            shuffledRightChildRdd,
+                            (leftIterator, rightIterator) -> handleSparkWorkerRequest(
+                                    serializedRequest,
+                                    ImmutableMap.of(
+                                            new PlanNodeId(leftRemoteSourcePlanId), leftIterator,
+                                            new PlanNodeId(rightRemoteSourcePlanId), rightIterator),
+                                    prestoConfiguration)));
         }
         else {
-            // SOURCE_DISTRIBUTION || FIXED_PASSTHROUGH_DISTRIBUTION || ARBITRARY_DISTRIBUTION || SCALED_WRITER_DISTRIBUTION || FIXED_BROADCAST_DISTRIBUTION || FIXED_ARBITRARY_DISTRIBUTION
-            throw new IllegalArgumentException("Unsupported fragment partitioning: " + partitioning);
+            throw new UnsupportedOperationException();
         }
     }
 
-    private static Iterator<Tuple2<Integer, byte[]>> handleSparkWorkerRequest(String serializedRequest, Map<PlanNodeId, Iterator<Tuple2<Integer, byte[]>>> inputs, PrestoConfiguration prestoConfiguration)
+    private static Iterator<Tuple2<Integer, byte[]>> handleSparkWorkerRequest(
+            String serializedRequest,
+            Map<PlanNodeId, Iterator<Tuple2<Integer, byte[]>>> remoteSources,
+            PrestoConfiguration prestoConfiguration)
     {
         LocalQueryRunner localQueryRunner = createLocalQueryRunner(prestoConfiguration);
         SparkTaskRequest request = createJsonCodec(SparkTaskRequest.class, localQueryRunner.getHandleResolver()).fromJson(serializedRequest);
@@ -294,8 +364,11 @@ public class SparkQueryRunner
                 outputBuffer,
                 taskContext,
                 request.getFragment(),
-                inputs.entrySet().stream()
-                        .collect(toImmutableMap(Map.Entry::getKey, entry -> Iterators.transform(entry.getValue(), tupple -> deserializeSerializedPage(tupple._2)))));
+                remoteSources.entrySet().stream()
+                        .collect(toImmutableMap(
+                                Map.Entry::getKey,
+                                entry -> Iterators.transform(entry.getValue(), tupple -> deserializeSerializedPage(tupple._2)))));
+
         List<Driver> drivers = localQueryRunner.createDrivers(
                 localExecutionPlan,
                 taskContext,

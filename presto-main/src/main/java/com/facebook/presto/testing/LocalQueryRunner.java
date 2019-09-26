@@ -774,7 +774,11 @@ public class LocalQueryRunner
         return createLocalExecutionPlan(outputBuffer, taskContext, fragment, ImmutableMap.of());
     }
 
-    public LocalExecutionPlan createLocalExecutionPlan(OutputBuffer outputBuffer, TaskContext taskContext, PlanFragment fragment, Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources)
+    public LocalExecutionPlan createLocalExecutionPlan(
+            OutputBuffer outputBuffer,
+            TaskContext taskContext,
+            PlanFragment fragment,
+            Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources)
     {
         LocalExecutionPlanner localExecutionPlanner = createLocalExecutionPlanner();
         return localExecutionPlanner.plan(
