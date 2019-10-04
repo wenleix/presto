@@ -140,10 +140,8 @@ public class SparkQueryRunner
                 ImmutableList.of(
                         new CatalogConfiguration("tpch", "tpch", ImmutableMap.of())));
 
-        /*
         new SparkQueryRunner(prestoConfiguration, sparkContext, partitions)
                 .run("select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42");
-         */
 
         new SparkQueryRunner(prestoConfiguration, sparkContext, partitions)
                 .run("SELECT lineitem.orderkey, lineitem.linenumber, orders.orderstatus\n" +
