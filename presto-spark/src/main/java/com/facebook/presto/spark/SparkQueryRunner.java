@@ -80,9 +80,7 @@ import org.apache.spark.HashPartitioner;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.spark_project.guava.collect.Iterables;
 import scala.Tuple2;
 
 import java.io.IOException;
@@ -314,7 +312,7 @@ public class SparkQueryRunner
             JavaPairRDD<Integer, byte[]> shuffledRightChildRdd = rightChildRdd.partitionBy(new HashPartitioner(partitions));
 
             return JavaPairRDD.fromJavaRDD(
-                    shuffledLeftChildRdd.<Tuple2<Integer, byte[]>, Tuple2<Integer, byte[]>>zipPartitions (
+                    shuffledLeftChildRdd.<Tuple2<Integer, byte[]>, Tuple2<Integer, byte[]>>zipPartitions(
                             shuffledRightChildRdd,
                             (leftIterator, rightIterator) -> handleSparkWorkerRequest(
                                     serializedRequest,
