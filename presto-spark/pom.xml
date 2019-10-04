@@ -5,13 +5,15 @@
     <parent>
         <artifactId>presto-root</artifactId>
         <groupId>com.facebook.presto</groupId>
-        <version>0.227-SNAPSHOT</version>
+        <version>0.228-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>presto-spark</artifactId>
 
     <properties>
+        <air.main.basedir>${project.parent.basedir}</air.main.basedir>
+
         <air.check.fail-enforcer>false</air.check.fail-enforcer>
         <air.check.fail-dependency>false</air.check.fail-dependency>
         <air.check.fail-duplicate-finder>false</air.check.fail-duplicate-finder>
