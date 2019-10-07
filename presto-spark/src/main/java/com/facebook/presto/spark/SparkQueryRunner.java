@@ -126,11 +126,9 @@ public class SparkQueryRunner
 
     public static void main(String[] args)
     {
-        int workers = 3;
         int partitions = 6;
 
         SparkConf sparkConfiguration = new SparkConf()
-                .setMaster(format("local[%s]", workers))
                 .setAppName("Simple Query");
 
         SparkContext sparkContext = new SparkContext(sparkConfiguration);
