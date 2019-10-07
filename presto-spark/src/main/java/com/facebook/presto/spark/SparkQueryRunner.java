@@ -86,6 +86,7 @@ import scala.Tuple2;
 import java.io.IOException;
 import java.io.Serializable;
 import java.io.UncheckedIOException;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -430,9 +431,9 @@ public class SparkQueryRunner
 
         for (String plugin : prestoConfiguration.getPlugins()) {
             try {
-                localQueryRunner.installPlugin((Plugin) Class.forName(plugin).newInstance());
+                localQueryRunner.installPlugin((Plugin) Class.forName(plugin).getConstructor().newInstance());
             }
-            catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
+            catch (InstantiationException | IllegalAccessException | ClassNotFoundException | NoSuchMethodException | InvocationTargetException e) {
                 throw new RuntimeException(e);
             }
         }
