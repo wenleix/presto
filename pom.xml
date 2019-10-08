@@ -138,7 +138,9 @@
         <module>presto-proxy</module>
         <module>presto-kudu</module>
         <module>presto-elasticsearch</module>
+        <module>presto-spark-spi</module>
         <module>presto-spark</module>
+        <module>presto-spark-runner</module>
     </modules>
 
     <dependencyManagement>
@@ -422,6 +424,12 @@
             <dependency>
                 <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-sqlserver</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-spark-spi</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

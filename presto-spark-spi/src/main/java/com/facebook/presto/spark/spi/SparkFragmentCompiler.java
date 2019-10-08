@@ -11,30 +11,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.spark;
+package com.facebook.presto.spark.spi;
 
-import com.facebook.presto.execution.buffer.SerializedPage;
+import scala.Tuple2;
 
-import static java.util.Objects.requireNonNull;
+import java.util.Iterator;
+import java.util.Map;
 
-public class PageWithPartition
+public interface SparkFragmentCompiler
 {
-    private final SerializedPage page;
-    private final int partition;
-
-    public PageWithPartition(SerializedPage page, int partition)
-    {
-        this.page = requireNonNull(page, "page is null");
-        this.partition = partition;
-    }
-
-    public SerializedPage getPage()
-    {
-        return page;
-    }
-
-    public int getPartition()
-    {
-        return partition;
-    }
+    Iterator<Tuple2<Integer, byte[]>> compileFragment(String fragmentJson, Map<String, Iterator<Tuple2<Integer, byte[]>>> inputs);
 }
