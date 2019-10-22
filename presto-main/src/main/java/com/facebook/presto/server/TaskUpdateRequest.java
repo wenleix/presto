@@ -27,7 +27,6 @@ import java.util.Optional;
 import java.util.OptionalInt;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static java.util.Objects.requireNonNull;
 
 public class TaskUpdateRequest
 {
@@ -48,17 +47,19 @@ public class TaskUpdateRequest
             @JsonProperty("outputIds") OutputBuffers outputIds,
             @JsonProperty("totalPartitions") OptionalInt totalPartitions)
     {
+        /*
         requireNonNull(session, "session is null");
         requireNonNull(extraCredentials, "credentials is null");
         requireNonNull(fragment, "fragment is null");
         requireNonNull(sources, "sources is null");
         requireNonNull(outputIds, "outputIds is null");
         requireNonNull(totalPartitions, "totalPartitions is null");
+         */
 
         this.session = session;
         this.extraCredentials = extraCredentials;
         this.fragment = fragment;
-        this.sources = ImmutableList.copyOf(sources);
+        this.sources = sources != null ? ImmutableList.copyOf(sources) : null;
         this.outputIds = outputIds;
         this.totalPartitions = totalPartitions;
     }

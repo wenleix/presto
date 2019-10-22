@@ -27,8 +27,39 @@ public class RemoteTaskStats
     private final IncrementalAverage responseSizeBytes = new IncrementalAverage();
     private final DistributionStat updateWithPlanBytes = new DistributionStat();
 
+    private final IncrementalSum sessionSerializationNanos = new IncrementalSum();
+    private final IncrementalSum extraCredentialNanos = new IncrementalSum();
+    private final IncrementalSum sourcesNanos = new IncrementalSum();
+    private final IncrementalSum outputIdsNanos = new IncrementalSum();
+    private final IncrementalSum planSerializationNanos = new IncrementalSum();
+
     private long requestSuccess;
     private long requestFailure;
+
+    public void sessionSerializationNanos(long nanos)
+    {
+        sessionSerializationNanos.add(nanos);
+    }
+
+    public void extraCredentialNanos(long nanos)
+    {
+        extraCredentialNanos.add(nanos);
+    }
+
+    public void sourceNanos(long nanos)
+    {
+        sourcesNanos.add(nanos);
+    }
+
+    public void outputIdsNanos(long nanos)
+    {
+        outputIdsNanos.add(nanos);
+    }
+
+    public void planSerializationNanos(long nanos)
+    {
+        planSerializationNanos.add(nanos);
+    }
 
     public void statusRoundTripMillis(long roundTripMillis)
     {
@@ -63,6 +94,48 @@ public class RemoteTaskStats
     public void updateWithPlanBytes(long bytes)
     {
         updateWithPlanBytes.add(bytes);
+    }
+
+    @Managed
+    public double getSessionSerializationNanos()
+    {
+        return sessionSerializationNanos.getSum();
+    }
+
+    @Managed
+    public double getExtraCredentialNanos()
+    {
+        return extraCredentialNanos.getSum();
+    }
+
+    @Managed
+    public double getSourcesNanos()
+    {
+        return sourcesNanos.getSum();
+    }
+
+    @Managed
+    public double getOutputIdsNanos()
+    {
+        return outputIdsNanos.getSum();
+    }
+
+    @Managed
+    public double getPlanSerializationNanos()
+    {
+        return planSerializationNanos.getSum();
+    }
+
+    @Managed
+    public double getTaskUpdateRequestCount()
+    {
+        return sessionSerializationNanos.getCount();
+    }
+
+    @Managed
+    public double getPlanSerializationCount()
+    {
+        return planSerializationNanos.getCount();
     }
 
     @Managed
@@ -129,7 +202,7 @@ public class RemoteTaskStats
     @ThreadSafe
     private static class IncrementalAverage
     {
-        private long count;
+        private volatile long count;
         private volatile double average;
 
         synchronized void add(long value)
@@ -141,6 +214,29 @@ public class RemoteTaskStats
         double getAverage()
         {
             return average;
+        }
+
+        long getCount()
+        {
+            return count;
+        }
+    }
+
+    @ThreadSafe
+    private static class IncrementalSum
+    {
+        private volatile long count;
+        private volatile long sum;
+
+        synchronized void add(long value)
+        {
+            count++;
+            sum += value;
+        }
+
+        long getSum()
+        {
+            return sum;
         }
 
         long getCount()

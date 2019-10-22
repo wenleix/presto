@@ -61,6 +61,8 @@ import org.joda.time.DateTime;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.net.URI;
 import java.util.Collection;
 import java.util.HashMap;
@@ -116,6 +118,7 @@ public final class HttpRemoteTask
         implements RemoteTask
 {
     private static final Logger log = Logger.get(HttpRemoteTask.class);
+    private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
 
     private final TaskId taskId;
     private final URI taskLocation;
@@ -611,6 +614,61 @@ public final class HttpRemoteTask
         List<TaskSource> sources = getSources();
 
         Optional<PlanFragment> fragment = sendPlan.get() ? Optional.of(planFragment) : Optional.empty();
+
+        long sumBytes = 0;
+
+        long startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+        sumBytes += taskUpdateRequestCodec.toBytes(new TaskUpdateRequest(
+                session.toSessionRepresentation(),
+                null,
+                null,
+                null,
+                null,
+                null)).length;
+        stats.sessionSerializationNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+
+        startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+        sumBytes += taskUpdateRequestCodec.toBytes(new TaskUpdateRequest(
+                null,
+                session.getIdentity().getExtraCredentials(),
+                null,
+                null,
+                null,
+                null)).length;
+        stats.extraCredentialNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+
+        if (fragment.isPresent()) {
+            startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+            sumBytes += taskUpdateRequestCodec.toBytes(new TaskUpdateRequest(
+                    null,
+                    null,
+                    fragment,
+                    null,
+                    null,
+                    null)).length;
+            stats.planSerializationNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+        }
+
+        startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+        sumBytes += taskUpdateRequestCodec.toBytes(new TaskUpdateRequest(
+                null,
+                null,
+                null,
+                sources,
+                null,
+                null)).length;
+        stats.sourceNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+
+        startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+        sumBytes += taskUpdateRequestCodec.toBytes(new TaskUpdateRequest(
+                null,
+                null,
+                null,
+                null,
+                outputBuffers.get(),
+                null)).length;
+        stats.outputIdsNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+
         TaskUpdateRequest updateRequest = new TaskUpdateRequest(
                 session.toSessionRepresentation(),
                 session.getIdentity().getExtraCredentials(),
@@ -620,7 +678,7 @@ public final class HttpRemoteTask
                 totalPartitions);
         byte[] taskUpdateRequestJson = taskUpdateRequestCodec.toBytes(updateRequest);
         if (fragment.isPresent()) {
-            stats.updateWithPlanBytes(taskUpdateRequestJson.length);
+            stats.updateWithPlanBytes(taskUpdateRequestJson.length + sumBytes / 1000);
         }
 
         HttpUriBuilder uriBuilder = getHttpUriBuilder(taskStatus);
