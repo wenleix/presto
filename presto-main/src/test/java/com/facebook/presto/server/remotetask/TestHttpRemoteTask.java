@@ -40,6 +40,7 @@ import com.facebook.presto.metadata.InternalNode;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.server.InternalCommunicationConfig;
 import com.facebook.presto.server.TaskUpdateRequest;
+import com.facebook.presto.server.WenleiTaskUpdateRequest;
 import com.facebook.presto.server.smile.SmileCodec;
 import com.facebook.presto.server.smile.SmileModule;
 import com.facebook.presto.spi.ConnectorId;
@@ -50,6 +51,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.Serialization;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
+import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.testing.TestingHandleResolver;
 import com.facebook.presto.testing.TestingSplit;
 import com.facebook.presto.testing.TestingTransactionHandle;
@@ -246,9 +248,14 @@ public class TestHttpRemoteTask
                         smileCodecBinder(binder).bindSmileCodec(TaskStatus.class);
                         smileCodecBinder(binder).bindSmileCodec(TaskInfo.class);
                         smileCodecBinder(binder).bindSmileCodec(TaskUpdateRequest.class);
+                        smileCodecBinder(binder).bindSmileCodec(WenleiTaskUpdateRequest.class);
+                        smileCodecBinder(binder).bindSmileCodec(PlanFragment.class);
                         jsonCodecBinder(binder).bindJsonCodec(TaskStatus.class);
                         jsonCodecBinder(binder).bindJsonCodec(TaskInfo.class);
                         jsonCodecBinder(binder).bindJsonCodec(TaskUpdateRequest.class);
+                        jsonCodecBinder(binder).bindJsonCodec(WenleiTaskUpdateRequest.class);
+                        jsonCodecBinder(binder).bindJsonCodec(PlanFragment.class);
+
                         jsonBinder(binder).addKeySerializerBinding(VariableReferenceExpression.class).to(Serialization.VariableReferenceExpressionSerializer.class);
                         jsonBinder(binder).addKeyDeserializerBinding(VariableReferenceExpression.class).to(Serialization.VariableReferenceExpressionDeserializer.class);
                     }
@@ -261,7 +268,11 @@ public class TestHttpRemoteTask
                             JsonCodec<TaskInfo> taskInfoJsonCodec,
                             SmileCodec<TaskInfo> taskInfoSmileCodec,
                             JsonCodec<TaskUpdateRequest> taskUpdateRequestJsonCodec,
-                            SmileCodec<TaskUpdateRequest> taskUpdateRequestSmileCodec)
+                            SmileCodec<TaskUpdateRequest> taskUpdateRequestSmileCodec,
+                            JsonCodec<WenleiTaskUpdateRequest> wenleiTaskUpdateRequestJsonCodec,
+                            SmileCodec<WenleiTaskUpdateRequest> wenleiTaskUpdateRequestSmileCodec,
+                            JsonCodec<PlanFragment> planFragmentJsonCodec,
+                            SmileCodec<PlanFragment> planFragmentSmileCodec)
                     {
                         JaxrsTestingHttpProcessor jaxrsTestingHttpProcessor = new JaxrsTestingHttpProcessor(URI.create("http://fake.invalid/"), testingTaskResource, jsonMapper);
                         TestingHttpClient testingHttpClient = new TestingHttpClient(jaxrsTestingHttpProcessor.setTrace(TRACE_HTTP));
@@ -277,6 +288,10 @@ public class TestHttpRemoteTask
                                 taskInfoSmileCodec,
                                 taskUpdateRequestJsonCodec,
                                 taskUpdateRequestSmileCodec,
+                                wenleiTaskUpdateRequestJsonCodec,
+                                wenleiTaskUpdateRequestSmileCodec,
+                                planFragmentJsonCodec,
+                                planFragmentSmileCodec,
                                 new RemoteTaskStats(),
                                 new InternalCommunicationConfig());
                     }

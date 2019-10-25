@@ -19,6 +19,8 @@ import org.weakref.jmx.Nested;
 
 import javax.annotation.concurrent.ThreadSafe;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 public class RemoteTaskStats
 {
     private final IncrementalAverage updateRoundTripMillis = new IncrementalAverage();
@@ -27,6 +29,9 @@ public class RemoteTaskStats
     private final IncrementalAverage responseSizeBytes = new IncrementalAverage();
     private final DistributionStat updateWithPlanSize = new DistributionStat();
     private final DistributionStat updateWithoutPlanSize = new DistributionStat();
+
+    private final AtomicLong updateRequestSerializeNanos = new AtomicLong();
+    private final AtomicLong wenleiUpdateRequestSerializeNanos = new AtomicLong();
 
     private long requestSuccess;
     private long requestFailure;
@@ -71,6 +76,16 @@ public class RemoteTaskStats
         updateWithoutPlanSize.add(bytes);
     }
 
+    public void updateRequestSerializeNanos(long nanos)
+    {
+        updateRequestSerializeNanos.addAndGet(nanos);
+    }
+
+    public void wenleiUpdateRequestSerializeNanos(long nanos)
+    {
+        wenleiUpdateRequestSerializeNanos.addAndGet(nanos);
+    }
+
     @Managed
     public double getResponseSizeBytes()
     {
@@ -105,6 +120,18 @@ public class RemoteTaskStats
     public long getRequestFailure()
     {
         return requestFailure;
+    }
+
+    @Managed
+    public long getUpdateRequestSerializeNanos()
+    {
+        return updateRequestSerializeNanos.get();
+    }
+
+    @Managed
+    public long getWenleiUpdateRequestSerializeNanos()
+    {
+        return wenleiUpdateRequestSerializeNanos.get();
     }
 
     @Managed

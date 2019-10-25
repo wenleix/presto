@@ -35,6 +35,7 @@ import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.ForScheduler;
 import com.facebook.presto.server.InternalCommunicationConfig;
 import com.facebook.presto.server.TaskUpdateRequest;
+import com.facebook.presto.server.WenleiTaskUpdateRequest;
 import com.facebook.presto.server.smile.Codec;
 import com.facebook.presto.server.smile.SmileCodec;
 import com.facebook.presto.spi.plan.PlanNodeId;
@@ -70,6 +71,8 @@ public class HttpRemoteTaskFactory
     private final Codec<TaskStatus> taskStatusCodec;
     private final Codec<TaskInfo> taskInfoCodec;
     private final Codec<TaskUpdateRequest> taskUpdateRequestCodec;
+    private final Codec<WenleiTaskUpdateRequest> wenleiUpdateRequestCodec;
+    private final Codec<PlanFragment> planFragmentCodec;
     private final Duration maxErrorDuration;
     private final Duration taskStatusRefreshMaxWait;
     private final Duration taskInfoRefreshMaxWait;
@@ -94,6 +97,10 @@ public class HttpRemoteTaskFactory
             SmileCodec<TaskInfo> taskInfoSmileCodec,
             JsonCodec<TaskUpdateRequest> taskUpdateRequestJsonCodec,
             SmileCodec<TaskUpdateRequest> taskUpdateRequestSmileCodec,
+            JsonCodec<WenleiTaskUpdateRequest> wenleiTaskUpdateRequestJsonCodec,
+            SmileCodec<WenleiTaskUpdateRequest> wenleiTaskUpdateRequestSmileCodec,
+            JsonCodec<PlanFragment> planFragmentJsonCodec,
+            SmileCodec<PlanFragment> planFragmentSmileCodec,
             RemoteTaskStats stats,
             InternalCommunicationConfig communicationConfig)
     {
@@ -114,11 +121,15 @@ public class HttpRemoteTaskFactory
             this.taskStatusCodec = taskStatusSmileCodec;
             this.taskInfoCodec = taskInfoSmileCodec;
             this.taskUpdateRequestCodec = taskUpdateRequestSmileCodec;
+            this.wenleiUpdateRequestCodec = wenleiTaskUpdateRequestSmileCodec;
+            this.planFragmentCodec = planFragmentSmileCodec;
         }
         else {
             this.taskStatusCodec = wrapJsonCodec(taskStatusJsonCodec);
             this.taskInfoCodec = wrapJsonCodec(taskInfoJsonCodec);
             this.taskUpdateRequestCodec = wrapJsonCodec(taskUpdateRequestJsonCodec);
+            this.wenleiUpdateRequestCodec = wrapJsonCodec(wenleiTaskUpdateRequestJsonCodec);
+            this.planFragmentCodec = wrapJsonCodec(planFragmentJsonCodec);
         }
 
         this.updateScheduledExecutor = newSingleThreadScheduledExecutor(daemonThreadsNamed("task-info-update-scheduler-%s"));
@@ -141,7 +152,8 @@ public class HttpRemoteTaskFactory
     }
 
     @Override
-    public RemoteTask createRemoteTask(Session session,
+    public RemoteTask createRemoteTask(
+            Session session,
             TaskId taskId,
             InternalNode node,
             PlanFragment fragment,
@@ -152,11 +164,13 @@ public class HttpRemoteTaskFactory
             boolean summarizeTaskInfo,
             TableWriteInfo tableWriteInfo)
     {
-        return new HttpRemoteTask(session,
+        return new HttpRemoteTask(
+                session,
                 taskId,
                 node.getNodeIdentifier(),
                 locationFactory.createTaskLocation(node, taskId),
                 fragment,
+                planFragmentCodec.toBytes(fragment),
                 initialSplits,
                 totalPartitions,
                 outputBuffers,
@@ -172,6 +186,7 @@ public class HttpRemoteTaskFactory
                 taskStatusCodec,
                 taskInfoCodec,
                 taskUpdateRequestCodec,
+                wenleiUpdateRequestCodec,
                 partitionedSplitCountTracker,
                 stats,
                 isBinaryTransportEnabled,

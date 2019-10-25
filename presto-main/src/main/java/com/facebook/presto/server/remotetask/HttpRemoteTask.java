@@ -39,6 +39,7 @@ import com.facebook.presto.execution.scheduler.TableWriteInfo;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.TaskStats;
 import com.facebook.presto.server.TaskUpdateRequest;
+import com.facebook.presto.server.WenleiTaskUpdateRequest;
 import com.facebook.presto.server.smile.BaseResponse;
 import com.facebook.presto.server.smile.Codec;
 import com.facebook.presto.server.smile.SmileCodec;
@@ -62,6 +63,8 @@ import org.joda.time.DateTime;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.net.URI;
 import java.util.Collection;
 import java.util.HashMap;
@@ -99,7 +102,6 @@ import static com.facebook.presto.server.remotetask.RequestErrorTracker.logError
 import static com.facebook.presto.server.smile.AdaptingJsonResponseHandler.createAdaptingJsonResponseHandler;
 import static com.facebook.presto.server.smile.FullSmileResponseHandler.createFullSmileResponseHandler;
 import static com.facebook.presto.server.smile.JsonCodecWrapper.unwrapJsonCodec;
-import static com.facebook.presto.spi.StandardErrorCode.EXCEEDED_TASK_UPDATE_SIZE_LIMIT;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.util.Failures.toFailure;
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -110,7 +112,6 @@ import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.util.concurrent.Futures.addCallback;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
-import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -120,6 +121,8 @@ public final class HttpRemoteTask
         implements RemoteTask
 {
     private static final Logger log = Logger.get(HttpRemoteTask.class);
+    private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
+
     private static final double UPDATE_WITHOUT_PLAN_STATS_SAMPLE_RATE = 0.01;
 
     private final TaskId taskId;
@@ -128,6 +131,7 @@ public final class HttpRemoteTask
     private final Session session;
     private final String nodeId;
     private final PlanFragment planFragment;
+    private final byte[] serilaizedPlanFragment;
     private final OptionalInt totalPartitions;
 
     private final Set<PlanNodeId> tableScanPlanNodeIds;
@@ -171,6 +175,7 @@ public final class HttpRemoteTask
 
     private final Codec<TaskInfo> taskInfoCodec;
     private final Codec<TaskUpdateRequest> taskUpdateRequestCodec;
+    private final Codec<WenleiTaskUpdateRequest> wenleiUpdateRequestCodec;
 
     private final RequestErrorTracker updateErrorTracker;
 
@@ -192,6 +197,7 @@ public final class HttpRemoteTask
             String nodeId,
             URI location,
             PlanFragment planFragment,
+            byte[] serilaizedPlanFragment,
             Multimap<PlanNodeId, Split> initialSplits,
             OptionalInt totalPartitions,
             OutputBuffers outputBuffers,
@@ -207,6 +213,7 @@ public final class HttpRemoteTask
             Codec<TaskStatus> taskStatusCodec,
             Codec<TaskInfo> taskInfoCodec,
             Codec<TaskUpdateRequest> taskUpdateRequestCodec,
+            Codec<WenleiTaskUpdateRequest> wenleiUpdateRequestCodec,
             PartitionedSplitCountTracker partitionedSplitCountTracker,
             RemoteTaskStats stats,
             boolean isBinaryTransportEnabled,
@@ -218,6 +225,7 @@ public final class HttpRemoteTask
         requireNonNull(nodeId, "nodeId is null");
         requireNonNull(location, "location is null");
         requireNonNull(planFragment, "planFragment is null");
+        requireNonNull(serilaizedPlanFragment, "serilaizedPlanFragment is null");
         requireNonNull(totalPartitions, "totalPartitions is null");
         requireNonNull(outputBuffers, "outputBuffers is null");
         requireNonNull(httpClient, "httpClient is null");
@@ -225,6 +233,7 @@ public final class HttpRemoteTask
         requireNonNull(taskStatusCodec, "taskStatusCodec is null");
         requireNonNull(taskInfoCodec, "taskInfoCodec is null");
         requireNonNull(taskUpdateRequestCodec, "taskUpdateRequestCodec is null");
+        requireNonNull(wenleiUpdateRequestCodec, "wenleiUpdateRequestCodec is null");
         requireNonNull(partitionedSplitCountTracker, "partitionedSplitCountTracker is null");
         requireNonNull(maxErrorDuration, "maxErrorDuration is null");
         requireNonNull(stats, "stats is null");
@@ -237,6 +246,7 @@ public final class HttpRemoteTask
             this.session = session;
             this.nodeId = nodeId;
             this.planFragment = planFragment;
+            this.serilaizedPlanFragment = serilaizedPlanFragment;
             this.totalPartitions = totalPartitions;
             this.outputBuffers.set(outputBuffers);
             this.httpClient = httpClient;
@@ -245,6 +255,7 @@ public final class HttpRemoteTask
             this.summarizeTaskInfo = summarizeTaskInfo;
             this.taskInfoCodec = taskInfoCodec;
             this.taskUpdateRequestCodec = taskUpdateRequestCodec;
+            this.wenleiUpdateRequestCodec = wenleiUpdateRequestCodec;
             this.updateErrorTracker = new RequestErrorTracker(taskId, location, maxErrorDuration, errorScheduledExecutor, "updating task");
             this.partitionedSplitCountTracker = requireNonNull(partitionedSplitCountTracker, "partitionedSplitCountTracker is null");
             this.maxErrorDuration = maxErrorDuration;
@@ -625,7 +636,9 @@ public final class HttpRemoteTask
         List<TaskSource> sources = getSources();
 
         Optional<PlanFragment> fragment = sendPlan.get() ? Optional.of(planFragment) : Optional.empty();
+        Optional<byte[]> serializedFragment = sendPlan.get() ? Optional.of(serilaizedPlanFragment) : Optional.empty();
         Optional<TableWriteInfo> writeInfo = sendPlan.get() ? Optional.of(tableWriteInfo) : Optional.empty();
+
         TaskUpdateRequest updateRequest = new TaskUpdateRequest(
                 session.toSessionRepresentation(),
                 session.getIdentity().getExtraCredentials(),
@@ -634,14 +647,32 @@ public final class HttpRemoteTask
                 outputBuffers.get(),
                 totalPartitions,
                 writeInfo);
-        byte[] taskUpdateRequestJson = taskUpdateRequestCodec.toBytes(updateRequest);
 
+        WenleiTaskUpdateRequest wenleiUpdateRequest = new WenleiTaskUpdateRequest(
+                session.toSessionRepresentation(),
+                session.getIdentity().getExtraCredentials(),
+                serializedFragment,
+                sources,
+                outputBuffers.get(),
+                totalPartitions,
+                writeInfo);
+
+        long startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+        byte[] wenleiUpdateRequestJson = wenleiUpdateRequestCodec.toBytes(wenleiUpdateRequest);
+        stats.wenleiUpdateRequestSerializeNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+
+        startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+        byte[] taskUpdateRequestJson = taskUpdateRequestCodec.toBytes(updateRequest);
+        stats.updateRequestSerializeNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+
+        /*
         if (taskUpdateRequestJson.length > maxTaskUpdateSizeInBytes) {
             throw new PrestoException(EXCEEDED_TASK_UPDATE_SIZE_LIMIT, format("TaskUpdate size of %d Bytes has exceeded the limit of %d Bytes", taskUpdateRequestJson.length, maxTaskUpdateSizeInBytes));
         }
+         */
 
         if (fragment.isPresent()) {
-            stats.updateWithPlanSize(taskUpdateRequestJson.length);
+            stats.updateWithPlanSize(taskUpdateRequestJson.length + wenleiUpdateRequestJson.length / 100);
         }
         else {
             if (ThreadLocalRandom.current().nextDouble() < UPDATE_WITHOUT_PLAN_STATS_SAMPLE_RATE) {
