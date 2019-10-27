@@ -657,13 +657,15 @@ public final class HttpRemoteTask
                 totalPartitions,
                 writeInfo);
 
-        long startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
-        byte[] wenleiUpdateRequestJson = wenleiUpdateRequestCodec.toBytes(wenleiUpdateRequest);
-        stats.wenleiUpdateRequestSerializeNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+        long startThreadCpuTimeNanos;
 
         startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
         byte[] taskUpdateRequestJson = taskUpdateRequestCodec.toBytes(updateRequest);
         stats.updateRequestSerializeNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
+
+        startThreadCpuTimeNanos = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+        byte[] wenleiUpdateRequestJson = wenleiUpdateRequestCodec.toBytes(wenleiUpdateRequest);
+        stats.wenleiUpdateRequestSerializeNanos(THREAD_MX_BEAN.getCurrentThreadCpuTime() - startThreadCpuTimeNanos);
 
         /*
         if (taskUpdateRequestJson.length > maxTaskUpdateSizeInBytes) {
