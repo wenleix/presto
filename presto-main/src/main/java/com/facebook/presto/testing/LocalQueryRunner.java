@@ -768,7 +768,8 @@ public class LocalQueryRunner
                 new TaskExchangeClientManager(ignored -> {
                     throw new UnsupportedOperationException();
                 }),
-                createTableWriteInfo(streamingSubPlan, metadata, session));
+                createTableWriteInfo(streamingSubPlan, metadata, session),
+                ImmutableMap.of());
 
         // generate sources
         List<TaskSource> sources = new ArrayList<>();
