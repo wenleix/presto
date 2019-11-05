@@ -16,6 +16,15 @@ package com.facebook.presto.spark.presto;
 import com.facebook.presto.Session;
 import com.facebook.presto.block.BlockEncodingManager;
 import com.facebook.presto.block.BlockJsonSerde;
+import com.facebook.presto.hive.HdfsConfiguration;
+import com.facebook.presto.hive.HdfsConfigurationInitializer;
+import com.facebook.presto.hive.HdfsEnvironment;
+import com.facebook.presto.hive.HiveClientConfig;
+import com.facebook.presto.hive.HiveHdfsConfiguration;
+import com.facebook.presto.hive.HivePlugin;
+import com.facebook.presto.hive.authentication.NoHdfsAuthentication;
+import com.facebook.presto.hive.metastore.Database;
+import com.facebook.presto.hive.metastore.file.FileHiveMetastore;
 import com.facebook.presto.index.IndexHandleJacksonModule;
 import com.facebook.presto.metadata.ColumnHandleJacksonModule;
 import com.facebook.presto.metadata.FunctionHandleJacksonModule;
@@ -33,6 +42,7 @@ import com.facebook.presto.spi.Plugin;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
+import com.facebook.presto.spi.security.PrincipalType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.Serialization;
@@ -45,7 +55,10 @@ import io.airlift.json.JsonCodec;
 import io.airlift.json.JsonCodecFactory;
 import io.airlift.json.ObjectMapperProvider;
 
+import java.io.File;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Optional;
+import java.util.UUID;
 
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 
@@ -59,7 +72,24 @@ public class LocalQueryRunnerFactory
 
         for (String plugin : prestoConfiguration.getPlugins()) {
             try {
-                localQueryRunner.installPlugin((Plugin) Class.forName(plugin).getConstructor().newInstance());
+                if (plugin.equals("com.facebook.presto.hive.HivePlugin")) {
+                    File baseDir = new File("/tmp/" + UUID.randomUUID().toString().replaceAll("-", "_"));
+
+                    HiveClientConfig hiveClientConfig = new HiveClientConfig();
+                    HdfsConfiguration hdfsConfiguration = new HiveHdfsConfiguration(new HdfsConfigurationInitializer(hiveClientConfig), ImmutableSet.of());
+                    HdfsEnvironment hdfsEnvironment = new HdfsEnvironment(hdfsConfiguration, hiveClientConfig, new NoHdfsAuthentication());
+                    FileHiveMetastore metastore = new FileHiveMetastore(hdfsEnvironment, baseDir.toURI().toString(), "test");
+                    metastore.createDatabase(Database.builder()
+                            .setDatabaseName("test")
+                            .setOwnerName("public")
+                            .setOwnerType(PrincipalType.ROLE)
+                            .build());
+
+                    localQueryRunner.installPlugin(new HivePlugin("hive", Optional.of(metastore)));
+                }
+                else {
+                    localQueryRunner.installPlugin((Plugin) Class.forName(plugin).getConstructor().newInstance());
+                }
             }
             catch (InstantiationException | IllegalAccessException | ClassNotFoundException | NoSuchMethodException | InvocationTargetException e) {
                 throw new RuntimeException(e);

@@ -78,7 +78,7 @@ public class FeaturesConfig
     private JoinReorderingStrategy joinReorderingStrategy = ELIMINATE_CROSS_JOINS;
     private PartialMergePushdownStrategy partialMergePushdownStrategy = PartialMergePushdownStrategy.NONE;
     private int maxReorderedJoins = 9;
-    private boolean redistributeWrites = true;
+    private boolean redistributeWrites = false;
     private boolean scaleWriters;
     private DataSize writerMinSize = new DataSize(32, DataSize.Unit.MEGABYTE);
     private boolean optimizeMetadataQueries;

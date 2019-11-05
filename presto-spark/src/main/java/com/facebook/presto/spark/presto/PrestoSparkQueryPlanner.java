@@ -160,7 +160,12 @@ public class PrestoSparkQueryPlanner
 
                 // TODO: Do we want to return an RDD for root stage? -- or we should consider the result will not be large?
                 List<Tuple2<Integer, byte[]>> collect = childRdd.collect();
-                List<Tuple2<Integer, byte[]>> result = ImmutableList.copyOf(compiler.get().compileFragment(serializedRequest, ImmutableMap.of(remoteSource.getId().toString(), collect.iterator())));
+                List<Tuple2<Integer, byte[]>> result = ImmutableList.copyOf(
+                        compiler.get().compileFragment(
+                                serializedRequest,
+                                ImmutableMap.of(
+                                        remoteSource.getId().toString(),
+                                        collect.iterator())));
                 return jsc.<Integer, byte[]>parallelizePairs(result);
             }
             else if (partitioning.equals(FIXED_HASH_DISTRIBUTION) ||

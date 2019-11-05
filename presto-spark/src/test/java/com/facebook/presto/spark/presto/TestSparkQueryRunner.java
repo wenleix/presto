@@ -47,9 +47,22 @@ public class TestSparkQueryRunner
         SparkContext sparkContext = new SparkContext(sparkConfiguration);
 
         PrestoConfiguration prestoConfiguration = new PrestoConfiguration(
-                ImmutableList.of("com.facebook.presto.tpch.TpchPlugin"),
                 ImmutableList.of(
-                        new CatalogConfiguration("tpch", "tpch", ImmutableMap.of())));
+                        "com.facebook.presto.tpch.TpchPlugin",
+                        "com.facebook.presto.hive.HivePlugin"),
+                ImmutableList.of(
+                        new CatalogConfiguration("tpch", "tpch", ImmutableMap.of()),
+                        new CatalogConfiguration("hive", "hive", ImmutableMap.of())));
+
+        /*
+        runQueryOnSpark(
+                "CREATE TABLE hive.test.orders AS " +
+                        "SELECT orderkey, custkey, orderstatus, totalprice, orderdate, orderpriority, clerk, shippriority, comment " +
+                        "FROM tpch.tiny.orders",
+                prestoConfiguration,
+                sparkContext,
+                partitions);
+         */
 
         runQueryOnSpark(
                 "select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42",
