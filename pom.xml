@@ -145,6 +145,7 @@
         <module>presto-expressions</module>
         <module>presto-spark-spi</module>
         <module>presto-spark</module>
+        <module>presto-spark-package</module>
         <module>presto-spark-launcher</module>
     </modules>
 
@@ -459,6 +460,12 @@
             <dependency>
                 <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-spark-spi</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-spark</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
