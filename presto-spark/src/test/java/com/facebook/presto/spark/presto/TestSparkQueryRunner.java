@@ -54,7 +54,6 @@ public class TestSparkQueryRunner
                         new CatalogConfiguration("tpch", "tpch", ImmutableMap.of()),
                         new CatalogConfiguration("hive", "hive", ImmutableMap.of())));
 
-        /*
         runQueryOnSpark(
                 "CREATE TABLE hive.test.orders AS " +
                         "SELECT orderkey, custkey, orderstatus, totalprice, orderdate, orderpriority, clerk, shippriority, comment " +
@@ -62,7 +61,6 @@ public class TestSparkQueryRunner
                 prestoConfiguration,
                 sparkContext,
                 partitions);
-         */
 
         runQueryOnSpark(
                 "select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42",
