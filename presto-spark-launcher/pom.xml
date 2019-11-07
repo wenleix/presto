@@ -13,12 +13,35 @@
 
     <properties>
         <air.main.basedir>${project.parent.basedir}</air.main.basedir>
+        <shadeBase>com.facebook.presto.spark.launcher.internal</shadeBase>
+        <main-class>com.facebook.presto.spark.launcher.PrestoSparkLauncher</main-class>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-spark-spi</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>javax.inject</groupId>
+            <artifactId>javax.inject</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.airlift</groupId>
+            <artifactId>airline</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>1.19</version>
         </dependency>
 
         <dependency>
@@ -42,6 +65,43 @@
                         <configuration>
                             <shadedArtifactAttached>true</shadedArtifactAttached>
                             <shadedClassifierName>shaded</shadedClassifierName>
+                            <relocations>
+                                <relocation>
+                                    <pattern>io.airlift.airline</pattern>
+                                    <shadedPattern>${shadeBase}.io.airlift.airline</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>javax.inject</pattern>
+                                    <shadedPattern>${shadeBase}.javax.inject</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>javax.annotation</pattern>
+                                    <shadedPattern>${shadeBase}.javax.annotation</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.checkerframework</pattern>
+                                    <shadedPattern>${shadeBase}.org.checkerframework</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google</pattern>
+                                    <shadedPattern>${shadeBase}.com.google</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.codehaus.mojo.animal_sniffer</pattern>
+                                    <shadedPattern>${shadeBase}.org.codehaus.mojo.animal_sniffer</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.apache.commons.compress</pattern>
+                                    <shadedPattern>${shadeBase}.org.apache.commons.compress</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Main-Class>${main-class}</Main-Class>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
                         </configuration>
                     </execution>
                 </executions>
