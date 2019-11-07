@@ -110,7 +110,7 @@ public class LauncherCommand
     private static SparkContext createSparkContext(ClientOptions clientOptions)
     {
         SparkConf sparkConfiguration = new SparkConf()
-                .setAppName("Presto query: <initializing>");
+                .setAppName("Presto");
         return new SparkContext(sparkConfiguration);
     }
 

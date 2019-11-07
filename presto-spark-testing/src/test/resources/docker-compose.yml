@@ -1,0 +1,28 @@
+version: "3.7"
+services:
+  spark-master:
+    image: spydernaz/spark-master:2.4.3
+    networks:
+      - spark_cluster_network
+    environment:
+      - "SPARK_LOCAL_IP=spark-master"
+  spark-worker:
+    image: spydernaz/spark-worker:2.4.3
+    depends_on:
+      - spark-master
+    networks:
+      - spark_cluster_network
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_DRIVER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_EXECUTOR_MEMORY=2G
+  hadoop-master:
+    image: prestodb/hdp2.6-hive:10
+    hostname: hadoop-master
+    networks:
+      - spark_cluster_network
+
+networks:
+  spark_cluster_network:
