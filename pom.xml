@@ -144,6 +144,9 @@
         <module>presto-elasticsearch</module>
         <module>presto-sql-function</module>
         <module>presto-expressions</module>
+        <module>presto-spark-spi</module>
+        <module>presto-spark</module>
+        <module>presto-spark-launcher</module>
     </modules>
 
     <dependencyManagement>
@@ -457,6 +460,12 @@
             <dependency>
                 <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-sql-function</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-spark-spi</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -1279,6 +1288,13 @@
                 <groupId>net.jodah</groupId>
                 <artifactId>failsafe</artifactId>
                 <version>2.0.1</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto.spark</groupId>
+                <artifactId>spark-core</artifactId>
+                <version>2.0.2-4</version>
+                <scope>provided</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>

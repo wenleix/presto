@@ -21,6 +21,7 @@ import com.facebook.presto.execution.StageExecutionId;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.execution.buffer.PagesSerdeFactory;
+import com.facebook.presto.execution.buffer.SerializedPage;
 import com.facebook.presto.execution.scheduler.ExecutionWriterTarget;
 import com.facebook.presto.execution.scheduler.ExecutionWriterTarget.CreateHandle;
 import com.facebook.presto.execution.scheduler.ExecutionWriterTarget.DeleteHandle;
@@ -96,6 +97,7 @@ import com.facebook.presto.operator.exchange.LocalExchangeSinkOperator.LocalExch
 import com.facebook.presto.operator.exchange.LocalExchangeSourceOperator.LocalExchangeSourceOperatorFactory;
 import com.facebook.presto.operator.exchange.LocalMergeSourceOperator.LocalMergeSourceOperatorFactory;
 import com.facebook.presto.operator.exchange.PageChannelSelector;
+import com.facebook.presto.operator.exchange.SparkExchangeSource;
 import com.facebook.presto.operator.index.DynamicTupleFilterFactory;
 import com.facebook.presto.operator.index.FieldSetFilteringRecordSet;
 import com.facebook.presto.operator.index.IndexBuildDriverFactoryProvider;
@@ -188,6 +190,7 @@ import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.planner.plan.WindowNode.Frame;
 import com.facebook.presto.sql.relational.VariableToChannelTranslator;
 import com.facebook.presto.sql.tree.SymbolReference;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.VerifyException;
 import com.google.common.collect.ContiguousSet;
 import com.google.common.collect.HashMultimap;
@@ -210,6 +213,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -226,9 +230,6 @@ import static com.facebook.presto.SystemSessionProperties.getAggregationOperator
 import static com.facebook.presto.SystemSessionProperties.getFilterAndProjectMinOutputPageRowCount;
 import static com.facebook.presto.SystemSessionProperties.getFilterAndProjectMinOutputPageSize;
 import static com.facebook.presto.SystemSessionProperties.getIndexLoaderTimeout;
-import static com.facebook.presto.SystemSessionProperties.getTaskConcurrency;
-import static com.facebook.presto.SystemSessionProperties.getTaskPartitionedWriterCount;
-import static com.facebook.presto.SystemSessionProperties.getTaskWriterCount;
 import static com.facebook.presto.SystemSessionProperties.isExchangeCompressionEnabled;
 import static com.facebook.presto.SystemSessionProperties.isOptimizedRepartitioningEnabled;
 import static com.facebook.presto.SystemSessionProperties.isSpillEnabled;
@@ -379,6 +380,21 @@ public class LocalExecutionPlanner
             TaskExchangeClientManager taskExchangeClientManager,
             TableWriteInfo tableWriteInfo)
     {
+        return plan(taskContext, plan, types, partitioningScheme, stageExecutionDescriptor, partitionedSourceOrder, outputBuffer, taskExchangeClientManager, tableWriteInfo, ImmutableMap.of());
+    }
+
+    public LocalExecutionPlan plan(
+            TaskContext taskContext,
+            PlanNode plan,
+            TypeProvider types,
+            PartitioningScheme partitioningScheme,
+            StageExecutionDescriptor stageExecutionDescriptor,
+            List<PlanNodeId> partitionedSourceOrder,
+            OutputBuffer outputBuffer,
+            TaskExchangeClientManager taskExchangeClientManager,
+            TableWriteInfo tableWriteInfo,
+            Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources)
+    {
         List<VariableReferenceExpression> outputLayout = partitioningScheme.getOutputLayout();
 
         if (partitioningScheme.getPartitioning().getHandle().equals(FIXED_BROADCAST_DISTRIBUTION) ||
@@ -395,7 +411,8 @@ public class LocalExecutionPlanner
                     partitionedSourceOrder,
                     new TaskOutputFactory(outputBuffer),
                     taskExchangeClientManager,
-                    tableWriteInfo);
+                    tableWriteInfo,
+                    sparkShuffledSources);
         }
 
         // We can convert the variables directly into channels, because the root must be a sink and therefore the layout is fixed
@@ -473,9 +490,11 @@ public class LocalExecutionPlanner
                 partitionedSourceOrder,
                 outputFactory,
                 taskExchangeClientManager,
-                tableWriteInfo);
+                tableWriteInfo,
+                sparkShuffledSources);
     }
 
+    @VisibleForTesting
     public LocalExecutionPlan plan(
             TaskContext taskContext,
             StageExecutionDescriptor stageExecutionDescriptor,
@@ -485,11 +504,12 @@ public class LocalExecutionPlanner
             List<PlanNodeId> partitionedSourceOrder,
             OutputFactory outputOperatorFactory,
             TaskExchangeClientManager taskExchangeClientManager,
-            TableWriteInfo tableWriteInfo)
+            TableWriteInfo tableWriteInfo,
+            // !@#$%^&
+            Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources)
     {
         Session session = taskContext.getSession();
-        LocalExecutionPlanContext context = new LocalExecutionPlanContext(taskContext, taskExchangeClientManager, tableWriteInfo);
-
+        LocalExecutionPlanContext context = new LocalExecutionPlanContext(taskContext, taskExchangeClientManager, tableWriteInfo, sparkShuffledSources);
         PhysicalOperation physicalOperation = plan.accept(new Visitor(session, stageExecutionDescriptor), context);
 
         Function<Page, Page> pagePreprocessor = enforceLayoutProcessor(outputLayout, physicalOperation.getLayout());
@@ -562,6 +582,8 @@ public class LocalExecutionPlanner
         private final TaskExchangeClientManager taskExchangeClientManager;
         private final List<DriverFactory> driverFactories;
         private final Optional<IndexSourceContext> indexSourceContext;
+        // !@#$%^
+        private final Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources;
 
         // this is shared with all subContexts
         private final AtomicInteger nextPipelineId;
@@ -574,9 +596,10 @@ public class LocalExecutionPlanner
         public LocalExecutionPlanContext(
                 TaskContext taskContext,
                 TaskExchangeClientManager taskExchangeClientManager,
-                TableWriteInfo tableWriteInfo)
+                TableWriteInfo tableWriteInfo,
+                Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources)
         {
-            this(taskContext, taskExchangeClientManager, new ArrayList<>(), Optional.empty(), new AtomicInteger(0), tableWriteInfo);
+            this(taskContext, taskExchangeClientManager, new ArrayList<>(), Optional.empty(), new AtomicInteger(0), tableWriteInfo, sparkShuffledSources);
         }
 
         private LocalExecutionPlanContext(
@@ -585,7 +608,8 @@ public class LocalExecutionPlanner
                 List<DriverFactory> driverFactories,
                 Optional<IndexSourceContext> indexSourceContext,
                 AtomicInteger nextPipelineId,
-                TableWriteInfo tableWriteInfo)
+                TableWriteInfo tableWriteInfo,
+                Map<PlanNodeId, Iterator<SerializedPage>> sparkShuffledSources)
         {
             this.taskContext = taskContext;
             this.taskExchangeClientManager = taskExchangeClientManager;
@@ -593,6 +617,7 @@ public class LocalExecutionPlanner
             this.indexSourceContext = indexSourceContext;
             this.nextPipelineId = nextPipelineId;
             this.tableWriteInfo = tableWriteInfo;
+            this.sparkShuffledSources = sparkShuffledSources;
         }
 
         public void addDriverFactory(boolean inputDriver, boolean outputDriver, List<OperatorFactory> operatorFactories, OptionalInt driverInstances, PipelineExecutionStrategy pipelineExecutionStrategy)
@@ -662,12 +687,12 @@ public class LocalExecutionPlanner
         public LocalExecutionPlanContext createSubContext()
         {
             checkState(!indexSourceContext.isPresent(), "index build plan can not have sub-contexts");
-            return new LocalExecutionPlanContext(taskContext, taskExchangeClientManager, driverFactories, indexSourceContext, nextPipelineId, tableWriteInfo);
+            return new LocalExecutionPlanContext(taskContext, taskExchangeClientManager, driverFactories, indexSourceContext, nextPipelineId, tableWriteInfo, sparkShuffledSources);
         }
 
         public LocalExecutionPlanContext createIndexSourceSubContext(IndexSourceContext indexSourceContext)
         {
-            return new LocalExecutionPlanContext(taskContext, taskExchangeClientManager, driverFactories, Optional.of(indexSourceContext), nextPipelineId, tableWriteInfo);
+            return new LocalExecutionPlanContext(taskContext, taskExchangeClientManager, driverFactories, Optional.of(indexSourceContext), nextPipelineId, tableWriteInfo, sparkShuffledSources);
         }
 
         public OptionalInt getDriverInstanceCount()
@@ -677,11 +702,20 @@ public class LocalExecutionPlanner
 
         public void setDriverInstanceCount(int driverInstanceCount)
         {
+            if (driverInstanceCount != 1) {
+                System.err.println("Wenlei Debug: set driver instance count to " + driverInstanceCount);
+            }
+
             checkArgument(driverInstanceCount > 0, "driverInstanceCount must be > 0");
             if (this.driverInstanceCount.isPresent()) {
                 checkState(this.driverInstanceCount.getAsInt() == driverInstanceCount, "driverInstance count already set to " + this.driverInstanceCount.getAsInt());
             }
             this.driverInstanceCount = OptionalInt.of(driverInstanceCount);
+        }
+
+        public Map<PlanNodeId, Iterator<SerializedPage>> getSparkShuffledSources()
+        {
+            return this.sparkShuffledSources;
         }
     }
 
@@ -784,18 +818,26 @@ public class LocalExecutionPlanner
 
         private PhysicalOperation createRemoteSource(RemoteSourceNode node, LocalExecutionPlanContext context)
         {
-            if (node.isEnsureSourceOrdering()) {
-                context.setDriverInstanceCount(1);
-            }
-            else if (!context.getDriverInstanceCount().isPresent()) {
-                context.setDriverInstanceCount(getTaskConcurrency(session));
-            }
+            // Hack for now !@#$%^&*
+            context.setDriverInstanceCount(1);
+//            if (node.isEnsureSourceOrdering()) {
+//                context.setDriverInstanceCount(1);
+//            }
+//            else if (!context.getDriverInstanceCount().isPresent()) {
+//                context.setDriverInstanceCount(getTaskConcurrency(session));
+//            }
+
+            Map<PlanNodeId, Iterator<SerializedPage>> sparkShffuledSources = context.getSparkShuffledSources();
+
+            Optional<SparkExchangeSource> sparkExchangeSource = Optional.ofNullable(sparkShffuledSources.get(node.getId()))
+                    .map(iterator -> new SparkExchangeSource(iterator));
 
             OperatorFactory operatorFactory = new ExchangeOperatorFactory(
                     context.getNextOperatorId(),
                     node.getId(),
                     context.getTaskExchangeClientManager(),
-                    new PagesSerdeFactory(blockEncodingSerde, isExchangeCompressionEnabled(session)));
+                    new PagesSerdeFactory(blockEncodingSerde, isExchangeCompressionEnabled(session)),
+                    sparkExchangeSource);
 
             return new PhysicalOperation(operatorFactory, makeLayout(node), context, UNGROUPED_EXECUTION);
         }
@@ -2212,12 +2254,14 @@ public class LocalExecutionPlanner
         public PhysicalOperation visitTableWriter(TableWriterNode node, LocalExecutionPlanContext context)
         {
             // Set table writer count
-            if (node.getPartitioningScheme().isPresent()) {
-                context.setDriverInstanceCount(getTaskPartitionedWriterCount(session));
-            }
-            else {
-                context.setDriverInstanceCount(getTaskWriterCount(session));
-            }
+//            if (node.getPartitioningScheme().isPresent()) {
+//                context.setDriverInstanceCount(getTaskPartitionedWriterCount(session));
+//            }
+//            else {
+//                context.setDriverInstanceCount(getTaskWriterCount(session));
+//            }
+            // Hack !@#$%^&*
+            context.setDriverInstanceCount(1);
 
             // serialize writes by forcing data through a single writer
             PhysicalOperation source = node.getSource().accept(this, context);
@@ -2545,7 +2589,8 @@ public class LocalExecutionPlanner
                 driverInstanceCount = context.getDriverInstanceCount().getAsInt();
             }
             else {
-                driverInstanceCount = getTaskConcurrency(session);
+                // Hack !@#$%^&*
+                driverInstanceCount = 1;
                 context.setDriverInstanceCount(driverInstanceCount);
             }
 
