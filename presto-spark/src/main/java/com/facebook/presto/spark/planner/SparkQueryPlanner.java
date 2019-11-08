@@ -29,6 +29,7 @@ import com.facebook.presto.sql.planner.LogicalPlanner;
 import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.PlanOptimizers;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 import java.util.Optional;
@@ -65,7 +66,7 @@ public class SparkQueryPlanner
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
     }
 
-    public Plan createQueryPlan(Session session, PreparedQuery preparedQuery, WarningCollector warningCollector)
+    public PlanAndUpdateType createQueryPlan(Session session, PreparedQuery preparedQuery, WarningCollector warningCollector)
     {
         PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
 
@@ -90,6 +91,30 @@ public class SparkQueryPlanner
                 warningCollector);
 
         Analysis analysis = analyzer.analyze(preparedQuery.getStatement());
-        return logicalPlanner.plan(analysis, OPTIMIZED_AND_VALIDATED);
+        return new PlanAndUpdateType(
+                logicalPlanner.plan(analysis, OPTIMIZED_AND_VALIDATED),
+                analysis.getUpdateType());
+    }
+
+    public static class PlanAndUpdateType
+    {
+        private final Plan plan;
+        private final String updateType;
+
+        public PlanAndUpdateType(Plan plan, @Nullable String updateType)
+        {
+            this.plan = requireNonNull(plan, "plan is null");
+            this.updateType = updateType;
+        }
+
+        public Plan getPlan()
+        {
+            return plan;
+        }
+
+        public String getUpdateType()
+        {
+            return updateType;
+        }
     }
 }

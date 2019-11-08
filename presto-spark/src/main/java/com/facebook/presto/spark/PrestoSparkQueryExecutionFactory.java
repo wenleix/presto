@@ -31,6 +31,7 @@ import com.facebook.presto.spark.planner.PreparedPlan;
 import com.facebook.presto.spark.planner.SparkPlanFragmenter;
 import com.facebook.presto.spark.planner.SparkPlanPreparer;
 import com.facebook.presto.spark.planner.SparkQueryPlanner;
+import com.facebook.presto.spark.planner.SparkQueryPlanner.PlanAndUpdateType;
 import com.facebook.presto.spark.planner.SparkRddPlanner;
 import com.facebook.presto.spark.spi.QueryExecution;
 import com.facebook.presto.spark.spi.QueryExecutionFactory;
@@ -41,11 +42,14 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.transaction.TransactionId;
+import com.facebook.presto.transaction.TransactionInfo;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slices;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -54,13 +58,18 @@ import org.apache.spark.util.CollectionAccumulator;
 import scala.Some;
 import scala.Tuple2;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 import java.util.List;
+import java.util.Optional;
 
+import static com.facebook.airlift.concurrent.MoreFutures.getFutureValue;
 import static com.facebook.presto.SystemSessionProperties.isExchangeCompressionEnabled;
 import static com.facebook.presto.execution.buffer.PagesSerdeUtil.readSerializedPages;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
@@ -125,8 +134,8 @@ public class PrestoSparkQueryExecutionFactory
         WarningCollector warningCollector = WarningCollector.NOOP;
 
         PreparedQuery preparedQuery = queryPreparer.prepareQuery(session, sql, warningCollector);
-        Plan plan = queryPlanner.createQueryPlan(session, preparedQuery, warningCollector);
-        SubPlan fragmentedPlan = planFragmenter.fragmentQueryPlan(session, plan, warningCollector);
+        PlanAndUpdateType planAndUpdateType = queryPlanner.createQueryPlan(session, preparedQuery, warningCollector);
+        SubPlan fragmentedPlan = planFragmenter.fragmentQueryPlan(session, planAndUpdateType.getPlan(), warningCollector);
         PreparedPlan preparedPlan = taskSourceResolver.preparePlan(session, fragmentedPlan);
 
         JavaSparkContext javaSparkContext = new JavaSparkContext(sparkContext);
@@ -145,8 +154,10 @@ public class PrestoSparkQueryExecutionFactory
                 taskStatsCollector,
                 rdd,
                 fragmentedPlan.getFragment().getTypes(),
+                planAndUpdateType.getUpdateType(),
                 new PagesSerdeFactory(blockEncodingManager, isExchangeCompressionEnabled(session)).createPagesSerde(),
-                taskStatsJsonCodec);
+                taskStatsJsonCodec,
+                transactionManager);
     }
 
     public static class PrestoQueryExecution
@@ -157,8 +168,10 @@ public class PrestoSparkQueryExecutionFactory
         private final CollectionAccumulator<byte[]> taskStatsCollector;
         private final JavaPairRDD<Integer, byte[]> rdd;
         private final List<Type> outputTypes;
+        private final String updateType;
         private final PagesSerde pagesSerde;
         private final JsonCodec<TaskStats> taskStatsJsonCodec;
+        private final TransactionManager transactionManager;
 
         private PrestoQueryExecution(
                 Session session,
@@ -166,16 +179,20 @@ public class PrestoSparkQueryExecutionFactory
                 CollectionAccumulator<byte[]> taskStatsCollector,
                 JavaPairRDD<Integer, byte[]> rdd,
                 List<Type> outputTypes,
+                @Nullable String updateType,
                 PagesSerde pagesSerde,
-                JsonCodec<TaskStats> taskStatsJsonCodec)
+                JsonCodec<TaskStats> taskStatsJsonCodec,
+                TransactionManager transactionManager)
         {
             this.session = requireNonNull(session, "session is null");
             this.queryMonitor = requireNonNull(queryMonitor, "queryMonitor is null");
             this.taskStatsCollector = requireNonNull(taskStatsCollector, "taskStatsCollector is null");
             this.rdd = requireNonNull(rdd, "rdd is null");
             this.outputTypes = ImmutableList.copyOf(requireNonNull(outputTypes, "outputTypes is null"));
+            this.updateType = updateType;
             this.pagesSerde = requireNonNull(pagesSerde, "pagesSerde is null");
             this.taskStatsJsonCodec = requireNonNull(taskStatsJsonCodec, "taskStatsJsonCodec is null");
+            this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
         }
 
         @Override
@@ -197,12 +214,32 @@ public class PrestoSparkQueryExecutionFactory
             // TODO: implement query monitor
             // queryMonitor.queryCompletedEvent();
 
+
+            // commit transaction
+            Optional<TransactionInfo> transaction = session.getTransactionId()
+                    .flatMap(transactionManager::getOptionalTransactionInfo);
+
+            checkState(transaction.isPresent() && transaction.get().isAutoCommitContext());
+            ListenableFuture<?> commitFuture = transactionManager.asyncCommit(transaction.get().getTransactionId());
+            try {
+                getFutureValue(commitFuture);
+            }
+            catch (Throwable t) {
+                // TODO: wrap with PrestoException
+                throw t;
+            }
+
             return result;
         }
 
         public List<Type> getOutputTypes()
         {
             return outputTypes;
+        }
+
+        public String getUpdateType()
+        {
+            return updateType;
         }
 
         private Page deserializePage(byte[] data)
