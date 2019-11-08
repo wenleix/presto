@@ -25,6 +25,22 @@ public class TestSparkQueryRunner
     }
 
     @Test
+    public void testTableWrite()
+    {
+        assertUpdate(
+                "CREATE TABLE hive.hive_test.hive_orders AS " +
+                "SELECT orderkey, custkey, orderstatus, totalprice, orderdate, orderpriority, clerk, shippriority, comment " +
+                "FROM orders",
+                15000);
+
+        assertQuery(
+                "SELECT orderkey, custkey, orderstatus, totalprice, orderdate, orderpriority, clerk, shippriority, comment " +
+                        "FROM hive.hive_test.hive_orders",
+                "SELECT orderkey, custkey, orderstatus, totalprice, orderdate, orderpriority, clerk, shippriority, comment " +
+                        "FROM orders");
+    }
+
+    @Test
     public void testAggregation()
     {
         assertQuery("select partkey, count(*) c from lineitem where partkey % 10 = 1 group by partkey having count(*) = 42");
