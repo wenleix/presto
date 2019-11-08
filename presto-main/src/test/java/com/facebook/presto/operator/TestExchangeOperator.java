@@ -39,6 +39,7 @@ import org.testng.annotations.Test;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -253,7 +254,8 @@ public class TestExchangeOperator
                 0,
                 new PlanNodeId("test"),
                 new TaskExchangeClientManager(exchangeClientSupplier),
-                SERDE_FACTORY);
+                SERDE_FACTORY,
+                Optional.empty());
 
         DriverContext driverContext = createTaskContext(scheduler, scheduledExecutor, TEST_SESSION)
                 .addPipelineContext(0, true, true, false)
