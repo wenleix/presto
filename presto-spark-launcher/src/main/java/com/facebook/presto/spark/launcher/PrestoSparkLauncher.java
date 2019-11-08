@@ -13,24 +13,18 @@
  */
 package com.facebook.presto.spark.launcher;
 
-import com.facebook.presto.spark.spi.Configuration;
-import com.facebook.presto.spark.spi.ServiceFactory;
-import com.facebook.presto.spark.spi.TaskCompiler;
-import org.apache.spark.SparkConf;
-import org.apache.spark.SparkContext;
-import org.apache.spark.SparkFiles;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import io.airlift.airline.DefaultCommandFactory;
+import io.airlift.airline.ParseException;
+import io.airlift.airline.ParseState;
+import io.airlift.airline.Parser;
+import io.airlift.airline.SingleCommand;
+import io.airlift.airline.model.CommandMetadata;
 
-import java.io.File;
-import java.io.Serializable;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.ServiceLoader;
-import java.util.function.Supplier;
-
-import static java.lang.String.format;
-import static java.util.Arrays.asList;
-import static java.util.Collections.singletonList;
-import static java.util.Objects.requireNonNull;
+import static io.airlift.airline.ParserUtil.createInstance;
+import static io.airlift.airline.SingleCommand.singleCommand;
+import static java.lang.System.exit;
 
 public class PrestoSparkLauncher
 {
@@ -38,81 +32,48 @@ public class PrestoSparkLauncher
 
     public static void main(String[] args)
     {
-        SparkConf sparkConfiguration = new SparkConf()
-                .setAppName("Simple Query")
-                .set("spark.memory.fraction", "0.1")
-                .set("spark.memory.storageFraction", "0.1")
-                .set("spark.shuffle.memoryFraction", "0.1");
-        SparkContext context = new SparkContext(sparkConfiguration);
+        SingleCommand<LauncherCommand> command = singleCommand(LauncherCommand.class);
 
-//        Configuration configuration = new Configuration(
-//                singletonList("com.facebook.presto.tpch.TpchPlugin"),
-//                singletonList(new CatalogConfiguration("tpch", "tpch", emptyMap())));
-
-        String prestoSparkJarLocation = args[0];
-        if (!new File(prestoSparkJarLocation).exists()) {
-            throw new IllegalArgumentException(format("File does not exist: %s", prestoSparkJarLocation));
+        LauncherCommand console = parseNoValidate(command, args);
+        if (console.helpOption.showHelpIfRequested() ||
+                console.versionOption.showVersionIfRequested()) {
+            exit(0);
+            return;
         }
-        ServiceFactory factory = createPluginFactory(prestoSparkJarLocation);
 
-        context.addFile(prestoSparkJarLocation);
-        String prestoSparkJarFileId = new File(prestoSparkJarLocation).getName();
-
-//        String query = "select partkey, count(*) c from tpch.tiny.lineitem where partkey % 10 = 1 group by partkey having count(*) = 42";
-//        QueryExecutionFactory planner = factory.createRddFactory(context, configuration, 4);
-//        QueryExecution plan = planner.create(query, new SparkFragmentCompilerSupplier(configuration, prestoSparkJarFileId));
-//
-//        List<byte[]> serializedResult = plan.getRdd()
-//                .map(tupple -> tupple._2)
-//                .collect();
-//
-//        ResultDeserializer deserializer = factory.createResultsDeserializer();
-//        List<List<Object>> result = serializedResult.stream()
-//                .flatMap(bytes -> deserializer.deserialize(bytes, plan.getOutputTypes()).stream())
-//                .collect(toList());
-
-//        System.out.println("Results: " + result.size());
-//        result.forEach(System.out::println);
-    }
-
-    private static ServiceFactory createPluginFactory(String jar)
-    {
-        URL url;
+        // parse and validate now
         try {
-            url = new File(jar).toURI().toURL();
+            console = command.parse(args);
         }
-        catch (MalformedURLException e) {
-            throw new IllegalArgumentException(e);
+        catch (ParseException e) {
+            System.err.println(e.getMessage());
+            exit(1);
+            return;
         }
-        PrestoSparkLoader prestoSparkLoader = new PrestoSparkLoader(
-                singletonList(url),
-                PrestoSparkLauncher.class.getClassLoader(),
-                asList("org.apache.spark.", "com.facebook.presto.spark.spi.", "scala."));
-        ServiceLoader<ServiceFactory> serviceLoader = ServiceLoader.load(ServiceFactory.class, prestoSparkLoader);
-        return serviceLoader.iterator().next();
+
+        try {
+            console.run();
+            exit(0);
+        }
+        catch (RuntimeException e) {
+            e.printStackTrace();
+            exit(1);
+        }
     }
 
-    public static class SparkFragmentCompilerSupplier
-            implements Supplier<TaskCompiler>, Serializable
+    private static LauncherCommand parseNoValidate(SingleCommand<LauncherCommand> command, String[] args)
     {
-        private final Configuration configuration;
-        private final String prestoSparkJarFileId;
-
-        public SparkFragmentCompilerSupplier(Configuration configuration, String prestoSparkJarFileId)
-        {
-            this.configuration = requireNonNull(configuration, "configuration is null");
-            this.prestoSparkJarFileId = requireNonNull(prestoSparkJarFileId, "prestoSparkJarFileId is null");
-        }
-
-        @Override
-        public TaskCompiler get()
-        {
-            String file = SparkFiles.get(prestoSparkJarFileId);
-            if (!new File(file).exists()) {
-                throw new IllegalArgumentException(format("File does not exist: %s", file));
-            }
-            ServiceFactory factory = createPluginFactory(file);
-            return factory.createService(configuration).createTaskCompiler();
-        }
+        CommandMetadata commandMetadata = command.getCommandMetadata();
+        Parser parser = new Parser();
+        ParseState state = parser.parseCommand(commandMetadata, ImmutableList.copyOf(args));
+        return createInstance(
+                LauncherCommand.class,
+                commandMetadata.getAllOptions(),
+                state.getParsedOptions(),
+                commandMetadata.getArguments(),
+                state.getParsedArguments(),
+                commandMetadata.getMetadataInjections(),
+                ImmutableMap.of(CommandMetadata.class, commandMetadata),
+                new DefaultCommandFactory<>());
     }
 }
