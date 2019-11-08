@@ -33,7 +33,6 @@ import com.google.inject.Module;
 import java.util.List;
 import java.util.Map;
 
-import static com.facebook.presto.server.PrestoSystemRequirements.verifyJvmRequirements;
 import static com.facebook.presto.server.PrestoSystemRequirements.verifySystemTimeIsReasonable;
 import static java.util.Objects.requireNonNull;
 
@@ -50,7 +49,7 @@ public class PrestoSparkInjectorFactory
 
     public Injector create()
     {
-        verifyJvmRequirements();
+//        verifyJvmRequirements();
         verifySystemTimeIsReasonable();
 
         ImmutableList.Builder<Module> modules = ImmutableList.builder();

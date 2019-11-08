@@ -110,7 +110,7 @@ public class LauncherCommand
     private static SparkContext createSparkContext(ClientOptions clientOptions)
     {
         SparkConf sparkConfiguration = new SparkConf()
-                .setAppName("Presto query: <initializing>");
+                .setAppName("Presto");
         return new SparkContext(sparkConfiguration);
     }
 
@@ -245,7 +245,8 @@ public class LauncherCommand
             context.addFile(config.getAbsolutePath());
 
             File tempDir = createTempDir();
-            tempDir.deleteOnExit();
+            // TODO!!!
+            // tempDir.deleteOnExit();
             File catalogsArchive = new File(tempDir, CATALOGS_ARCHIVE_NAME);
             TarGz.create(catalogs, catalogsArchive);
             context.addFile(catalogsArchive.getAbsolutePath());
