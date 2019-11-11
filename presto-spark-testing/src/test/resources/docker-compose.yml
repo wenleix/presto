@@ -1,0 +1,27 @@
+version: "3.7"
+services:
+  spark-master:
+    image: spydernaz/spark-master:2.4.3
+    environment:
+      - "TZ=UTC"
+      - "SPARK_LOCAL_IP=spark-master"
+  spark-worker:
+    image: spydernaz/spark-worker:2.4.3
+    depends_on:
+      - spark-master
+    environment:
+      - "TZ=UTC"
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_DRIVER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_EXECUTOR_MEMORY=2G
+  spark-submit:
+    image: spydernaz/spark-submit:2.4.3
+    environment:
+      - "TZ=UTC"
+  hadoop-master:
+    image: prestodb/hdp2.6-hive:10
+    hostname: hadoop-master
+    environment:
+      - "TZ=UTC"
