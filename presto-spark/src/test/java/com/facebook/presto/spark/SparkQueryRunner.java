@@ -56,6 +56,7 @@ import org.apache.spark.SparkContext;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -100,7 +101,6 @@ public class SparkQueryRunner
     private final String instanceId;
 
     public SparkQueryRunner(int nodeCount)
-            throws IOException
     {
         this.nodeCount = nodeCount;
 
@@ -144,9 +144,14 @@ public class SparkQueryRunner
                         // TODO: partitioned sources are not supported by Presto on Spark yet
                         "tpch.partitioning-enabled", "false"));
 
-        // Install Hive Plugin, copied from HiveQueryRunner
-        File baseDir = createTempDirectory("PrestoTest").toFile();
-        System.err.println("Wenlei Debug: " + baseDir);
+        // Install Hive Plugin
+        File baseDir;
+        try {
+            baseDir = createTempDirectory("PrestoTest").toFile();
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
 
         HiveClientConfig hiveClientConfig = new HiveClientConfig();
         MetastoreClientConfig metastoreClientConfig = new MetastoreClientConfig();
