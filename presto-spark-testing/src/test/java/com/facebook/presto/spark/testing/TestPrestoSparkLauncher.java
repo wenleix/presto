@@ -51,7 +51,6 @@ import static com.facebook.presto.tests.QueryAssertions.assertEqualsIgnoreOrder;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.io.Files.asByteSource;
-import static com.google.common.io.Files.createTempDir;
 import static com.google.common.io.Files.write;
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
@@ -97,8 +96,9 @@ public class TestPrestoSparkLauncher
     public void setUp()
             throws Exception
     {
-        tempDir = createTempDir();
-        tempDir.deleteOnExit();
+        // the default temporary directory location on MacOS is not sharable to docker
+        tempDir = new File("/tmp", randomUUID().toString());
+        createDirectories(tempDir.toPath());
 
         File composeYaml = extractResource("docker-compose.yml", tempDir);
         dockerCompose = new DockerCompose(composeYaml);
@@ -110,8 +110,6 @@ public class TestPrestoSparkLauncher
                 "hadoop-master", 1));
         ensureProcessIsRunning(composeProcess, new Duration(10, SECONDS));
 
-        String hiveContainerAddress = dockerCompose.getContainerAddress("hadoop-master");
-
         Session session = testSessionBuilder()
                 .setCatalog("hive")
                 .setSchema("default")
@@ -119,12 +117,15 @@ public class TestPrestoSparkLauncher
         localQueryRunner = new LocalQueryRunner(session);
         HiveHadoop2Plugin plugin = new HiveHadoop2Plugin();
         ConnectorFactory hiveConnectorFactory = getOnlyElement(plugin.getConnectorFactories());
-        addStaticResolution("hadoop-master", hiveContainerAddress);
+        addStaticResolution("hadoop-master", "localhost");
+        String hadoopMasterAddress = dockerCompose.getContainerAddress("hadoop-master");
+        // datanode is accessed via the internal docker IP address that is not accessible from the host
+        addStaticResolution(hadoopMasterAddress, "localhost");
         localQueryRunner.createCatalog(
                 "hive",
                 hiveConnectorFactory,
                 ImmutableMap.of(
-                        "hive.metastore.uri", format("thrift://%s:9083", hiveContainerAddress)));
+                        "hive.metastore.uri", "thrift://localhost:9083"));
         localQueryRunner.createCatalog("tpch", new TpchConnectorFactory(), ImmutableMap.of());
         importTables(localQueryRunner, "lineitem", "orders");
 

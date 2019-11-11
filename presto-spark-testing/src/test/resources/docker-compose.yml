@@ -25,3 +25,11 @@ services:
     hostname: hadoop-master
     environment:
       - "TZ=UTC"
+    ports:
+      # metastore
+      - '9083:9083'
+      # namenode
+      - '9000:9000'
+      - '8020:8020'
+      # datanode
+      - '50010:50010'
