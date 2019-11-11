@@ -215,15 +215,9 @@ public class PrestoSparkQueryExecutionFactory
             Optional<TransactionInfo> transaction = session.getTransactionId()
                     .flatMap(transactionManager::getOptionalTransactionInfo);
 
-            checkState(transaction.isPresent() && transaction.get().isAutoCommitContext());
-            ListenableFuture<?> commitFuture = transactionManager.asyncCommit(transaction.get().getTransactionId());
-            try {
-                getFutureValue(commitFuture);
-            }
-            catch (Throwable t) {
-                // TODO: wrap with PrestoException
-                throw t;
-            }
+            checkState(transaction.isPresent(), "transaction is not present");
+            checkState(transaction.get().isAutoCommitContext(), "transaction doesn't have auto commit context enabled");
+            getFutureValue(transactionManager.asyncCommit(transaction.get().getTransactionId()));
 
             return result;
         }
