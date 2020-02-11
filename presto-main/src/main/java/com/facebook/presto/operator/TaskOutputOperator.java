@@ -20,9 +20,11 @@ import com.facebook.presto.execution.buffer.SerializedPage;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.planner.OutputPartitioning;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 
 import static com.facebook.presto.execution.buffer.PageSplitterUtil.splitPage;
@@ -44,7 +46,13 @@ public class TaskOutputOperator
         }
 
         @Override
-        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        public OperatorFactory createOutputOperator(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<Type> types,
+                Function<Page, Page> pagePreprocessor,
+                Optional<OutputPartitioning> outputPartitioning,
+                PagesSerdeFactory serdeFactory)
         {
             return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
         }

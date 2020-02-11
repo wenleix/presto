@@ -34,7 +34,6 @@ import org.testng.annotations.Test;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
@@ -189,29 +188,15 @@ public class TestPartitionedOutputOperator
 
         PartitionedOutputOperator.PartitionedOutputFactory operatorFactory;
         if (shouldReplicate) {
-            operatorFactory = new PartitionedOutputOperator.PartitionedOutputFactory(
-                    partitionFunction,
-                    ImmutableList.of(0),
-                    ImmutableList.of(Optional.empty()),
-                    true,
-                    OptionalInt.of(0),
-                    buffer,
-                    PARTITION_MAX_MEMORY);
+            operatorFactory = new PartitionedOutputOperator.PartitionedOutputFactory(buffer, PARTITION_MAX_MEMORY);
             return (PartitionedOutputOperator) operatorFactory
-                    .createOutputOperator(0, new PlanNodeId("plan-node-0"), REPLICATION_TYPES, Function.identity(), serdeFactory)
+                    .createOutputOperator(0, new PlanNodeId("plan-node-0"), REPLICATION_TYPES, Function.identity(), Optional.empty(), serdeFactory)
                     .createOperator(driverContext);
         }
         else {
-            operatorFactory = new PartitionedOutputOperator.PartitionedOutputFactory(
-                    partitionFunction,
-                    ImmutableList.of(0),
-                    ImmutableList.of(Optional.empty(), Optional.empty()),
-                    false,
-                    OptionalInt.empty(),
-                    buffer,
-                    PARTITION_MAX_MEMORY);
+            operatorFactory = new PartitionedOutputOperator.PartitionedOutputFactory(buffer, PARTITION_MAX_MEMORY);
             return (PartitionedOutputOperator) operatorFactory
-                    .createOutputOperator(0, new PlanNodeId("plan-node-0"), TYPES, Function.identity(), serdeFactory)
+                    .createOutputOperator(0, new PlanNodeId("plan-node-0"), TYPES, Function.identity(), Optional.empty(), serdeFactory)
                     .createOperator(driverContext);
         }
     }

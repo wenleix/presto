@@ -779,17 +779,10 @@ public class TestOptimizedPartitionedOutputOperator
     {
         PagesSerdeFactory serdeFactory = new PagesSerdeFactory(new BlockEncodingManager(TYPE_MANAGER), false);
 
-        OptimizedPartitionedOutputFactory operatorFactory = new OptimizedPartitionedOutputFactory(
-                partitionFunction,
-                partitionChannel,
-                ImmutableList.of(Optional.empty()),
-                false,
-                nullChannel,
-                buffer,
-                maxMemory);
+        OptimizedPartitionedOutputFactory operatorFactory = new OptimizedPartitionedOutputFactory(buffer, maxMemory);
 
         return (OptimizedPartitionedOutputOperator) operatorFactory
-                .createOutputOperator(0, new PlanNodeId("plan-node-0"), types, Function.identity(), serdeFactory)
+                .createOutputOperator(0, new PlanNodeId("plan-node-0"), types, Function.identity(), Optional.empty(), serdeFactory)
                 .createOperator(createDriverContext());
     }
 
