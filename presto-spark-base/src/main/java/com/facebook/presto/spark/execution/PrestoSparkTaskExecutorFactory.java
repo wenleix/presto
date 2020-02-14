@@ -320,9 +320,9 @@ public class PrestoSparkTaskExecutorFactory
 
             if (!rowBuffer.hasRowsBuffered()) {
                 verify(done, "all drivers must be done if no rows are in the buffer");
-                TaskStats taskStats = taskContext.getTaskStats();
-                byte[] taskStatsSerialized = taskStatsJsonCodec.toJsonBytes(taskStats);
-                taskStatsCollector.add(new SerializedTaskStats(taskStatsSerialized));
+                // TaskStats taskStats = taskContext.getTaskStats();
+                // byte[] taskStatsSerialized = taskStatsJsonCodec.toJsonBytes(taskStats);
+                // taskStatsCollector.add(new SerializedTaskStats(taskStatsSerialized));
                 return endOfData();
             }
 

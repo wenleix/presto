@@ -73,7 +73,6 @@ import java.util.Set;
 import static com.facebook.airlift.concurrent.MoreFutures.getFutureValue;
 import static com.facebook.presto.sql.planner.planPrinter.PlanPrinter.textDistributedPlan;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.util.Objects.requireNonNull;
 
@@ -152,7 +151,7 @@ public class PrestoSparkQueryExecutionFactory
         PreparedQuery preparedQuery = queryPreparer.prepareQuery(session, sql, warningCollector);
         PlanAndUpdateType planAndUpdateType = queryPlanner.createQueryPlan(session, preparedQuery, warningCollector);
         SubPlan fragmentedPlan = planFragmenter.fragmentQueryPlan(session, planAndUpdateType.getPlan(), warningCollector);
-        log.debug(textDistributedPlan(fragmentedPlan, metadata.getFunctionManager(), session, true));
+        log.info(textDistributedPlan(fragmentedPlan, metadata.getFunctionManager(), session, true));
         PrestoSparkPlan prestoSparkPlan = splitEnumerator.preparePlan(session, fragmentedPlan);
 
         JavaSparkContext javaSparkContext = new JavaSparkContext(sparkContext);
@@ -304,18 +303,20 @@ public class PrestoSparkQueryExecutionFactory
 
         private void queryCompletedEvent(Optional<Throwable> failure)
         {
-            QueryInfo queryInfo = createQueryInfo(failure);
+            // QueryInfo queryInfo = createQueryInfo(failure);
             // TODO: implement query monitor
             // queryMonitor.queryCompletedEvent(queryInfo);
         }
 
         private QueryInfo createQueryInfo(Optional<Throwable> failure)
         {
+            /*
             List<SerializedTaskStats> serializedTaskStats = taskStatsCollector.value();
             List<TaskStats> taskStats = serializedTaskStats.stream()
                     .map(SerializedTaskStats::getBytes)
                     .map(taskStatsJsonCodec::fromJson)
                     .collect(toImmutableList());
+             */
             // TODO: create query info
             return null;
         }
