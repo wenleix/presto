@@ -172,6 +172,16 @@ public class PrestoSparkTaskExecutorFactory
                 taskDescriptor.getSources().stream()
                         .mapToInt(taskSource -> taskSource.getSplits().size())
                         .sum());
+        for (TaskSource taskSource : taskDescriptor.getSources()) {
+            int loggedSplits = 0;
+            for (ScheduledSplit split : taskSource.getSplits()) {
+                log.info("Task [%s], split: %s.", taskId, split.toString());
+                loggedSplits++;
+                if (loggedSplits == 10) {
+                    break;
+                }
+            }
+        }
 
         MemoryPool memoryPool = new MemoryPool(new MemoryPoolId("spark-executor-memory-pool"), maxTotalMemory);
         SpillSpaceTracker spillSpaceTracker = new SpillSpaceTracker(maxSpillMemory);

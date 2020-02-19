@@ -38,10 +38,11 @@ import org.apache.spark.util.CollectionAccumulator;
 import javax.inject.Inject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -147,9 +148,10 @@ public class PrestoSparkRddFactory
                 // get all scheduled splits
                 List<ScheduledSplit> scheduledSplits = subPlan.getTaskSources().stream()
                         .flatMap(taskSource -> taskSource.getSplits().stream())
-                        .collect(toImmutableList());
+                        .collect(Collectors.toList());
 
                 // get scheduled splits by task
+                Collections.shuffle(scheduledSplits, new Random(0x9E3779B185EBCA87L));
                 List<List<ScheduledSplit>> assignedSplits = assignSplitsToTasks(scheduledSplits, initialSparkPartitionCount);
 
                 List<SerializedPrestoSparkTaskDescriptor> serializedRequests = assignedSplits.stream()
@@ -259,13 +261,10 @@ public class PrestoSparkRddFactory
                 assignedSplits.add(new ArrayList<>());
             }
 
+            int taskId = 0;
             for (ScheduledSplit split : scheduledSplits) {
-                int taskId = Objects.hash(split.getPlanNodeId(), split.getSequenceId()) % numTasks;
-                if (taskId < 0) {
-                    taskId += numTasks;
-                }
-
                 assignedSplits.get(taskId).add(split);
+                taskId = (taskId + 1) % numTasks;
             }
 
             return assignedSplits;
