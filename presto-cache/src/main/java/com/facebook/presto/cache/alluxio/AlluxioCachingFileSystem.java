@@ -56,7 +56,7 @@ public class AlluxioCachingFileSystem
 
     @Override
     public FSDataInputStream openFile(Path path, HiveFileContext hiveFileContext)
-            throws Exception
+            throws IOException
     {
         // Using Alluxio caching requires knowing file size for now
         if (hiveFileContext.isCacheable() && hiveFileContext.getFileSize().isPresent()) {

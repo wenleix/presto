@@ -629,7 +629,7 @@ public class HadoopExtendedFileSystem
 
     @Override
     public FSDataInputStream openFile(Path path, HiveFileContext hiveFileContext)
-            throws Exception
+            throws IOException
     {
         return fs.open(path);
     }

@@ -21,6 +21,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.Path;
 
+import java.io.IOException;
 import java.net.URI;
 
 import static java.util.Objects.requireNonNull;
@@ -50,7 +51,7 @@ public final class FileMergeCachingFileSystem
 
     @Override
     public FSDataInputStream openFile(Path path, HiveFileContext hiveFileContext)
-            throws Exception
+            throws IOException
     {
         if (hiveFileContext.isCacheable()) {
             return new FileMergeCachingInputStream(dataTier.openFile(path, hiveFileContext), cacheManager, path, hiveFileContext.getCacheQuota(), cacheValidationEnabled);

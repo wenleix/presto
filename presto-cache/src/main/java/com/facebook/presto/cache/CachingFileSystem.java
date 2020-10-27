@@ -150,7 +150,7 @@ public abstract class CachingFileSystem
     // HiveFileContext contains caching info, which must be used while overriding this method.
     @Override
     public abstract FSDataInputStream openFile(Path path, HiveFileContext hiveFileContext)
-            throws Exception;
+            throws IOException;
 
     @Override
     public FSDataOutputStream append(Path path, int bufferSize, Progressable progressable)
